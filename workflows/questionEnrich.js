@@ -276,6 +276,72 @@ ${optsList}
 }
 
 // ─────────────────────────────────────────────────────────────
+// Fix question with AI (improve wording + distractors)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Send a single question to AI to fix wording and improve distractors.
+ * Returns the suggested question: { question_text, options, correct_answer: { value }, explanation }.
+ * @param {object} question — existing question (question_text, options or correct_answer with options)
+ * @param {string} apiKey
+ * @returns {Promise<{ question_text: string, options: {value,label}[], correct_answer: {value}, explanation: string }>}
+ */
+export async function fixQuestionWithAI(question, apiKey) {
+  const systemPrompt = `אתה מומחה לכתיבת שאלות בחינה רפואיות עבור מגן דוד אדום (מד"א).
+תפקידך: לתקן ולשפר שאלה קיימת — ניסוח ברור ותקני בעברית, מסיחים טובים (סבירים אך שגויים), תשובה נכונה אחת מסומנת.
+החזר JSON בלבד — ללא markdown, ללא טקסט חופשי.`;
+
+  let optsList = '';
+  const parsed = parseCorrectAnswer(question.correct_answer);
+  const opts = question.options || (parsed && parsed.options) || [];
+  if (Array.isArray(opts) && opts.length > 0) {
+    optsList = opts
+      .map((o, i) => `${i}. ${(o.label ?? o.text ?? o.value ?? '').trim()}`)
+      .join('\n');
+  }
+
+  const userPrompt = `שפר את השאלה הבאה ואת אפשרויות התשובה שלה.
+שמור על אותה משמעות ותשובה נכונה; שפר ניסוח, דקדוק ובהירות; המסיחים יהיו סבירים רפואית אך שגויים.
+
+שאלה נוכחית:
+${question.question_text || ''}
+
+אפשרויות נוכחיות:
+${optsList || '(אין)'}
+
+החזר בדיוק בפורמט הבא (עברית):
+{
+  "question_text": "טקסט השאלה המתוקן והמשפר",
+  "options": [
+    {"value": "0", "label": "..."},
+    {"value": "1", "label": "..."},
+    {"value": "2", "label": "..."},
+    {"value": "3", "label": "..."}
+  ],
+  "correct_answer": {"value": "N"},
+  "explanation": "הסבר קצר מדוע התשובה נכונה"
+}
+
+כללים: N הוא האינדקס (0,1,2,...) של התשובה הנכונה. אם יש פחות מ-4 אפשרויות — החזר את המספר שיש. כל האפשרויות בעברית.`;
+
+  const raw = await callOpenAI(systemPrompt, userPrompt, apiKey);
+
+  if (!raw.question_text || typeof raw.question_text !== 'string') {
+    throw new Error('ה-AI לא החזיר טקסט שאלה תקין');
+  }
+  const options = Array.isArray(raw.options) && raw.options.length >= 2
+    ? raw.options.map((o, i) => ({ value: String(o.value ?? i), label: String(o.label ?? o.text ?? o.value ?? '').trim() }))
+    : [];
+  const correctAnswer = normalizeCorrectAnswer(raw.correct_answer, options) || { value: '0' };
+  return {
+    question_text: raw.question_text.trim(),
+    options,
+    correct_answer: correctAnswer,
+    explanation: typeof raw.explanation === 'string' ? raw.explanation.trim() : '',
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Main enrichment function
 // ─────────────────────────────────────────────────────────────
 

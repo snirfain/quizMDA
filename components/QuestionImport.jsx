@@ -8,9 +8,11 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   importQuestionsFromCSV,
   importQuestionsFromJSON,
+  importQuestionsFromMoodleExcel,
   previewQuestions,
   parseCSV,
   parseJSON,
+  parseMoodleExcel,
   extractTextFromFile,
   parseQuestionsWithAI,
   bulkCreateQuestions,
@@ -45,9 +47,10 @@ export default function QuestionImport({ onImportComplete }) {
   const [editingIdx, setEditingIdx]         = useState(null);
   const [editDraft, setEditDraft]           = useState({});
 
-  // CSV/JSON state (kept from original)
+  // CSV/JSON/Excel state (kept from original; Excel added without replacing)
   const [csvType, setCsvType]           = useState('csv');
   const [csvContent, setCsvContent]     = useState('');
+  const [csvXlsxBuffer, setCsvXlsxBuffer] = useState(null);  // ArrayBuffer for Moodle Excel
   const [csvPreview, setCsvPreview]     = useState(null);
 
   const [hierarchies, setHierarchies]   = useState([]);
@@ -290,13 +293,34 @@ export default function QuestionImport({ onImportComplete }) {
     }
   };
 
-  // ── CSV/JSON Import (original logic) ─────────────────
+  // ── CSV/JSON/Excel Import (Excel added without replacing CSV/JSON) ─────────────────
   const handleCsvFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (csvType === 'xlsx') {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const buffer = ev.target.result;
+        setCsvContent('');
+        setCsvXlsxBuffer(buffer);
+        try {
+          const qs = parseMoodleExcel(buffer);
+          setCsvPreview(previewQuestions(qs));
+        } catch (err) {
+          showToast(`שגיאה: ${err.message}`, 'error');
+          setCsvPreview(null);
+          setCsvXlsxBuffer(null);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (ev) => {
       const content = ev.target.result;
+      setCsvXlsxBuffer(null);
       setCsvContent(content);
       try {
         const qs = csvType === 'csv' ? parseCSV(content) : parseJSON(content);
@@ -306,10 +330,28 @@ export default function QuestionImport({ onImportComplete }) {
         setCsvPreview(null);
       }
     };
-    reader.readAsText(file);
+    reader.readAsText(file, 'utf-8');
   };
 
   const handleCsvImport = async () => {
+    if (csvType === 'xlsx') {
+      if (!csvXlsxBuffer) return;
+      setImporting(true);
+      try {
+        const results = await importQuestionsFromMoodleExcel(csvXlsxBuffer, { validate: true, skipInvalid: true, onProgress: setProgress, defaultHierarchyId: defaultHierarchyId || undefined });
+        showToast(`יובאו ${results.successful} שאלות`, 'success');
+        setCsvXlsxBuffer(null);
+        setCsvPreview(null);
+        if (onImportComplete) onImportComplete(results);
+      } catch (err) {
+        showToast(`שגיאה: ${err.message}`, 'error');
+      } finally {
+        setImporting(false);
+        setProgress(null);
+      }
+      return;
+    }
+
     if (!csvContent) return;
     setImporting(true);
     try {
@@ -317,12 +359,14 @@ export default function QuestionImport({ onImportComplete }) {
         ? await importQuestionsFromCSV(csvContent, { validate: true, skipInvalid: true, onProgress: setProgress })
         : await importQuestionsFromJSON(csvContent, { validate: true, skipInvalid: true, onProgress: setProgress });
       showToast(`יובאו ${results.successful} שאלות`, 'success');
-      setCsvContent(''); setCsvPreview(null);
+      setCsvContent('');
+      setCsvPreview(null);
       if (onImportComplete) onImportComplete(results);
     } catch (err) {
       showToast(`שגיאה: ${err.message}`, 'error');
     } finally {
-      setImporting(false); setProgress(null);
+      setImporting(false);
+      setProgress(null);
     }
   };
 
@@ -339,7 +383,7 @@ export default function QuestionImport({ onImportComplete }) {
         {TABS.map(tab => (
           <button
             key={tab.id}
-            onClick={() => { setActiveTab(tab.id); setParsed(null); setRawText(''); setCsvContent(''); setCsvPreview(null); setUploadedFiles([]); }}
+            onClick={() => { setActiveTab(tab.id); setParsed(null); setRawText(''); setCsvContent(''); setCsvXlsxBuffer(null); setCsvPreview(null); setUploadedFiles([]); }}
             style={{ ...s.tab, ...(activeTab === tab.id ? s.tabActive : {}) }}
           >
             {tab.label}
@@ -442,35 +486,55 @@ export default function QuestionImport({ onImportComplete }) {
         </div>
       )}
 
-      {/* ══════════ TAB: CSV/JSON ══════════ */}
+      {/* ══════════ TAB: CSV/JSON/Excel ══════════ */}
       {activeTab === 'csv' && (
         <div>
           <div style={s.csvTypeRow}>
-            {['csv', 'json'].map(t => (
+            {['csv', 'json', 'xlsx'].map(t => (
               <label key={t} style={s.radioLabel}>
-                <input type="radio" value={t} checked={csvType === t}
-                  onChange={() => { setCsvType(t); setCsvContent(''); setCsvPreview(null); }} />
-                {t.toUpperCase()}
+                <input
+                  type="radio"
+                  value={t}
+                  checked={csvType === t}
+                  onChange={() => {
+                    setCsvType(t);
+                    setCsvContent('');
+                    setCsvXlsxBuffer(null);
+                    setCsvPreview(null);
+                  }}
+                />
+                {t === 'xlsx' ? 'Excel (Moodle)' : t.toUpperCase()}
               </label>
             ))}
           </div>
 
-          <input type="file" accept={csvType === 'csv' ? '.csv' : '.json'}
-            onChange={handleCsvFileSelect} style={s.fileInput} />
-
-          <textarea
-            value={csvContent}
-            onChange={e => {
-              setCsvContent(e.target.value);
-              try {
-                const qs = csvType === 'csv' ? parseCSV(e.target.value) : parseJSON(e.target.value);
-                setCsvPreview(previewQuestions(qs));
-              } catch { setCsvPreview(null); }
-            }}
-            placeholder={csvType === 'csv' ? 'הדבק CSV כאן...' : 'הדבק JSON כאן...'}
-            style={{ ...s.textarea, fontFamily: 'monospace', direction: 'ltr', textAlign: 'left' }}
-            rows={8}
+          <input
+            type="file"
+            accept={csvType === 'csv' ? '.csv' : csvType === 'json' ? '.json' : '.xlsx,.xls'}
+            onChange={handleCsvFileSelect}
+            style={s.fileInput}
           />
+
+          {csvType !== 'xlsx' && (
+            <textarea
+              value={csvContent}
+              onChange={e => {
+                setCsvContent(e.target.value);
+                try {
+                  const qs = csvType === 'csv' ? parseCSV(e.target.value) : parseJSON(e.target.value);
+                  setCsvPreview(previewQuestions(qs));
+                } catch { setCsvPreview(null); }
+              }}
+              placeholder={csvType === 'csv' ? 'הדבק CSV כאן...' : 'הדבק JSON כאן...'}
+              style={{ ...s.textarea, fontFamily: 'monospace', direction: 'ltr', textAlign: 'left' }}
+              rows={8}
+            />
+          )}
+          {csvType === 'xlsx' && (
+            <p style={{ fontSize: '13px', color: '#666', marginTop: '8px', marginBottom: '8px' }}>
+            קובץ Excel עם עמודות <strong>question_text</strong> ו־<strong>answers</strong>. בתשובות: מסיחים מופרדים ב־<code>||</code>, התשובה הנכונה מסומנת <code>(Correct)</code>.
+          </p>
+          )}
 
           {csvPreview && (
             <div style={s.csvStats}>
@@ -482,8 +546,8 @@ export default function QuestionImport({ onImportComplete }) {
 
           <button
             onClick={handleCsvImport}
-            disabled={!csvPreview?.valid || isImporting}
-            style={{ ...s.importBtn, ...((!csvPreview?.valid || isImporting) ? s.btnDisabled : {}) }}
+            disabled={!csvPreview?.valid || isImporting || (csvType === 'xlsx' && !csvXlsxBuffer)}
+            style={{ ...s.importBtn, ...(!csvPreview?.valid || isImporting || (csvType === 'xlsx' && !csvXlsxBuffer) ? s.btnDisabled : {}) }}
           >
             {isImporting ? 'מייבא...' : `ייבוא ${csvPreview?.valid || 0} שאלות`}
           </button>

@@ -198,8 +198,22 @@ export function validateQuestion(question) {
   // Validate options if needed
   if (question.question_type === 'single_choice' || question.question_type === 'multi_choice') {
     let options = question.options;
-    
-    // Parse if string
+    let answerForValidation = question.correct_answer;
+
+    // correct_answer may be JSON string { value, options } (e.g. Moodle Excel import)
+    if (typeof question.correct_answer === 'string' && question.correct_answer.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(question.correct_answer);
+        if (parsed && typeof parsed.value !== 'undefined' && Array.isArray(parsed.options)) {
+          answerForValidation = parsed.value;
+          if (!options || !Array.isArray(options) || options.length === 0) {
+            options = parsed.options;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Parse options if string
     if (typeof options === 'string') {
       try {
         options = JSON.parse(options);
@@ -208,14 +222,14 @@ export function validateQuestion(question) {
         options = [];
       }
     }
-    
+
     const optionErrors = validateOptions(options, question.question_type);
     errors.push(...optionErrors);
 
     // Validate correct answer with options
     if (options.length > 0) {
       const answerErrors = validateCorrectAnswer(
-        question.correct_answer,
+        answerForValidation,
         question.question_type,
         options
       );

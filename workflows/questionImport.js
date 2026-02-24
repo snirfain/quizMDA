@@ -18,6 +18,7 @@ import {
   checkDuplicatesAgainstDB,
   checkInternalDuplicates,
 } from './questionDeduplication';
+import * as XLSX from 'xlsx';
 
 // ─────────────────────────────────────────────
 // File text extraction
@@ -662,11 +663,11 @@ export function parseCSV(csvText) {
 export function parseJSON(jsonText) {
   try {
     const data = JSON.parse(jsonText);
-    
+
     if (!Array.isArray(data)) {
       throw new Error('קובץ JSON חייב להכיל מערך של שאלות');
     }
-    
+
     return data;
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -674,6 +675,61 @@ export function parseJSON(jsonText) {
     }
     throw error;
   }
+}
+
+/**
+ * Parse Moodle-style Excel (.xlsx) with columns: question_text, answers
+ * answers format: "Option1 || Option2 (Correct) || Option3" — separated by ||, correct marked with (Correct); (Correct) is stripped from label
+ */
+export function parseMoodleExcel(buffer) {
+  const workbook = XLSX.read(buffer, { type: 'array', cellNF: false });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+  if (!rows.length || rows[0].length < 2) {
+    throw new Error('קובץ Excel חייב להכיל לפחות עמודות question_text ו-answers');
+  }
+
+  const questions = [];
+  const headers = rows[0].map(h => String(h ?? '').trim().toLowerCase());
+  const qIdx = headers.findIndex(h => h.includes('question') || h === 'שאלה' || h === 'question_text');
+  const aIdx = headers.findIndex(h => h.includes('answer') || h === 'answers' || h === 'תשובות');
+
+  if (qIdx < 0 || aIdx < 0) {
+    throw new Error('נדרשות עמודות question_text ו-answers');
+  }
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const questionText = String(row[qIdx] ?? '').trim();
+    const answersStr = String(row[aIdx] ?? '').trim();
+
+    if (!questionText || !answersStr) continue;
+
+    const parts = answersStr.split(/\s*\|\|\s*/).map(s => s.trim()).filter(Boolean);
+    const options = [];
+    let correctIndex = 0;
+
+    for (let j = 0; j < parts.length; j++) {
+      const raw = parts[j];
+      const isCorrect = /\(Correct\)/i.test(raw);
+      const label = raw.replace(/\s*\(Correct\)\s*/gi, '').trim();
+      options.push({ value: String(j), label });
+      if (isCorrect) correctIndex = j;
+    }
+
+    const correctAnswerPayload = { value: String(correctIndex), options };
+    questions.push({
+      question_text: questionText,
+      question_type: 'single_choice',
+      correct_answer: JSON.stringify(correctAnswerPayload),
+      options, // for validation
+      difficulty_level: null,
+      hierarchy_id: 'h1',
+    });
+  }
+
+  return questions;
 }
 
 /**
@@ -853,6 +909,23 @@ export async function importQuestionsFromJSON(jsonText, options = {}) {
     return results;
   } catch (error) {
     throw new Error(`שגיאה בייבוא JSON: ${error.message}`);
+  }
+}
+
+/**
+ * Import questions from Moodle-style Excel (.xlsx)
+ * options.defaultHierarchyId — optional; if set, applied to each question
+ */
+export async function importQuestionsFromMoodleExcel(buffer, options = {}) {
+  try {
+    let questions = parseMoodleExcel(buffer);
+    if (options.defaultHierarchyId) {
+      questions = questions.map(q => ({ ...q, hierarchy_id: options.defaultHierarchyId }));
+    }
+    const results = await bulkCreateQuestions(questions, options);
+    return results;
+  } catch (error) {
+    throw new Error(`שגיאה בייבוא Excel: ${error.message}`);
   }
 }
 

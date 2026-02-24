@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { entities } from '../config/appConfig';
+import { entities, appConfig } from '../config/appConfig';
 import { getCurrentUser } from '../utils/auth';
 import QuestionEditor from './QuestionEditor';
 import QuestionImport from './QuestionImport';
@@ -26,6 +26,7 @@ import {
 } from '../workflows/questionReview';
 import { reclassifyAllQuestionsByContent } from '../workflows/questionClassification';
 import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
+import { fixQuestionWithAI } from '../workflows/questionEnrich';
 
 /** Small reusable badge component for difficulty */
 function DifficultyBadge({ level, attempts, successRate }) {
@@ -74,6 +75,12 @@ export default function QuestionManagement() {
   const [availableTags, setAvailableTags] = useState([]);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [fixWithAIState, setFixWithAIState] = useState({
+    status: 'idle', // idle | loading | ready | error
+    original: null,
+    suggested: null,
+    error: null,
+  });
   const [expandedQuestionId, setExpandedQuestionId] = useState(null);
   const [hierarchies, setHierarchies] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -315,6 +322,52 @@ export default function QuestionManagement() {
     } catch (error) {
       console.error('Error bulk deleting:', error);
       showToast('שגיאה במחיקה מרובה', 'error');
+    }
+  };
+
+  const handleFixWithAIClick = async (question) => {
+    const apiKey = appConfig?.openai?.getApiKey?.();
+    if (!apiKey) {
+      showToast('הגדר VITE_OPENAI_API_KEY ב-.env לשימוש בתיקון עם AI', 'error');
+      return;
+    }
+    setFixWithAIState({ status: 'loading', original: question, suggested: null, error: null });
+    try {
+      const suggested = await fixQuestionWithAI(question, apiKey);
+      setFixWithAIState({ status: 'ready', original: question, suggested, error: null });
+    } catch (err) {
+      setFixWithAIState({
+        status: 'error',
+        original: question,
+        suggested: null,
+        error: err.message || 'שגיאה בתיקון עם AI',
+      });
+      showToast(err.message || 'שגיאה בתיקון עם AI', 'error');
+    }
+  };
+
+  const handleApproveFix = async () => {
+    const { original, suggested } = fixWithAIState;
+    if (!original?.id || !suggested) return;
+    try {
+      await entities.Question_Bank.update(original.id, {
+        question_text: suggested.question_text,
+        correct_answer: JSON.stringify({
+          value: suggested.correct_answer?.value ?? '0',
+          options: suggested.options,
+        }),
+        options: suggested.options,
+        explanation: suggested.explanation || original.explanation || '',
+        total_attempts: 0,
+        total_success: 0,
+        success_rate: null,
+        status: 'active',
+      });
+      showToast('השאלה תוקנה ופורסמה. הסטטיסטיקות אופסו.', 'success');
+      setFixWithAIState({ status: 'idle', original: null, suggested: null, error: null });
+      await loadQuestions();
+    } catch (err) {
+      showToast('שגיאה בשמירת התיקון', 'error');
     }
   };
 
@@ -739,6 +792,15 @@ export default function QuestionManagement() {
                                 >
                                   ערוך
                                 </button>
+                                <button
+                                  style={{ ...styles.actionButton, background: '#7b1fa2', color: '#fff' }}
+                                  onClick={() => handleFixWithAIClick(question)}
+                                  disabled={fixWithAIState.status === 'loading'}
+                                  aria-label="תקן שאלה עם AI"
+                                  title="שולח את השאלה לבינה מלאכותית לשיפור ניסוח ומסיחים"
+                                >
+                                  {fixWithAIState.status === 'loading' && fixWithAIState.original?.id === question.id ? '...' : 'תקן עם AI'}
+                                </button>
                                 <PermissionGate permission={permissions.QUESTION_DELETE}>
                                   <button
                                     style={{...styles.actionButton, ...styles.deleteButton}}
@@ -839,6 +901,135 @@ export default function QuestionManagement() {
               cancelText="ביטול"
               danger={true}
             />
+          )}
+
+          {/* Fix with AI — loading overlay */}
+          {fixWithAIState.status === 'loading' && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+              }}
+            >
+              <div style={{ background: '#fff', padding: '24px 32px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <LoadingSpinner size="md" />
+                <span>מתקן שאלה עם AI...</span>
+              </div>
+            </div>
+          )}
+
+          {/* Fix with AI — approval modal (original vs suggested) */}
+          {(fixWithAIState.status === 'ready' || fixWithAIState.status === 'error') && fixWithAIState.original && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10000,
+                padding: '20px',
+              }}
+              onClick={() => fixWithAIState.status === 'error' && setFixWithAIState({ status: 'idle', original: null, suggested: null, error: null })}
+            >
+              <div
+                style={{
+                  background: '#fff',
+                  borderRadius: '12px',
+                  maxWidth: '900px',
+                  width: '100%',
+                  maxHeight: '90vh',
+                  overflow: 'auto',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid #e0e0e0', fontWeight: 700, fontSize: '18px' }}>
+                  תיקון שאלה עם AI
+                </div>
+                {fixWithAIState.status === 'error' && (
+                  <div style={{ padding: '12px 20px', background: '#ffebee', color: '#c62828' }}>
+                    {fixWithAIState.error}
+                  </div>
+                )}
+                {fixWithAIState.status === 'ready' && fixWithAIState.suggested && (
+                  <>
+                    <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+                      <div style={{ flex: 1, padding: '20px', borderLeft: '1px solid #e0e0e0' }}>
+                        <div style={{ marginBottom: '8px', fontWeight: 600, color: '#666' }}>השאלה המקורית</div>
+                        <p style={{ whiteSpace: 'pre-wrap', marginBottom: '12px' }}>{fixWithAIState.original.question_text}</p>
+                        {(() => {
+                          let parsed = {};
+                          try { parsed = JSON.parse(fixWithAIState.original.correct_answer || '{}'); } catch { /* empty */ }
+                          const rawOpts = parsed.options || fixWithAIState.original.options || [];
+                          const origOpts = rawOpts.map((o, i) => ({ value: String(o.value ?? i), label: o.label ?? o.text ?? String(o) }));
+                          if (origOpts.length === 0) return null;
+                          return (
+                            <ul style={{ margin: 0, paddingRight: '20px' }}>
+                              {origOpts.map((opt, i) => (
+                                <li key={i} style={{ marginBottom: '6px' }}>
+                                  {String(parsed.value) === String(opt.value) ? '✓ ' : ''}{opt.label}
+                                </li>
+                              ))}
+                            </ul>
+                          );
+                        })()}
+                      </div>
+                      <div style={{ flex: 1, padding: '20px', background: '#f5f5f5' }}>
+                        <div style={{ marginBottom: '8px', fontWeight: 600, color: '#2e7d32' }}>השאלה המתוקנת (לאחר אישור תפורסם)</div>
+                        <p style={{ whiteSpace: 'pre-wrap', marginBottom: '12px' }}>{fixWithAIState.suggested.question_text}</p>
+                        {fixWithAIState.suggested.options?.length > 0 && (
+                          <ul style={{ margin: 0, paddingRight: '20px' }}>
+                            {fixWithAIState.suggested.options.map((opt, i) => (
+                              <li key={i} style={{ marginBottom: '6px' }}>
+                                {String(fixWithAIState.suggested.correct_answer?.value) === String(opt.value) ? '✓ ' : ''}{opt.label}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {fixWithAIState.suggested.explanation && (
+                          <div style={{ marginTop: '12px', padding: '10px', background: '#e8f5e9', borderRadius: '8px', fontSize: '13px' }}>
+                            💡 {fixWithAIState.suggested.explanation}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ padding: '16px 20px', borderTop: '1px solid #e0e0e0', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                      <button
+                        style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}
+                        onClick={() => setFixWithAIState({ status: 'idle', original: null, suggested: null, error: null })}
+                      >
+                        ביטול
+                      </button>
+                      <button
+                        style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: '#2e7d32', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                        onClick={handleApproveFix}
+                      >
+                        אשר תיקון (פרסם + איפוס סטטיסטיקות)
+                      </button>
+                    </div>
+                  </>
+                )}
+                {fixWithAIState.status === 'error' && (
+                  <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}
+                      onClick={() => setFixWithAIState({ status: 'idle', original: null, suggested: null, error: null })}
+                    >
+                      סגור
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
             </div>
           )}
