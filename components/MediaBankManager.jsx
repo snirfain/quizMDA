@@ -38,9 +38,9 @@ export default function MediaBankManager() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTag, setNewTag]         = useState('');
 
-  // New item form state
+  // New item form state (file = File object for upload when url is blob)
   const [draft, setDraft] = useState({
-    name: '', tag: '', media_type: 'image', url: '', description: ''
+    name: '', tag: '', media_type: 'image', url: '', description: '', file: null
   });
   const fileInputRef = useRef(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -81,7 +81,7 @@ export default function MediaBankManager() {
                : file.type.startsWith('audio') ? 'audio'
                : 'image';
     setPreviewUrl(url);
-    setDraft(d => ({ ...d, url, media_type: type, name: d.name || file.name }));
+    setDraft(d => ({ ...d, file, url, media_type: type, name: d.name || file.name }));
   };
 
   // ── Save new item ────────────────────────────────────────
@@ -93,9 +93,24 @@ export default function MediaBankManager() {
 
     setUploading(true);
     try {
-      await entities.Media_Bank.create({ ...draft, tag });
+      let urlToSave = draft.url;
+      if (draft.url?.startsWith?.('blob:') && draft.file) {
+        // Upload to Cloudinary before saving (blob URLs don't persist)
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', draft.file);
+        const uploadRes = await fetch('/api/upload-media', { method: 'POST', body: formDataUpload });
+        if (!uploadRes.ok) {
+          const errData = await uploadRes.json().catch(() => ({}));
+          throw new Error(errData.error || errData.details || 'העלאת המדיה נכשלה');
+        }
+        const { url } = await uploadRes.json();
+        urlToSave = url;
+      }
+      const { file: _f, ...draftWithoutFile } = draft;
+      await entities.Media_Bank.create({ ...draftWithoutFile, url: urlToSave, tag });
+      if (draft.url?.startsWith?.('blob:')) URL.revokeObjectURL(draft.url);
       showToast(`פריט "${draft.name}" נוסף בהצלחה`, 'success');
-      setDraft({ name: '', tag: selectedTag || '', media_type: 'image', url: '', description: '' });
+      setDraft({ name: '', tag: selectedTag || '', media_type: 'image', url: '', description: '', file: null });
       setPreviewUrl('');
       setShowAddForm(false);
       await loadTags();

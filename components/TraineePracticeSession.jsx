@@ -47,14 +47,15 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
     };
   }, [tagFilters]);
 
-  const loadNextQuestion = async () => {
+  const loadNextQuestion = async (excludeId = null) => {
+    const excludeQuestionId = excludeId ?? currentQuestion?.id;
     setIsLoading(true);
     try {
       let question = null;
 
       if (isOnline) {
-        // Try to load from server
-        question = await getNextPracticeQuestion(userId, hierarchyFilters, tagFilters);
+        // Try to load from server (exclude the question we just answered)
+        question = await getNextPracticeQuestion(userId, hierarchyFilters, tagFilters, excludeQuestionId);
       } else {
         // Load from offline cache
         const cachedQuestions = await loadQuestions();
@@ -233,13 +234,15 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         setIsLoading(false);
       }
     }
+    const justAnsweredId = currentQuestion?.id;
     setShowResult(false);
-    setTimeout(loadNextQuestion, 500);
+    setTimeout(() => loadNextQuestion(justAnsweredId), 500);
   };
 
   const handleNextQuestion = () => {
+    const justAnsweredId = currentQuestion?.id;
     setShowResult(false);
-    loadNextQuestion();
+    loadNextQuestion(justAnsweredId);
   };
 
   if (isLoading && !currentQuestion) {

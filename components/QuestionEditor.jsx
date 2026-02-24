@@ -267,8 +267,19 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
       if (mediaMode === 'none') {
         mediaFields = { media_attachment: null, media_bank_tag: '' };
       } else if (mediaMode === 'static') {
-        // Persist only the serialisable parts (not the raw File object)
-        const att = formData.media_attachment;
+        let att = formData.media_attachment;
+        if (att?.url?.startsWith?.('blob:') && att.file) {
+          // Upload to Cloudinary before saving (blob URLs don't persist)
+          const formDataUpload = new FormData();
+          formDataUpload.append('file', att.file);
+          const uploadRes = await fetch('/api/upload-media', { method: 'POST', body: formDataUpload });
+          if (!uploadRes.ok) {
+            const errData = await uploadRes.json().catch(() => ({}));
+            throw new Error(errData.error || errData.details || 'העלאת המדיה נכשלה');
+          }
+          const { url: cloudinaryUrl } = await uploadRes.json();
+          att = { url: cloudinaryUrl, type: att.type, name: att.name };
+        }
         mediaFields = {
           media_attachment: att ? { url: att.url, type: att.type, name: att.name } : (question?.media_attachment || null),
           media_bank_tag: '',

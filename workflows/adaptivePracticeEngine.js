@@ -75,7 +75,7 @@ export async function calculateAdaptiveDifficulty(userId, baseDifficulty) {
   return baseDifficulty; // Keep base difficulty
 }
 
-export async function getAdaptiveQuestions(userId, hierarchyFilters = {}, tagFilters = []) {
+export async function getAdaptiveQuestions(userId, hierarchyFilters = {}, tagFilters = [], excludeQuestionId = null) {
   const { category_name, topic_name } = hierarchyFilters;
   
   // Build hierarchy filter
@@ -161,12 +161,17 @@ export async function getAdaptiveQuestions(userId, hierarchyFilters = {}, tagFil
   }
 
   // Combine priorities: mistakes first, then new, then review due, then other review
-  const adaptiveQuestions = [
+  let adaptiveQuestions = [
     ...priority1_mistakes,
     ...priority2_new,
     ...priority2_5_review_due,
     ...priority3_review
   ];
+
+  // Exclude the question we just answered (avoids same-question repeat)
+  if (excludeQuestionId) {
+    adaptiveQuestions = adaptiveQuestions.filter(q => q.id !== excludeQuestionId);
+  }
 
   return {
     questions: adaptiveQuestions,
@@ -183,9 +188,9 @@ export async function getAdaptiveQuestions(userId, hierarchyFilters = {}, tagFil
 /**
  * Get next question for practice session
  */
-export async function getNextPracticeQuestion(userId, hierarchyFilters = {}, tagFilters = []) {
+export async function getNextPracticeQuestion(userId, hierarchyFilters = {}, tagFilters = [], excludeQuestionId = null) {
   try {
-    const result = await getAdaptiveQuestions(userId, hierarchyFilters, tagFilters);
+    const result = await getAdaptiveQuestions(userId, hierarchyFilters, tagFilters, excludeQuestionId);
     
     if (result.questions && result.questions.length > 0) {
       return result.questions[0];
