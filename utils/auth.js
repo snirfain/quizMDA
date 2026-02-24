@@ -20,7 +20,18 @@ export async function getCurrentUser() {
       if (userStr) {
         return JSON.parse(userStr);
       }
-      
+      // רק לבדיקה לוקאלית: דילוג על התחברות — מחזיר מנהל מדומה (לא משנה את זרימת ההתחברות הרגילה)
+      if (import.meta.env?.DEV && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        const localDevAdmin = {
+          user_id: 'local-dev-admin',
+          full_name: 'מנהל (בדיקה לוקאלית)',
+          email: 'snir@snir-ai.com',
+          role: 'admin',
+          auth_provider: 'local-dev',
+          custom_permissions: [],
+        };
+        return localDevAdmin;
+      }
     }
     return null;
   } catch (error) {

@@ -81,6 +81,11 @@ export default function QuestionManagement() {
     suggested: null,
     error: null,
   });
+  const [bulkRewriteState, setBulkRewriteState] = useState({
+    phase: 'idle', // idle | loading | review
+    items: [],    // { original, suggested?, error? }[]
+    progress: { current: 0, total: 0 },
+  });
   const [expandedQuestionId, setExpandedQuestionId] = useState(null);
   const [hierarchies, setHierarchies] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -371,6 +376,89 @@ export default function QuestionManagement() {
     }
   };
 
+  const handleBulkRewriteStart = async () => {
+    const apiKey = appConfig?.openai?.getApiKey?.();
+    if (!apiKey) {
+      showToast('הגדר VITE_OPENAI_API_KEY ב-.env', 'error');
+      return;
+    }
+    const list = questions.length ? questions : [];
+    if (list.length === 0) {
+      showToast('אין שאלות במערכת', 'warning');
+      return;
+    }
+    setBulkRewriteState({ phase: 'loading', items: [], progress: { current: 0, total: list.length } });
+    const items = [];
+    for (let i = 0; i < list.length; i++) {
+      setBulkRewriteState(s => ({ ...s, progress: { current: i + 1, total: list.length } }));
+      try {
+        const suggested = await fixQuestionWithAI(list[i], apiKey);
+        items.push({ original: list[i], suggested, error: null });
+      } catch (err) {
+        items.push({ original: list[i], suggested: null, error: err.message || 'שגיאה' });
+      }
+    }
+    setBulkRewriteState({ phase: 'review', items, progress: { current: list.length, total: list.length } });
+  };
+
+  const handleBulkRewriteApproveOne = async (item) => {
+    if (!item.original?.id || !item.suggested) return;
+    try {
+      await entities.Question_Bank.update(item.original.id, {
+        question_text: item.suggested.question_text,
+        correct_answer: JSON.stringify({
+          value: item.suggested.correct_answer?.value ?? '0',
+          options: item.suggested.options,
+        }),
+        options: item.suggested.options,
+        explanation: item.suggested.explanation || item.original.explanation || '',
+        total_attempts: 0,
+        total_success: 0,
+        success_rate: null,
+        status: 'active',
+      });
+      setBulkRewriteState(s => {
+        const next = s.items.filter(x => x.original.id !== item.original.id);
+        return { ...s, items: next, phase: next.length === 0 ? 'idle' : s.phase };
+      });
+      showToast('שאלה אושרה ועודכנה', 'success');
+      loadQuestions();
+    } catch (err) {
+      showToast('שגיאה בעדכון השאלה', 'error');
+    }
+  };
+
+  const handleBulkRewriteApproveAll = async () => {
+    const toApply = bulkRewriteState.items.filter(x => x.suggested && !x.error);
+    for (const item of toApply) {
+      try {
+        await entities.Question_Bank.update(item.original.id, {
+          question_text: item.suggested.question_text,
+          correct_answer: JSON.stringify({
+            value: item.suggested.correct_answer?.value ?? '0',
+            options: item.suggested.options,
+          }),
+          options: item.suggested.options,
+          explanation: item.suggested.explanation || item.original.explanation || '',
+          total_attempts: 0,
+          total_success: 0,
+          success_rate: null,
+          status: 'active',
+        });
+      } catch (_) {}
+    }
+    showToast(`אושרו ועודכנו ${toApply.length} שאלות`, 'success');
+    setBulkRewriteState({ phase: 'idle', items: [], progress: { current: 0, total: 0 } });
+    await loadQuestions();
+  };
+
+  const handleBulkRewriteRejectOne = (item) => {
+    setBulkRewriteState(s => {
+      const next = s.items.filter(x => x.original.id !== item.original.id);
+      return { ...s, items: next, phase: next.length === 0 ? 'idle' : s.phase };
+    });
+  };
+
   // ── Bulk selection helpers ────────────────────────
   const handleSelectOne = (id) => {
     setSelectedIds(prev => {
@@ -542,6 +630,7 @@ export default function QuestionManagement() {
                 <option value="all">כל הסטטוסים</option>
                 <option value="active">פעיל</option>
                 <option value="draft">טיוטה</option>
+                <option value="pending_review">לבדיקה</option>
                 <option value="suspended">מושעה</option>
               </select>
 
@@ -595,6 +684,27 @@ export default function QuestionManagement() {
               >
                 {isReclassifying ? 'מסווג...' : '📂 יישר קטגוריות לפי תוכן'}
               </button>
+              <PermissionGate permission={permissions.QUESTION_APPROVE}>
+                <button
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: bulkRewriteState.phase === 'loading' ? '#9e9e9e' : '#7b1fa2',
+                    color: '#fff',
+                    cursor: bulkRewriteState.phase === 'loading' ? 'not-allowed' : 'pointer',
+                    fontWeight: 600,
+                    fontSize: '14px',
+                  }}
+                  disabled={bulkRewriteState.phase === 'loading' || questions.length === 0}
+                  onClick={handleBulkRewriteStart}
+                  title="כתיבה מחדש של כל השאלות עם AI והעברה לאישור"
+                >
+                  {bulkRewriteState.phase === 'loading'
+                    ? `מעבד ${bulkRewriteState.progress.current}/${bulkRewriteState.progress.total}...`
+                    : '✏️ כתיבה מחדש של כל השאלות עם AI'}
+                </button>
+              </PermissionGate>
             </div>
           </div>
 
@@ -613,6 +723,7 @@ export default function QuestionManagement() {
                 <option value="">שנה סטטוס ל...</option>
                 <option value="active">פעיל</option>
                 <option value="draft">טיוטה</option>
+                <option value="pending_review">לבדיקה</option>
                 <option value="suspended">מושעה</option>
               </select>
               <button
@@ -770,10 +881,12 @@ export default function QuestionManagement() {
                                 ...styles.statusBadge,
                                 ...(question.status === 'active' ? styles.statusActive :
                                     question.status === 'suspended' ? styles.statusSuspended :
+                                    question.status === 'pending_review' ? { background: '#fff3e0', color: '#e65100', border: '1px solid #ffb74d' } :
                                     styles.statusDraft)
                               }}>
                                 {question.status === 'active' && 'פעיל'}
                                 {question.status === 'suspended' && 'מושעה'}
+                                {question.status === 'pending_review' && 'לבדיקה'}
                                 {question.status === 'draft' && 'טיוטה'}
                               </span>
                             </td>
@@ -817,6 +930,10 @@ export default function QuestionManagement() {
                             <tr style={styles.tr}>
                               <td colSpan={8} style={{ ...styles.td, padding: '12px 16px', background: '#fafafa', borderTop: 'none' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <div>
+                                    <strong style={{ marginBottom: '4px' }}>שאלה (מלא):</strong>
+                                    <p style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0', fontSize: '14px' }}>{question.question_text}</p>
+                                  </div>
                                   {opts && opts.length > 0 ? (
                                     <>
                                       <strong style={{ marginBottom: '4px' }}>מסיחים ותשובה נכונה:</strong>
@@ -901,6 +1018,26 @@ export default function QuestionManagement() {
               cancelText="ביטול"
               danger={true}
             />
+          )}
+
+          {/* Bulk rewrite — loading overlay */}
+          {bulkRewriteState.phase === 'loading' && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+              }}
+            >
+              <div style={{ background: '#fff', padding: '24px 32px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <LoadingSpinner size="md" />
+                <span>כתיבה מחדש עם AI — {bulkRewriteState.progress.current} / {bulkRewriteState.progress.total}</span>
+              </div>
+            </div>
           )}
 
           {/* Fix with AI — loading overlay */}
@@ -1028,6 +1165,105 @@ export default function QuestionManagement() {
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* כתיבה מחדש של כל השאלות — מסך אישור */}
+          {bulkRewriteState.phase === 'review' && bulkRewriteState.items.length > 0 && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10000,
+                padding: '20px',
+              }}
+              onClick={() => {}}
+            >
+              <div
+                style={{
+                  background: '#fff',
+                  borderRadius: '12px',
+                  maxWidth: '1000px',
+                  width: '100%',
+                  maxHeight: '90vh',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '18px' }}>אישור כתיבה מחדש — {bulkRewriteState.items.length} שאלות</span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}
+                      onClick={() => setBulkRewriteState({ phase: 'idle', items: [], progress: { current: 0, total: 0 } })}
+                    >
+                      סגור
+                    </button>
+                    {bulkRewriteState.items.some(x => x.suggested) && (
+                      <button
+                        style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#2e7d32', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                        onClick={handleBulkRewriteApproveAll}
+                      >
+                        אשר הכל
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div style={{ overflow: 'auto', flex: 1, padding: '16px' }}>
+                  {bulkRewriteState.items.map((item, idx) => (
+                    <div
+                      key={item.original?.id || idx}
+                      style={{
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '8px',
+                        marginBottom: '12px',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div style={{ display: 'flex', gap: '0', minHeight: '80px' }}>
+                        <div style={{ flex: 1, padding: '12px', borderLeft: '1px solid #e0e0e0', background: '#fafafa' }}>
+                          <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>מקור</div>
+                          <div style={{ fontSize: '14px' }}>{item.original?.question_text?.slice(0, 200)}{(item.original?.question_text?.length || 0) > 200 ? '...' : ''}</div>
+                        </div>
+                        <div style={{ flex: 1, padding: '12px', background: '#fff' }}>
+                          <div style={{ fontSize: '12px', color: '#2e7d32', marginBottom: '4px' }}>לאחר כתיבה מחדש</div>
+                          {item.error ? (
+                            <div style={{ fontSize: '14px', color: '#c62828' }}>{item.error}</div>
+                          ) : item.suggested ? (
+                            <div style={{ fontSize: '14px' }}>{item.suggested.question_text?.slice(0, 200)}{(item.suggested.question_text?.length || 0) > 200 ? '...' : ''}</div>
+                          ) : null}
+                        </div>
+                        <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px', borderRight: '1px solid #e0e0e0' }}>
+                          {item.suggested ? (
+                            <>
+                              <button
+                                style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', background: '#2e7d32', color: '#fff', cursor: 'pointer', fontSize: '13px' }}
+                                onClick={() => handleBulkRewriteApproveOne(item)}
+                              >
+                                אשר
+                              </button>
+                              <button
+                                style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '13px' }}
+                                onClick={() => handleBulkRewriteRejectOne(item)}
+                              >
+                                דחה
+                              </button>
+                            </>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: '#999' }}>לא ניתן לאשר</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

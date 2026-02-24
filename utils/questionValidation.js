@@ -48,18 +48,21 @@ export function validateOptions(options, questionType) {
       errors.push('יש לספק לפחות 2 אופציות');
     }
 
-    if (options.length > 10) {
-      errors.push('לא ניתן לספק יותר מ-10 אופציות');
+    if (options.length > 50) {
+      errors.push('לא ניתן לספק יותר מ-50 אופציות');
     }
 
-    // Check each option
+    // Check each option (support both .text and .label for compatibility with Moodle/Excel import)
+    const getOptionLabel = (opt) =>
+      typeof opt === 'string' ? opt : (opt?.label ?? opt?.text ?? '');
     options.forEach((option, index) => {
       if (typeof option === 'string') {
         if (option.trim().length === 0) {
           errors.push(`אופציה ${index + 1} ריקה`);
         }
-      } else if (typeof option === 'object' && option.text) {
-        if (option.text.trim().length === 0) {
+      } else if (typeof option === 'object' && (option.text != null || option.label != null)) {
+        const label = (option.label ?? option.text ?? '').trim();
+        if (label.length === 0) {
           errors.push(`אופציה ${index + 1} ריקה`);
         }
       } else {
@@ -68,9 +71,7 @@ export function validateOptions(options, questionType) {
     });
 
     // Check for duplicate options
-    const optionTexts = options.map(opt => 
-      typeof opt === 'string' ? opt.trim() : opt.text?.trim()
-    ).filter(Boolean);
+    const optionTexts = options.map(opt => getOptionLabel(opt).trim()).filter(Boolean);
     
     const uniqueTexts = new Set(optionTexts);
     if (uniqueTexts.size !== optionTexts.length) {

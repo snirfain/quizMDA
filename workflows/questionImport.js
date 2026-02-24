@@ -691,12 +691,12 @@ export function parseMoodleExcel(buffer) {
   }
 
   const questions = [];
-  const headers = rows[0].map(h => String(h ?? '').trim().toLowerCase());
-  const qIdx = headers.findIndex(h => h.includes('question') || h === 'שאלה' || h === 'question_text');
-  const aIdx = headers.findIndex(h => h.includes('answer') || h === 'answers' || h === 'תשובות');
+  const headers = rows[0].map(h => String(h ?? '').replace(/\uFEFF/g, '').trim().toLowerCase());
+  const qIdx = headers.findIndex(h => /question/.test(h) || h === 'שאלה' || h === 'טקסט השאלה');
+  const aIdx = headers.findIndex(h => /answer/.test(h) || h === 'תשובות' || h === 'answers');
 
   if (qIdx < 0 || aIdx < 0) {
-    throw new Error('נדרשות עמודות question_text ו-answers');
+    throw new Error(`נדרשות עמודות question_text ו-answers. נמצאו: ${headers.slice(0, 5).join(', ')}`);
   }
 
   for (let i = 1; i < rows.length; i++) {
@@ -707,6 +707,8 @@ export function parseMoodleExcel(buffer) {
     if (!questionText || !answersStr) continue;
 
     const parts = answersStr.split(/\s*\|\|\s*/).map(s => s.trim()).filter(Boolean);
+    if (parts.length < 2) continue; // need at least 2 options for single_choice
+
     const options = [];
     let correctIndex = 0;
 
@@ -714,7 +716,7 @@ export function parseMoodleExcel(buffer) {
       const raw = parts[j];
       const isCorrect = /\(Correct\)/i.test(raw);
       const label = raw.replace(/\s*\(Correct\)\s*/gi, '').trim();
-      options.push({ value: String(j), label });
+      options.push({ value: String(j), label: label || `אופציה ${j + 1}` }); // avoid empty label for validation
       if (isCorrect) correctIndex = j;
     }
 

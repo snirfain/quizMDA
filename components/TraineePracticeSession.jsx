@@ -31,6 +31,9 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
   const [offlineAnswers, setOfflineAnswers] = useState([]);
   // Dynamic media bank: selected item for current question
   const [activeMedia, setActiveMedia] = useState(null);
+  // בעיה חמורה — דיווח והעברה לבדיקה
+  const [seriousProblemOpen, setSeriousProblemOpen] = useState(false);
+  const [seriousProblemReason, setSeriousProblemReason] = useState('');
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -245,6 +248,23 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
     loadNextQuestion(justAnsweredId);
   };
 
+  const handleConfirmSeriousProblem = async () => {
+    if (!currentQuestion?.id) return;
+    try {
+      await entities.Question_Bank.update(currentQuestion.id, {
+        status: 'pending_review',
+        pending_review_reason: (seriousProblemReason || '').trim() || undefined,
+      });
+      setSeriousProblemOpen(false);
+      setSeriousProblemReason('');
+      announce('השאלה סומנה לבדיקה והוסרה מהתרגול');
+      loadNextQuestion(currentQuestion.id);
+    } catch (err) {
+      console.error('Error reporting question:', err);
+      alert('שגיאה בדיווח. נסה שוב.');
+    }
+  };
+
   if (isLoading && !currentQuestion) {
     return (
       <div style={styles.container}>
@@ -347,6 +367,26 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
           aria-level={2}
           aria-label="טקסט השאלה"
         />
+
+        {/* בעיה חמורה — דיווח על השאלה */}
+        <div style={{ marginTop: '8px', marginBottom: '8px' }}>
+          <button
+            type="button"
+            style={{
+              padding: '6px 12px',
+              fontSize: '13px',
+              color: '#c62828',
+              background: 'transparent',
+              border: '1px solid #c62828',
+              borderRadius: '8px',
+              cursor: 'pointer',
+            }}
+            onClick={() => setSeriousProblemOpen(true)}
+            aria-label="דווח על בעיה חמורה בשאלה"
+          >
+            דווח על בעיה חמורה
+          </button>
+        </div>
 
         {/* Hint */}
         {!showResult && currentQuestion.hint && (
@@ -499,6 +539,72 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
           <span>שאלות חדשות: {sessionStats.new}</span>
           <span>שגיאות: {sessionStats.mistakes}</span>
           <span>סקירה: {sessionStats.review}</span>
+        </div>
+      )}
+
+      {/* בעיה חמורה — מודל דיווח */}
+      {seriousProblemOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '20px',
+          }}
+          onClick={() => { setSeriousProblemOpen(false); setSeriousProblemReason(''); }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: '12px',
+              maxWidth: '480px',
+              width: '100%',
+              padding: '20px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ marginBottom: '12px', fontWeight: 700, fontSize: '18px', color: '#c62828' }}>
+              בעיה חמורה
+            </div>
+            <p style={{ marginBottom: '12px', fontSize: '14px', color: '#555' }}>
+              השאלה תסומן לבדיקה ותוסר מהתרגול. ניתן לציין מה הבעיה (לא חובה):
+            </p>
+            <textarea
+              value={seriousProblemReason}
+              onChange={e => setSeriousProblemReason(e.target.value)}
+              placeholder="תאר את הבעיה..."
+              rows={4}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: '1px solid #ccc',
+                fontSize: '14px',
+                resize: 'vertical',
+                marginBottom: '16px',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}
+                onClick={() => { setSeriousProblemOpen(false); setSeriousProblemReason(''); }}
+              >
+                ביטול
+              </button>
+              <button
+                style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: '#c62828', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                onClick={handleConfirmSeriousProblem}
+              >
+                אישור — העבר לבדיקה
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
