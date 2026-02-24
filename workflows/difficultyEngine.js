@@ -103,7 +103,16 @@ export async function recalculateDifficulty(questionId) {
   // 1. Fetch question
   const question = await entities.Question_Bank.findOne({ id: questionId });
   if (!question) {
-    throw new Error(`[difficultyEngine] שאלה לא נמצאה: ${questionId}`);
+    // Demo/fallback question (e.g. q1) may not exist in DB — skip recalc
+    return {
+      questionId,
+      totalAttempts: 0,
+      totalSuccess: 0,
+      successRate: 0,
+      difficulty: null,
+      suspended: false,
+      previousDifficulty: null
+    };
   }
 
   // 2. Recalculate stats from Activity_Log (source of truth)

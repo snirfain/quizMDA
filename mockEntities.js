@@ -279,8 +279,21 @@ function loadFromStorage() {
         notes:        parsed.notes        ?? [],
         notifications: parsed.notifications ?? [],
         achievements: parsed.achievements ?? [],
-        // Seed media bank once; after that let the stored version win
-        mediaBank:    (parsed.mediaBank?.length > 0) ? parsed.mediaBank : DEFAULT_DATA.mediaBank
+        // Seed media bank once; migrate old Wikipedia URLs (404) to placeholders
+        mediaBank:    (() => {
+          const mb = (parsed.mediaBank?.length > 0) ? parsed.mediaBank : DEFAULT_DATA.mediaBank;
+          const PLACEHOLDER = (seed) => `https://picsum.photos/seed/${seed}/640/360`;
+          let migrated = false;
+          const result = mb.map((item, i) => {
+            if (item.url && typeof item.url === 'string' && item.url.includes('wikimedia')) {
+              migrated = true;
+              return { ...item, url: PLACEHOLDER(`media${item.id || i}`) };
+            }
+            return item;
+          });
+          if (migrated) loadFromStorage._migratedMediaBank = true;
+          return result;
+        })()
       };
     }
   } catch (e) {
@@ -291,6 +304,7 @@ function loadFromStorage() {
 
 // Runtime data — loaded from localStorage, falls back to DEFAULT_DATA
 const mockData = loadFromStorage();
+if (loadFromStorage._migratedMediaBank) saveToStorage();
 
 // Mock entity implementations
 export const mockEntities = {
