@@ -6,7 +6,7 @@
 
 import { entities, appConfig } from '../config/appConfig';
 import { validateQuestion } from '../utils/questionValidation';
-import { parseTextQuestions, parseUnnumberedBlocks } from '../utils/questionParser';
+import { parseTextQuestions, parseUnnumberedBlocks, parseMasterFormatDocx } from '../utils/questionParser';
 import {
   detectEnrichmentType,
   enrichQuestion,
@@ -563,16 +563,39 @@ async function runInBatches(tasks, concurrency, onBatchDone) {
  * @param {string}   text   full file content (one string)
  * @param {Function} [onProgress]  called as (done, total) — one call (1, 1) when done
  */
-export async function parseQuestionsWithAI(text, onProgress) {
-  const apiKey = appConfig.openai.getApiKey();
-  if (!apiKey) throw new Error('מפתח OpenAI לא מוגדר. הגדר VITE_OPENAI_API_KEY בקובץ .env');
+/** Minimum Master-format blocks to prefer Master parser over AI (Final_Master_Questions style). */
+const MASTER_FORMAT_MIN_BLOCKS = 8;
 
+export async function parseQuestionsWithAI(text, onProgress) {
   const trimmed = (text || '').trim();
   if (!trimmed) throw new Error('אין טקסט לניתוח');
 
   if (import.meta.env.DEV) {
     console.log(`[AI parse] שולח קובץ כמחרוזת אחת (${trimmed.length} תווים)`);
   }
+
+  // Prefer Master format when document uses "----------" blocks with "תשובה נכונה" (e.g. Final_Master_Questions_Full.docx)
+  const masterQuestions = parseMasterFormatDocx(trimmed);
+  if (masterQuestions.length >= MASTER_FORMAT_MIN_BLOCKS) {
+    if (import.meta.env.DEV) {
+      console.log(`[AI parse] פורמט Master: ${masterQuestions.length} שאלות — משתמש בפרסר המקומי`);
+    }
+    onProgress?.(1, 1);
+    try {
+      const withDupFlags = await checkDuplicatesAgainstDB(
+        checkInternalDuplicates(masterQuestions),
+        0.80,
+        undefined
+      );
+      return { questions: withDupFlags, usedFallback: false };
+    } catch (err) {
+      console.warn('[AI parse] שגיאה בבדיקת כפילויות:', err.message);
+      return { questions: masterQuestions, usedFallback: false };
+    }
+  }
+
+  const apiKey = appConfig.openai.getApiKey();
+  if (!apiKey) throw new Error('מפתח OpenAI לא מוגדר. הגדר VITE_OPENAI_API_KEY בקובץ .env');
 
   const raw = await parseOneChunkWithAI(trimmed, apiKey);
   onProgress?.(1, 1);

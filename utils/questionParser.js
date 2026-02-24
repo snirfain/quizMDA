@@ -450,10 +450,84 @@ export function parseUnnumberedBlocks(text) {
 }
 
 /**
- * Main export — parse free text into an array of question objects
- * @param {string} text - Raw text containing questions
- * @returns {Array} - Array of question objects ready for preview/import
+ * Parse Final_Master_Questions / Master format: blocks separated by "----------",
+ * each block = question text + option lines (א. ב. ג. ד.) + "תשובה נכונה: X".
+ * Use this when the document has many such blocks so we get full question count.
+ * @param {string} text - Full extracted text (e.g. from mammoth)
+ * @returns {Array} - Question objects { question_text, options, correct_answer, question_type, ... }
  */
+export function parseMasterFormatDocx(text) {
+  if (!text || !text.trim()) return [];
+  if (!text.includes('----------')) return [];
+  // Line that contains only dashes (and spaces) — avoid matching "---" inside option text
+  const sep = /\n[ \t]*-{5,}[ \t]*\n/;
+  const blocks = text.split(sep).map(b => b.trim()).filter(b => b.length > 0);
+  const questions = [];
+
+  for (const block of blocks) {
+    const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) continue;
+
+    const optionLines = [];
+    let questionLines = [];
+    let rawAnswer = '';
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const correctMatch = line.match(RE_CORRECT_ANSWER);
+      if (correctMatch) {
+        rawAnswer = (correctMatch[2] || '').trim();
+        continue;
+      }
+      const hebrewOpt = line.match(RE_HEBREW_OPTION);
+      const engOpt = line.match(RE_ENG_OPTION);
+      if (hebrewOpt || engOpt) {
+        optionLines.push(line);
+        continue;
+      }
+      if (optionLines.length === 0) questionLines.push(line);
+    }
+
+    const questionText = questionLines.join(' ').trim();
+    if (!questionText) continue;
+
+    if (optionLines.length >= 2) {
+      const optionTexts = optionLines.map(stripOptionPrefix);
+      const options = optionTexts.map((text, idx) => ({
+        text,
+        label: HEBREW_OPTION_LABELS[idx] ?? String(idx + 1),
+      }));
+      const isTrueFalse = looksLikeTrueFalse(optionTexts);
+      const qType = isTrueFalse ? 'true_false' : 'single_choice';
+      questions.push({
+        question_text: questionText,
+        question_type: qType,
+        options,
+        correct_answer: buildCorrectAnswer(rawAnswer, options, qType),
+        hint: '',
+        explanation: '',
+        difficulty_level: 5,
+        status: 'active',
+        tags: [],
+      });
+    } else {
+      questions.push({
+        question_text: questionText,
+        question_type: 'open_ended',
+        options: [],
+        correct_answer: JSON.stringify({ value: rawAnswer || '' }),
+        hint: '',
+        explanation: '',
+        difficulty_level: 5,
+        status: 'active',
+        tags: [],
+      });
+    }
+  }
+
+  return questions;
+}
+
 /** First block is often exam title (e.g. "מבחן מסכם קרדיולוגיה-ק. פרמדיק אסה\"ר") — skip it. */
 function isExamTitleLine(line) {
   if (!line || line.length > 120) return false;
