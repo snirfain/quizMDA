@@ -242,8 +242,8 @@ function splitByQuestionBoundaries(text) {
   );
 
   // New-question starters: at start, after newline, after space, or after period+space (". מיהו")
-  // so we split even when there are no line breaks between questions
-  const questionStartRe = /(?:^|[\n\s]|\.\s+)(מיהו|איזה|מה\s|איזו|הנך|נקראת|נחשב|הערכת|ביצוע|מבין|ערכת|קוצב|הפרמטר|לחץ\s*דם\s*קבוע|מתקיים|סמן)\s*/gi;
+  // Expanded for Master / Final_Master_Questions_Full style docs (medical exam phrases)
+  const questionStartRe = /(?:^|[\n\s]|\.\s+)(מיהו|איזה|מה\s|איזו|הנך|נקראת|נחשב|הערכת|ביצוע|מבין|ערכת|קוצב|הפרמטר|לחץ\s*דם\s*קבוע|מתקיים|סמן|מהי|מהם|הגדר|בהתאם|באיזה|במקרה|חולה|פצוע|טיפול|סימן|תסמין|בדיקה|מתן|מינון|הנחיה|המלצה)\s*/gi;
   const indices = [];
   let match;
   while ((match = questionStartRe.exec(withBreaks)) !== null) {

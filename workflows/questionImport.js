@@ -25,13 +25,74 @@ import * as XLSX from 'xlsx';
 // ─────────────────────────────────────────────
 
 /**
- * Extract plain text from a Word (.docx) file using mammoth
+ * Normalize raw text extracted from DOCX for reliable question detection.
+ * - Inserts newlines before numbered question starts (1. 2. 1) 2) שאלה 1 Question 1)
+ *   so parsers and AI see one question per block.
+ * - Preserves paragraph breaks and collapses excessive blank lines.
+ * Suited for Master-style / Final_Master_Questions_Full.docx type files.
+ * @param {string} raw - Raw text from mammoth
+ * @returns {string} Normalized text, organized for question parsing
+ */
+export function normalizeDocxTextForQuestions(raw) {
+  if (!raw || typeof raw !== 'string') return raw;
+  let text = raw.trim();
+
+  // Ensure newline before " 1. " " 2. " … when they start a new question (after . or newline)
+  text = text.replace(/([.\n])\s*(\d{1,3}\s*[.)]\s+)(?=[\u05D0-\u05FFA-Za-z?])/g, '$1\n\n$2');
+
+  // Ensure newline before " 1) " " 2) " style
+  text = text.replace(/([.\n])\s*(\d{1,3}\s*\)\s+)(?=[\u05D0-\u05FFA-Za-z?])/g, '$1\n\n$2');
+
+  // "שאלה 1" "שאלה 2" "Question 1" — newline before so they start a block
+  text = text.replace(/([.\n])\s*(שאלה\s*\d+\s*[.)\-\s]*)(?=[\u05D0-\u05FFA-Za-z?])/gi, '$1\n\n$2');
+  text = text.replace(/([.\n])\s*(Question\s*\d+\s*[.)\-\s]*)(?=[\u05D0-\u05FFA-Za-z?])/gi, '$1\n\n$2');
+
+  // After "תשובה נכונה" / "תשובות א+ג נכונות" the next content is often next question — paragraph break
+  text = text.replace(/(תשובות?\s*[אבגדה]\s*\+[^\n.]{0,30}נכונות)\s*/gi, '$1\n\n');
+  text = text.replace(/(תשובה\s*נכונה\s*[:\s]*[אבגדה]\s*)/gi, '$1\n\n');
+
+  // Collapse 3+ newlines to double newline
+  text = text.replace(/\n{3,}/g, '\n\n');
+  return text.trim();
+}
+
+/**
+ * Extract plain text from a Word (.docx) file using mammoth.
+ * Optionally uses HTML conversion to preserve paragraph boundaries, then normalizes
+ * the text for question detection (Master / Final_Master_Questions_Full style).
  */
 export async function extractTextFromDocx(file) {
   const { default: mammoth } = await import('mammoth');
   const arrayBuffer = await file.arrayBuffer();
-  const result = await mammoth.extractRawText({ arrayBuffer });
-  return result.value || '';
+
+  let text = '';
+  try {
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    text = result.value || '';
+  } catch (_) {}
+
+  // If raw text is short or has very few newlines, try HTML path to get paragraph breaks
+  const lines = text.split('\n').filter(l => l.trim());
+  if (text.length > 500 && lines.length < 10) {
+    try {
+      const htmlResult = await mammoth.convertToHtml({ arrayBuffer });
+      const html = htmlResult.value || '';
+      if (html.length > 100) {
+        const fromHtml = html
+          .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .trim();
+        if (fromHtml.length > text.length * 0.8) text = fromHtml;
+      }
+    } catch (_) {}
+  }
+
+  return normalizeDocxTextForQuestions(text);
 }
 
 /**

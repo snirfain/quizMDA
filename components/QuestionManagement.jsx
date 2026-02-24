@@ -24,7 +24,7 @@ import {
   bulkApproveQuestions,
   getReviewStatistics
 } from '../workflows/questionReview';
-import { reclassifyAllQuestionsByContent } from '../workflows/questionClassification';
+import { reclassifyAllQuestionsByContent, reclassifyUnanalyzedQuestionsWithAI } from '../workflows/questionClassification';
 import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { fixQuestionWithAI } from '../workflows/questionEnrich';
 
@@ -96,6 +96,7 @@ export default function QuestionManagement() {
   const [bulkHierarchyTarget, setBulkHierarchyTarget] = useState('');
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [isReclassifying, setIsReclassifying] = useState(false);
+  const [aiReclassifyProgress, setAiReclassifyProgress] = useState({ running: false, current: 0, total: 0, updated: 0 });
   const hasAutoReclassified = useRef(false);
 
   useEffect(() => {
@@ -530,6 +531,32 @@ export default function QuestionManagement() {
     }
   };
 
+  const handleReclassifyUnanalyzedWithAI = async () => {
+    const apiKey = appConfig?.openai?.getApiKey?.();
+    if (!apiKey) {
+      showToast('הגדר VITE_OPENAI_API_KEY ב-.env', 'error');
+      return;
+    }
+    setAiReclassifyProgress({ running: true, current: 0, total: 0, updated: 0 });
+    try {
+      const result = await reclassifyUnanalyzedQuestionsWithAI(entities, apiKey, (p) =>
+        setAiReclassifyProgress(s => ({ ...s, ...p }))
+      );
+      await loadQuestions();
+      if (result.totalProcessed === 0) {
+        showToast('אין שאלות חדשות לסיווג (כולן כבר נותחו עם AI).', 'info');
+      } else if (result.updated > 0) {
+        showToast(`סווגו ${result.updated} שאלות לקטגוריה עם AI. ${result.errors ? `שגיאות: ${result.errors}` : ''}`, 'success');
+      } else {
+        showToast(`לא עודכנו שאלות. ${result.errors ? `שגיאות: ${result.errors}` : ''}`, 'info');
+      }
+    } catch (error) {
+      showToast('שגיאה בסיווג עם AI: ' + (error?.message || 'unknown'), 'error');
+    } finally {
+      setAiReclassifyProgress({ running: false, current: 0, total: 0, updated: 0 });
+    }
+  };
+
   if (isLoading) {
     return <LoadingSpinner fullScreen message="טוען שאלות..." />;
   }
@@ -685,6 +712,25 @@ export default function QuestionManagement() {
                 {isReclassifying ? 'מסווג...' : '📂 יישר קטגוריות לפי תוכן'}
               </button>
               <PermissionGate permission={permissions.QUESTION_APPROVE}>
+                <button
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: aiReclassifyProgress.running ? '#9e9e9e' : '#1565c0',
+                    color: '#fff',
+                    cursor: aiReclassifyProgress.running ? 'not-allowed' : 'pointer',
+                    fontWeight: 600,
+                    fontSize: '14px',
+                  }}
+                  disabled={aiReclassifyProgress.running || !questions.length}
+                  onClick={handleReclassifyUnanalyzedWithAI}
+                  title="מסווג רק שאלות שעדיין לא נותחו עם AI לקטגוריה הנכונה"
+                >
+                  {aiReclassifyProgress.running
+                    ? `סיווג עם AI ${aiReclassifyProgress.current}/${aiReclassifyProgress.total} (עודכנו ${aiReclassifyProgress.updated})`
+                    : '🤖 סווג קטגוריות עם AI (רק חדשות)'}
+                </button>
                 <button
                   style={{
                     padding: '10px 18px',
@@ -1036,6 +1082,25 @@ export default function QuestionManagement() {
               <div style={{ background: '#fff', padding: '24px 32px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <LoadingSpinner size="md" />
                 <span>כתיבה מחדש עם AI — {bulkRewriteState.progress.current} / {bulkRewriteState.progress.total}</span>
+              </div>
+            </div>
+          )}
+
+          {aiReclassifyProgress.running && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 9999,
+              }}
+            >
+              <div style={{ background: '#fff', padding: '24px 32px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <LoadingSpinner size="md" />
+                <span>סיווג קטגוריות עם AI — {aiReclassifyProgress.current} / {aiReclassifyProgress.total} (עודכנו {aiReclassifyProgress.updated})</span>
               </div>
             </div>
           )}
