@@ -1,78 +1,94 @@
-/**
- * Media upload to Cloudinary.
- * חובה לוודא שמשתני הסביבה מוגדרים ב-Render: 
- * CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
- */
 import { v2 as cloudinary } from 'cloudinary';
 import multer from 'multer';
 
+// טעינת מפתחות מהסביבה
 const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
 const apiKey = process.env.CLOUDINARY_API_KEY;
 const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-// הגדרת קונפיגורציה
+// הגדרת Cloudinary רק אם המפתחות קיימים
 if (cloudName && apiKey && apiSecret) {
   cloudinary.config({ 
     cloud_name: cloudName, 
     api_key: apiKey, 
     api_secret: apiSecret,
-    secure: true // תמיד להשתמש ב-HTTPS
+    secure: true 
   });
 }
 
-// הגדרת Multer לאחסון בזיכרון (מתאים לשרתים כמו Render ללא אחסון דיסק)
+// הגדרת Multer לשמירה בזיכרון (מתאים ל-Render)
 const memoryStorage = multer.memoryStorage();
+
 export const uploadMiddleware = multer({
   storage: memoryStorage,
-  limits: { fileSize: 100 * 1024 * 1024 }, // הגבלה ל-100MB (חשוב לסרטוני וידאו)
-  fileFilter: (_req, file, cb) => {
+  limits: { fileSize: 100 * 1024 * 1024 }, // עד 100MB
+  fileFilter: (req, file, cb) => {
     const allowed = /^(image\/|video\/|audio\/|application\/pdf)/.test(file.mimetype);
+    // #region agent log
+    if (!allowed) fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'server/upload.js:fileFilter',message:'file rejected by filter',data:{mimetype:file.mimetype,fieldname:file.fieldname},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (allowed) {
-      return cb(null, true);
+      cb(null, true);
+    } else {
+      cb(new Error('סוג קובץ לא נתמך'), false);
     }
-    return cb(new Error('סוג קובץ לא נתמך'), false);
   }
 }).single('file');
 
 /**
- * POST /api/upload-media
- * הפונקציה שמעלה את הקובץ לענן ומחזירה קישור קבוע
+ * פונקציית ההעלאה הראשית
  */
 export async function uploadMediaHandler(req, res) {
+  // #region agent log
+  const hasConfig = !!(cloudName && apiKey && apiSecret);
+  const hasFile = !!(req.file && req.file.buffer);
+  fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1_H2_H3',location:'server/upload.js:uploadMediaHandler:entry',message:'upload handler entry',data:{hasConfig,hasFile,fileKeys:req.file?Object.keys(req.file):null,bufferLength:req.file?.buffer?.byteLength??null,mimetype:req.file?.mimetype??null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
+  // בדיקה שהגדרות הענן קיימות
   if (!cloudName || !apiKey || !apiSecret) {
-    console.error('Cloudinary config missing!');
-    return res.status(503).json({ error: 'שרת האחסון (Cloudinary) לא מוגדר' });
+    return res.status(503).json({ error: 'Cloudinary not configured' });
   }
 
+  // בדיקה שהקובץ הגיע
   if (!req.file || !req.file.buffer) {
-    return res.status(400).json({ error: 'לא נשלח קובץ' });
+    return res.status(400).json({ error: 'No file uploaded' });
   }
 
   try {
-    // המרת הקובץ מהזיכרון לפורמט שניתן לשלוח
+    // המרת הקובץ לפורמט ש-Cloudinary מבין
     const b64 = req.file.buffer.toString('base64');
     const dataUri = `data:${req.file.mimetype};base64,${b64}`;
 
-    // העלאה ל-Cloudinary
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H4',location:'server/upload.js:before-cloudinary',message:'before cloudinary upload',data:{dataUriLength:dataUri.length,mimetype:req.file.mimetype},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
+    // העלאה לענן
     const result = await cloudinary.uploader.upload(dataUri, {
-      folder: 'quiz-mda', // שם התיקייה בענן
-      resource_type: 'auto', // זיהוי אוטומטי של סוג הקובץ (וידאו/תמונה)
+      folder: 'quiz-mda',
+      resource_type: 'auto',
       use_filename: true,
       unique_filename: true
     });
 
-    console.log('Upload success:', result.secure_url);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H5',location:'server/upload.js:success',message:'upload success',data:{hasSecureUrl:!!result?.secure_url,publicId:result?.public_id||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
-    // מחזירים את ה-URL המאובטח שישמר במסד הנתונים (MongoDB)
+    // החזרת הקישור שישמר ב-MongoDB
     return res.json({ 
       url: result.secure_url, 
       public_id: result.public_id 
     });
 
   } catch (err) {
-    console.error('Cloudinary upload error:', err);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H4',location:'server/upload.js:catch',message:'upload error',data:{errMessage:err?.message||String(err),errCode:err?.error?.http_code??null,errName:err?.name??null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    console.error('Upload error:', err);
     return res.status(500).json({ 
-      error: 'העלאה נכשלה', 
+      error: 'Upload failed', 
       details: err.message 
     });
   }
