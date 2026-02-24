@@ -1,0 +1,159 @@
+/**
+ * Authentication & Session Management
+ * Hebrew: אימות וניהול סשן
+ */
+
+import { entities } from '../config/appConfig';
+
+/**
+ * Get current user
+ */
+export async function getCurrentUser() {
+  try {
+    // In Base44, this would use the auth API
+    // For now, return from localStorage or session
+    if (typeof window !== 'undefined') {
+      const userStr = localStorage.getItem('currentUser');
+      if (userStr) {
+        return JSON.parse(userStr);
+      }
+      
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    return null;
+  }
+}
+
+/**
+ * Set current user
+ */
+export function setCurrentUser(user) {
+  if (typeof window !== 'undefined') {
+    if (user) {
+      localStorage.setItem('currentUser', JSON.stringify(user));
+      // Clear logout flag when setting a user (user is logging in)
+      localStorage.removeItem('userLoggedOut');
+    } else {
+      localStorage.removeItem('currentUser');
+    }
+  }
+}
+
+/**
+ * Login user
+ */
+export async function login(userId, password) {
+  try {
+    // In Base44, this would call the auth API
+    // For now, fetch user from Users entity
+    if (!entities || !entities.Users) {
+      // Fallback for demo - create a mock user
+      const mockUser = {
+        user_id: userId || '12345',
+        full_name: 'יוסי כהן',
+        role: 'trainee',
+        points: 150,
+        current_streak: 5,
+        longest_streak: 10
+      };
+      setCurrentUser(mockUser);
+      return {
+        success: true,
+        user: mockUser
+      };
+    }
+    
+    let user = await entities.Users.findOne({ user_id: userId });
+
+    // Demo mode: if user not found, create a temporary instructor session
+    if (!user) {
+      user = {
+        user_id: userId,
+        full_name: userId,
+        email: `${userId}@demo.mda`,
+        role: 'instructor',
+        auth_provider: 'mda',
+        points: 0,
+        current_streak: 0,
+        longest_streak: 0,
+      };
+    }
+
+    setCurrentUser(user);
+
+    return {
+      success: true,
+      user: user
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Logout user
+ */
+export function logout() {
+  setCurrentUser(null);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('userLoggedOut', 'true');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('sessionToken');
+  }
+}
+
+/**
+ * Check if user is authenticated
+ */
+export async function isAuthenticated() {
+  const user = await getCurrentUser();
+  return user !== null;
+}
+
+/**
+ * Get user role
+ */
+export async function getUserRole() {
+  const user = await getCurrentUser();
+  return user ? user.role : null;
+}
+
+/**
+ * Check session validity
+ */
+export async function checkSession() {
+  const user = await getCurrentUser();
+  
+  if (!user) {
+    return false;
+  }
+  
+  // Check session expiry (if implemented)
+  const sessionExpiry = localStorage.getItem('sessionExpiry');
+  if (sessionExpiry && new Date(sessionExpiry) < new Date()) {
+    logout();
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Refresh session
+ */
+export async function refreshSession() {
+  const user = await getCurrentUser();
+  if (user) {
+    // Extend session expiry
+    const expiry = new Date();
+    expiry.setHours(expiry.getHours() + 2); // 2 hours
+    localStorage.setItem('sessionExpiry', expiry.toISOString());
+    return true;
+  }
+  return false;
+}

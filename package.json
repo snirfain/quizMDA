@@ -1,0 +1,26 @@
+{
+  "name": "quiz-mda",
+  "version": "1.0.0",
+  "description": "MDA Adaptive Learning & Assessment Platform",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "vite",
+    "serve": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "formidable": "^3.5.4",
+    "mammoth": "^1.11.0",
+    "pdfjs-dist": "^5.4.624",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "word-extractor": "^1.0.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.0.0"
+  }
+}

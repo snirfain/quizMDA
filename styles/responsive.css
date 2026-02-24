@@ -1,0 +1,50 @@
+/**
+ * Responsive CSS Styles
+ * Hebrew: עיצוב responsive
+ */
+
+/* Mobile styles */
+@media (max-width: 767px) {
+  .responsive-container {
+    padding: 12px !important;
+  }
+  
+  .responsive-header {
+    padding: 12px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  
+  .responsive-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  
+  .responsive-tabs {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+  
+  .responsive-button {
+    width: 100% !important;
+  }
+  
+  .responsive-card {
+    padding: 16px !important;
+  }
+}
+
+/* Tablet styles */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .responsive-container {
+    padding: 16px !important;
+  }
+}
+
+/* Desktop styles */
+@media (min-width: 1024px) {
+  .responsive-container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+}

@@ -1,0 +1,87 @@
+/**
+ * Accessibility Styles
+ * Hebrew: עיצוב נגישות
+ */
+
+/* High Contrast Mode */
+.high-contrast {
+  --text-color: #000000;
+  --bg-color: #FFFFFF;
+  --border-color: #000000;
+  --link-color: #0000FF;
+  --button-bg: #000000;
+  --button-text: #FFFFFF;
+}
+
+.high-contrast * {
+  color: var(--text-color) !important;
+  background-color: var(--bg-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+.high-contrast a {
+  color: var(--link-color) !important;
+  text-decoration: underline !important;
+}
+
+.high-contrast button {
+  background-color: var(--button-bg) !important;
+  color: var(--button-text) !important;
+  border: 2px solid var(--border-color) !important;
+}
+
+/* Large Text Mode */
+.large-text {
+  font-size: 1.25em !important;
+}
+
+.large-text h1 {
+  font-size: 2em !important;
+}
+
+.large-text h2 {
+  font-size: 1.75em !important;
+}
+
+.large-text h3 {
+  font-size: 1.5em !important;
+}
+
+.large-text button,
+.large-text input,
+.large-text select,
+.large-text textarea {
+  font-size: 1.25em !important;
+  padding: 0.75em !important;
+}
+
+/* Reduce Motion */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+.reduce-motion {
+  --motion-duration: 0s !important;
+}
+
+/* Combined modes */
+.high-contrast.large-text {
+  /* Both high contrast and large text */
+}
+
+.high-contrast.reduce-motion {
+  /* Both high contrast and reduced motion */
+}
+
+.large-text.reduce-motion {
+  /* Both large text and reduced motion */
+}
+
+.high-contrast.large-text.reduce-motion {
+  /* All three modes */
+}
