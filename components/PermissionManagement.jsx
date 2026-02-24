@@ -6,10 +6,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { entities } from '../config/appConfig';
+import { getCurrentUser } from '../utils/auth';
+import { showToast } from './Toast';
 import {
   permissions,
   getUserPermissions,
   getRolePermissions,
+  getCustomPermissions,
   setCustomPermissions,
   addCustomPermission,
   removeCustomPermission,
@@ -17,20 +20,37 @@ import {
 } from '../utils/permissions';
 import LoadingSpinner from './LoadingSpinner';
 
+const ROLES = [
+  { value: 'trainee', label: 'מתאמן' },
+  { value: 'instructor', label: 'מדריך' },
+  { value: 'admin', label: 'מנהל' }
+];
+
 export default function PermissionManagement() {
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userPermissions, setUserPermissions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [roleEdit, setRoleEdit] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   useEffect(() => {
     loadUsers();
+    getCurrentUser().then(u => setCurrentUserId(u?.user_id || null));
   }, []);
 
   useEffect(() => {
     if (selectedUser) {
+      setRoleEdit(selectedUser.role);
+      try {
+        setCustomPermissions(selectedUser.user_id, selectedUser.custom_permissions || []);
+      } catch (e) {
+        console.warn('Could not sync selected user permissions to memory', e);
+      }
       loadUserPermissions();
+    } else {
+      setRoleEdit(null);
     }
   }, [selectedUser]);
 
@@ -41,21 +61,7 @@ export default function PermissionManagement() {
       setUsers(allUsers);
     } catch (error) {
       console.error('Error loading users:', error);
-      // Mock data for development
-      setUsers([
-        {
-          user_id: '12345',
-          full_name: 'יוסי כהן',
-          email: 'yossi@example.com',
-          role: 'trainee'
-        },
-        {
-          user_id: 'instructor1',
-          full_name: 'דני לוי',
-          email: 'danny@example.com',
-          role: 'instructor'
-        }
-      ]);
+      setUsers([]);
     } finally {
       setIsLoading(false);
     }
@@ -63,7 +69,6 @@ export default function PermissionManagement() {
 
   const loadUserPermissions = () => {
     if (!selectedUser) return;
-
     const rolePerms = getRolePermissions(selectedUser.role);
     const customPerms = getUserPermissions(selectedUser.role, selectedUser.user_id);
     
@@ -99,10 +104,34 @@ export default function PermissionManagement() {
         addCustomPermission(selectedUser.user_id, permissionKey);
       }
 
-      // Reload permissions
+      const updatedList = getCustomPermissions(selectedUser.user_id);
+      if (entities.Users && typeof entities.Users.update === 'function') {
+        await entities.Users.update(selectedUser.user_id, { custom_permissions: updatedList });
+      }
+      setSelectedUser(u => (u ? { ...u, custom_permissions: updatedList } : null));
       loadUserPermissions();
     } catch (error) {
       console.error('Error toggling permission:', error);
+      alert(`שגיאה: ${error.message}`);
+    }
+  };
+
+  const handleRoleSave = async () => {
+    if (!selectedUser || roleEdit === selectedUser.role) return;
+    if (selectedUser.user_id === currentUserId) {
+      if (!window.confirm('אתה משנה את התפקיד של עצמך. האם להמשיך?')) return;
+    }
+    try {
+      if (entities.Users && typeof entities.Users.update === 'function') {
+        await entities.Users.update(selectedUser.user_id, { role: roleEdit });
+      }
+      const updated = { ...selectedUser, role: roleEdit };
+      setSelectedUser(updated);
+      setUsers(prev => prev.map(u => u.user_id === updated.user_id ? updated : u));
+      loadUserPermissions();
+      showToast('תפקיד נשמר בהצלחה', 'success');
+    } catch (error) {
+      console.error('Error saving role:', error);
       alert(`שגיאה: ${error.message}`);
     }
   };
@@ -124,6 +153,8 @@ export default function PermissionManagement() {
 
   return (
     <div style={styles.container}>
+      <h2 style={styles.pageTitle}>ניהול הרשאות</h2>
+      <p style={styles.pageSubtitle}>הגדרת תפקידים והרשאות מותאמות אישית למשתמשים</p>
       <div style={styles.layout}>
         {/* User List */}
         <div style={styles.userList}>
@@ -181,9 +212,27 @@ export default function PermissionManagement() {
                 <h2 style={styles.selectedUserName}>
                   הרשאות עבור: {selectedUser.full_name}
                 </h2>
-                <div style={styles.selectedUserRole}>
-                  תפקיד: {selectedUser.role === 'trainee' ? 'מתאמן' :
-                           selectedUser.role === 'instructor' ? 'מדריך' : 'מנהל'}
+                <div style={styles.roleRow}>
+                  <label style={styles.roleLabel}>תפקיד:</label>
+                  <select
+                    value={roleEdit ?? selectedUser.role}
+                    onChange={(e) => setRoleEdit(e.target.value)}
+                    style={styles.roleSelect}
+                    aria-label="בחירת תפקיד"
+                    disabled={!entities.Users || typeof entities.Users.update !== 'function'}
+                  >
+                    {ROLES.map(r => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleRoleSave}
+                    disabled={roleEdit === selectedUser.role}
+                    style={styles.roleSaveBtn}
+                  >
+                    שמור תפקיד
+                  </button>
                 </div>
               </div>
 
@@ -247,158 +296,204 @@ export default function PermissionManagement() {
   );
 }
 
+const cardShadow = '0 2px 12px rgba(0,0,0,0.06)';
+const cardRadius = 16;
+
 const styles = {
   container: {
     direction: 'rtl',
-    padding: '20px',
+    padding: '24px',
     maxWidth: '1400px',
-    margin: '0 auto'
+    margin: '0 auto',
+    fontFamily: "'Heebo', 'Assistant', 'Arial Hebrew', Arial, sans-serif"
+  },
+  pageTitle: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: '#1a1a2e',
+    margin: '0 0 6px'
+  },
+  pageSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    margin: '0 0 24px'
   },
   layout: {
     display: 'grid',
     gridTemplateColumns: '350px 1fr',
-    gap: '20px',
-    minHeight: '600px'
+    gap: 24,
+    minHeight: 600
   },
   userList: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: '8px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    backgroundColor: '#fff',
+    borderRadius: cardRadius,
+    boxShadow: cardShadow,
+    border: '1px solid rgba(0,0,0,0.04)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden'
   },
   searchBox: {
-    padding: '15px',
-    borderBottom: '1px solid #e0e0e0'
+    padding: 16,
+    borderBottom: '1px solid #e8ecf0'
   },
   searchInput: {
     width: '100%',
-    padding: '10px',
-    border: '1px solid #ddd',
-    borderRadius: '4px',
-    fontSize: '14px',
-    direction: 'rtl'
+    padding: '10px 14px',
+    border: '1px solid #e2e8f0',
+    borderRadius: 12,
+    fontSize: 14,
+    direction: 'rtl',
+    backgroundColor: '#f8fafc'
   },
   userListContent: {
     flex: 1,
     overflowY: 'auto'
   },
   userItem: {
-    padding: '15px',
+    padding: 16,
     borderBottom: '1px solid #f0f0f0',
     cursor: 'pointer',
-    transition: 'background-color 0.2s',
-    '&:hover': {
-      backgroundColor: '#f5f5f5'
-    }
+    transition: 'background-color 0.2s'
   },
   userItemActive: {
     backgroundColor: '#e3f2fd',
-    borderRight: '3px solid #CC0000'
+    borderRight: '3px solid #1565c0'
   },
   userInfo: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '5px'
+    gap: 5
   },
   userName: {
-    fontSize: '16px',
-    fontWeight: 'bold',
-    color: '#212121'
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#1a1a2e'
   },
   userDetails: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '3px',
-    fontSize: '14px',
-    color: '#757575'
+    gap: 3,
+    fontSize: 14,
+    color: '#64748b'
   },
   userRole: {
-    fontWeight: '500'
+    fontWeight: 600
   },
   userEmail: {
-    fontSize: '12px'
+    fontSize: 12
   },
   permissionList: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: '8px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    padding: '20px',
+    backgroundColor: '#fff',
+    borderRadius: cardRadius,
+    boxShadow: cardShadow,
+    border: '1px solid rgba(0,0,0,0.04)',
+    padding: 24,
     overflowY: 'auto',
-    maxHeight: '800px'
+    maxHeight: 800
   },
   selectedUserHeader: {
-    marginBottom: '30px',
-    paddingBottom: '20px',
-    borderBottom: '2px solid #e0e0e0'
+    marginBottom: 28,
+    paddingBottom: 20,
+    borderBottom: '1px solid #e8ecf0'
   },
   selectedUserName: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#212121',
-    marginBottom: '8px'
+    fontSize: 22,
+    fontWeight: 700,
+    color: '#1a1a2e',
+    marginBottom: 8
   },
   selectedUserRole: {
-    fontSize: '16px',
-    color: '#757575'
+    fontSize: 15,
+    color: '#64748b'
+  },
+  roleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+    flexWrap: 'wrap'
+  },
+  roleLabel: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#334155'
+  },
+  roleSelect: {
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: '1px solid #e2e8f0',
+    fontSize: 14,
+    fontFamily: 'inherit',
+    minWidth: 120
+  },
+  roleSaveBtn: {
+    padding: '10px 20px',
+    backgroundColor: '#1565c0',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 12,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    boxShadow: '0 2px 8px rgba(21,101,192,0.3)'
   },
   permissionGroups: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '30px'
+    gap: 28
   },
   permissionGroup: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px'
+    gap: 10
   },
   groupTitle: {
-    fontSize: '20px',
-    fontWeight: 'bold',
-    color: '#CC0000',
-    marginBottom: '10px'
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#1565c0',
+    marginBottom: 10
   },
   permissionItem: {
-    padding: '10px',
-    borderRadius: '4px',
-    '&:hover': {
-      backgroundColor: '#f9f9f9'
-    }
+    padding: 12,
+    borderRadius: 12,
+    transition: 'background-color 0.2s'
   },
   permissionLabel: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: 12,
     cursor: 'pointer',
-    fontSize: '16px'
+    fontSize: 15
   },
   checkbox: {
-    width: '20px',
-    height: '20px',
-    cursor: 'pointer'
+    width: 18,
+    height: 18,
+    cursor: 'pointer',
+    accentColor: '#1565c0'
   },
   permissionText: {
-    color: '#212121',
+    color: '#334155',
     flex: 1
   },
   roleBadge: {
-    fontSize: '12px',
-    color: '#757575',
+    fontSize: 12,
+    color: '#64748b',
     fontStyle: 'italic'
   },
   customBadge: {
-    fontSize: '12px',
-    color: '#4CAF50',
-    fontWeight: 'bold'
+    fontSize: 12,
+    color: '#2e7d32',
+    fontWeight: 600
   },
   noSelection: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%',
-    color: '#757575',
-    fontSize: '18px',
+    color: '#64748b',
+    fontSize: 16,
     textAlign: 'center'
   }
 };

@@ -568,7 +568,7 @@ export async function parseQuestionsWithAI(text, onProgress) {
       ca = JSON.stringify({ value: matchIdx >= 0 ? String(matchIdx) : '0' });
     }
 
-    return { ...q, question_text: cleanText, correct_answer: ca || '{}', status: 'draft' };
+    return { ...q, question_text: cleanText, correct_answer: ca || '{}', status: 'active' };
   });
 
   // ── Duplicate detection against existing DB ──────────────
@@ -765,8 +765,8 @@ export async function bulkCreateQuestions(questions, options = {}) {
           }
         } catch (err) {
           console.warn(`[enrichment] שגיאה בשאלה ${i + 1}:`, err.message);
-          // Keep original on AI failure
-          enriched.push({ ...q, enrichment_error: err.message });
+          // Keep original on AI failure; mark for review
+          enriched.push({ ...q, enrichment_error: err.message, status: 'pending_review' });
         }
       }
       workingSet = enriched;
@@ -804,9 +804,11 @@ export async function bulkCreateQuestions(questions, options = {}) {
     }
 
     try {
-      if (!question.status) question.status = 'draft';
+      if (!question.status) question.status = 'active';
+      // Duplicate or AI-error: needs human review
+      if (question._duplicateFlag || question.enrichment_error) question.status = 'pending_review';
       // Strip internal dedup metadata before persisting
-      const { _duplicateFlag, _internalDuplicate, _similarTo, ...clean } = question;
+      const { _duplicateFlag, _internalDuplicate, _similarTo, enrichment_error, ...clean } = question;
       const created = await entities.Question_Bank.create(clean);
       // Store similarity metadata as a separate field for later review
       if (question._similarTo) {

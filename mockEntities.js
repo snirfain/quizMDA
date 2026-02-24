@@ -24,27 +24,8 @@ const DEFAULT_DATA = {
   mediaBank: []
 };
 
+// Only Google sign-in users; new users are created on first Google login
 DEFAULT_DATA.users = [
-  {
-    user_id: '12345',
-    full_name: 'יוסי כהן',
-    email: 'yossi@example.com',
-    role: 'trainee',
-    auth_provider: 'mda',
-    points: 150,
-    current_streak: 5,
-    longest_streak: 10
-  },
-  {
-    user_id: 'instructor1',
-    full_name: 'דני לוי',
-    email: 'danny@example.com',
-    role: 'instructor',
-    auth_provider: 'mda',
-    points: 0,
-    current_streak: 0,
-    longest_streak: 0
-  },
   {
     user_id: 'admin1',
     full_name: 'Snir Admin',
@@ -54,7 +35,8 @@ DEFAULT_DATA.users = [
     points: 0,
     current_streak: 0,
     longest_streak: 0,
-    email_verified: true
+    email_verified: true,
+    custom_permissions: []
   },
   {
     user_id: 'admin2',
@@ -65,7 +47,8 @@ DEFAULT_DATA.users = [
     points: 0,
     current_streak: 0,
     longest_streak: 0,
-    email_verified: true
+    email_verified: true,
+    custom_permissions: []
   }
 ];
 
@@ -120,59 +103,61 @@ DEFAULT_DATA.questions = [
 // ── Media Bank seed data ──────────────────────────────────────
 // Real-world MDA use-case: ECG rhythm recognition images grouped by tag.
 // In production, `url` would point to actual uploaded files.
+// Placeholder image URLs (Wikipedia URLs often 404; replace with your own uploads in production)
+const PLACEHOLDER_IMG = (seed) => `https://picsum.photos/seed/${seed}/640/360`;
 DEFAULT_DATA.mediaBank = [
   // PSVT — Paroxysmal Supraventricular Tachycardia
   {
     id: 'mb1', tag: 'PSVT', name: 'PSVT פס קצב #1', media_type: 'image',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/66/SVT_from_12_lead.jpg/640px-SVT_from_12_lead.jpg',
+    url: PLACEHOLDER_IMG('psvt1'),
     description: 'פס קצב המדגים PSVT עם QRS צר וקצב של ~180 לדקה',
     status: 'active', total_attempts: 0, total_success: 0, success_rate: null,
-    uploadedBy: 'instructor1', createdAt: new Date().toISOString()
+    uploadedBy: 'admin1', createdAt: new Date().toISOString()
   },
   {
     id: 'mb2', tag: 'PSVT', name: 'PSVT פס קצב #2', media_type: 'image',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e2/AVNRT.jpg/640px-AVNRT.jpg',
+    url: PLACEHOLDER_IMG('psvt2'),
     description: 'AVNRT — תת-סוג נפוץ של PSVT',
     status: 'active', total_attempts: 0, total_success: 0, success_rate: null,
-    uploadedBy: 'instructor1', createdAt: new Date().toISOString()
+    uploadedBy: 'admin1', createdAt: new Date().toISOString()
   },
   // AFib — Atrial Fibrillation
   {
     id: 'mb3', tag: 'AFib', name: 'פרפור פרוזדורים #1', media_type: 'image',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Afib_ecg.jpg/640px-Afib_ecg.jpg',
+    url: PLACEHOLDER_IMG('afib1'),
     description: 'פרפור פרוזדורים — קצב אי-סדיר ללא גלי P ברורים',
     status: 'active', total_attempts: 0, total_success: 0, success_rate: null,
-    uploadedBy: 'instructor1', createdAt: new Date().toISOString()
+    uploadedBy: 'admin1', createdAt: new Date().toISOString()
   },
   {
     id: 'mb4', tag: 'AFib', name: 'פרפור פרוזדורים #2', media_type: 'image',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Atrial_fibrillation_ECG_lead_II.jpg/640px-Atrial_fibrillation_ECG_lead_II.jpg',
+    url: PLACEHOLDER_IMG('afib2'),
     description: 'מוביל II — פרפור פרוזדורים עם תגובה חדרית מהירה',
     status: 'active', total_attempts: 0, total_success: 0, success_rate: null,
-    uploadedBy: 'instructor1', createdAt: new Date().toISOString()
+    uploadedBy: 'admin1', createdAt: new Date().toISOString()
   },
   // VTach — Ventricular Tachycardia
   {
     id: 'mb5', tag: 'VTach', name: 'טכיקרדיה חדרית #1', media_type: 'image',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Ventricular_tachycardia.png/640px-Ventricular_tachycardia.png',
+    url: PLACEHOLDER_IMG('vtach1'),
     description: 'טכיקרדיה חדרית מונומורפית — QRS רחב וסדיר',
     status: 'active', total_attempts: 0, total_success: 0, success_rate: null,
-    uploadedBy: 'instructor1', createdAt: new Date().toISOString()
+    uploadedBy: 'admin1', createdAt: new Date().toISOString()
   },
   {
     id: 'mb6', tag: 'VTach', name: 'טכיקרדיה חדרית #2', media_type: 'image',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/VT_Lead_II.png/640px-VT_Lead_II.png',
+    url: PLACEHOLDER_IMG('vtach2'),
     description: 'מוביל II — VT עם קצב 150-200 לדקה',
     status: 'active', total_attempts: 0, total_success: 0, success_rate: null,
-    uploadedBy: 'instructor1', createdAt: new Date().toISOString()
+    uploadedBy: 'admin1', createdAt: new Date().toISOString()
   },
   // SinusRhythm — for comparison
   {
     id: 'mb7', tag: 'SinusRhythm', name: 'קצב סינוס תקין #1', media_type: 'image',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/SinusRhythmLabels.svg/640px-SinusRhythmLabels.svg.png',
+    url: PLACEHOLDER_IMG('sinus1'),
     description: 'קצב סינוס תקין עם P-QRS-T תקין',
     status: 'active', total_attempts: 0, total_success: 0, success_rate: null,
-    uploadedBy: 'instructor1', createdAt: new Date().toISOString()
+    uploadedBy: 'admin1', createdAt: new Date().toISOString()
   }
 ];
 
@@ -269,7 +254,7 @@ function loadFromStorage() {
 
         // 5. Ensure status is a known value
         const VALID_STATUS = new Set(['draft','pending_review','active','rejected','needs_revision','suspended']);
-        const status = VALID_STATUS.has(q.status) ? q.status : 'draft';
+        const status = VALID_STATUS.has(q.status) ? q.status : 'active';
 
         return {
           ...q,
@@ -408,6 +393,7 @@ export const mockEntities = {
     create: async (data) => {
       const newUser = {
         ...data,
+        custom_permissions: data.custom_permissions ?? [],
         createdAt: new Date(),
         updatedAt: new Date()
       };

@@ -4,6 +4,7 @@
  */
 
 import { entities, appConfig } from '../config/appConfig';
+import { setCustomPermissions } from './permissions';
 
 const ADMIN_EMAILS = (appConfig && appConfig.adminEmails) ? appConfig.adminEmails.map(e => e.toLowerCase()) : ['snir@snir-ai.com'];
 
@@ -35,8 +36,12 @@ export function setCurrentUser(user) {
   if (typeof window !== 'undefined') {
     if (user) {
       localStorage.setItem('currentUser', JSON.stringify(user));
-      // Clear logout flag when setting a user (user is logging in)
       localStorage.removeItem('userLoggedOut');
+      try {
+        setCustomPermissions(user.user_id, user.custom_permissions || []);
+      } catch (e) {
+        console.warn('Could not sync custom permissions', e);
+      }
     } else {
       localStorage.removeItem('currentUser');
     }

@@ -13,7 +13,7 @@ import { showToast } from './Toast';
 import { announce } from '../utils/accessibility';
 import { validateQuestion } from '../utils/questionValidation';
 import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
-import { getMediaTypeLabel } from '../workflows/mediaEngine';
+import { getMediaTypeLabel, pickRandomMedia } from '../workflows/mediaEngine';
 
 export default function QuestionEditor({ question, hierarchies, onSave, onCancel }) {
   const [formData, setFormData] = useState({
@@ -27,7 +27,7 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
     explanation:     question?.explanation     || '',
     hint:            question?.hint            || '',
     tags:            question?.tags            || [],
-    status:          question?.status          || 'draft'
+    status:          question?.status          || 'active'
   });
   // 'none' | 'static' | 'bank'
   const [mediaMode, setMediaMode] = useState(() => {
@@ -40,6 +40,7 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
   const [isSaving, setIsSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [previewMediaItem, setPreviewMediaItem] = useState(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [options, setOptions] = useState(() => {
     if (question?.options) {
@@ -129,6 +130,20 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
       .catch(() => { if (!cancelled) setMediaPreviewCount(null); });
     return () => { cancelled = true; };
   }, [mediaMode, formData.media_bank_tag]);
+
+  // When preview is open and media is from bank, fetch one sample to show
+  useEffect(() => {
+    if (!showPreview || mediaMode !== 'bank' || !formData.media_bank_tag?.trim()) {
+      setPreviewMediaItem(null);
+      return;
+    }
+    let cancelled = false;
+    pickRandomMedia(formData.media_bank_tag.trim()).then(item => {
+      if (!cancelled && item) setPreviewMediaItem(item);
+      else if (!cancelled) setPreviewMediaItem(null);
+    }).catch(() => { if (!cancelled) setPreviewMediaItem(null); });
+    return () => { cancelled = true; };
+  }, [showPreview, mediaMode, formData.media_bank_tag]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -687,6 +702,37 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
             <h4 style={styles.previewTitle}>תצוגה מקדימה:</h4>
             <div style={styles.previewContent}>
               <p style={styles.previewQuestion}>{formData.question_text || '(לא הוזן טקסט)'}</p>
+              {/* Media in preview: static file or one sample from media bank */}
+              {(mediaMode === 'static' && formData.media_attachment?.url) && (
+                <div style={{ marginBottom: '12px' }}>
+                  {formData.media_attachment.type === 'video'
+                    ? <video src={formData.media_attachment.url} controls style={{ maxWidth: '100%', borderRadius: '8px', maxHeight: '220px' }} />
+                    : formData.media_attachment.type === 'audio'
+                    ? <audio src={formData.media_attachment.url} controls style={{ width: '100%' }} />
+                    : <img src={formData.media_attachment.url} alt="תצוגה מקדימה" style={{ maxWidth: '100%', borderRadius: '8px', maxHeight: '220px', objectFit: 'contain' }} />}
+                </div>
+              )}
+              {mediaMode === 'bank' && formData.media_bank_tag?.trim() && (
+                <div style={{ marginBottom: '12px' }}>
+                  {previewMediaItem?.url ? (
+                    <>
+                      {(!previewMediaItem.media_type || previewMediaItem.media_type === 'image') && (
+                        <img src={previewMediaItem.url} alt="מדיה לשאלה" style={{ maxWidth: '100%', borderRadius: '8px', maxHeight: '220px', objectFit: 'contain' }} />
+                      )}
+                      {previewMediaItem.media_type === 'video' && (
+                        <video src={previewMediaItem.url} controls style={{ maxWidth: '100%', borderRadius: '8px', maxHeight: '220px' }} />
+                      )}
+                      {previewMediaItem.media_type === 'audio' && (
+                        <audio src={previewMediaItem.url} controls style={{ width: '100%' }} />
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ padding: '24px', background: '#f5f5f5', borderRadius: '8px', color: '#666', fontSize: '14px' }}>
+                      מדיה ממאגר (תג: {formData.media_bank_tag}) — {mediaPreviewCount ? `נטען דוגמה מתוך ${mediaPreviewCount} פריטים` : 'טוען...'}
+                    </div>
+                  )}
+                </div>
+              )}
               {(formData.question_type === 'single_choice' || formData.question_type === 'multi_choice') && (
                 <div style={styles.previewOptions}>
                   {options.map((opt, idx) => {

@@ -27,7 +27,7 @@ const questionSchema = new mongoose.Schema(
     /** Cloudinary (or other) media URL – image / video / audio */
     media_attachment: { type: String, default: null },
     media_bank_tag: { type: String, default: null },
-    difficulty_level: { type: Number, required: true, min: 1, max: 10, default: 5 },
+    difficulty_level: { type: Number, required: false, min: 1, max: 10, default: null },
     /** JSON: { value: "0" } | { values: ["0","1"] } | { value: "true"|"false" } */
     correct_answer: { type: mongoose.Schema.Types.Mixed, default: null },
     explanation: { type: String, default: null },

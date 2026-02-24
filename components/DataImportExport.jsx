@@ -155,7 +155,7 @@ export default function DataImportExport() {
           question_text: values[headers.indexOf('טקסט שאלה')] || values[headers.indexOf('question_text')],
           difficulty_level: parseInt(values[headers.indexOf('קושי')] || values[headers.indexOf('difficulty_level')]) || 5,
           correct_answer: values[headers.indexOf('תשובה נכונה')] || values[headers.indexOf('correct_answer')],
-          status: values[headers.indexOf('סטטוס')] || values[headers.indexOf('status')] || 'draft',
+          status: values[headers.indexOf('סטטוס')] || values[headers.indexOf('status')] || 'active',
           tags: (values[headers.indexOf('תגיות')] || values[headers.indexOf('tags')] || '').split(';').filter(t => t.trim())
         };
 

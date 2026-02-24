@@ -66,7 +66,7 @@ function parseBlock(lines) {
     hint: '',
     explanation: '',
     difficulty_level: 5,
-    status: 'draft',
+    status: 'active',
     tags: [],
   };
 
@@ -366,7 +366,7 @@ export function parseUnnumberedBlocks(text) {
           hint: '',
           explanation: '',
           difficulty_level: 5,
-          status: 'draft',
+          status: 'active',
           tags: [],
         });
         i = j;
@@ -381,7 +381,7 @@ export function parseUnnumberedBlocks(text) {
           hint: '',
           explanation: '',
           difficulty_level: 5,
-          status: 'draft',
+          status: 'active',
           tags: [],
         });
       }
@@ -414,7 +414,7 @@ export function parseUnnumberedBlocks(text) {
           hint: '',
           explanation: '',
           difficulty_level: 5,
-          status: 'draft',
+          status: 'active',
           tags: [],
         });
       } else if (qFirst.length > 20 && !/^(מבחן|שאלות)/i.test(qFirst)) {
@@ -426,7 +426,7 @@ export function parseUnnumberedBlocks(text) {
           hint: '',
           explanation: '',
           difficulty_level: 5,
-          status: 'draft',
+          status: 'active',
           tags: [],
         });
       }
@@ -439,7 +439,7 @@ export function parseUnnumberedBlocks(text) {
         hint: '',
         explanation: '',
         difficulty_level: 5,
-        status: 'draft',
+        status: 'active',
         tags: [],
       });
     }

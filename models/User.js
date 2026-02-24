@@ -24,7 +24,8 @@ const userSchema = new mongoose.Schema(
     email_verified: { type: Boolean, default: false },
     points: { type: Number, default: 0, min: 0 },
     current_streak: { type: Number, default: 0, min: 0 },
-    longest_streak: { type: Number, default: 0, min: 0 }
+    longest_streak: { type: Number, default: 0, min: 0 },
+    custom_permissions: { type: [String], default: [] }
   },
   { timestamps: true }
 );

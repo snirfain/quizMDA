@@ -33,6 +33,29 @@ function hasOptions(q) {
 }
 
 /**
+ * Normalize correct_answer to { value: "<index>" } using existing options.
+ * If the AI returned free text or wrong shape, try to match by option label/value.
+ */
+function normalizeCorrectAnswer(correctAnswer, options) {
+  if (!correctAnswer || !Array.isArray(options) || options.length === 0) return null;
+  const obj = parseCorrectAnswer(correctAnswer);
+  if (!obj) return null;
+  const raw = obj.value != null ? String(obj.value).trim() : (Array.isArray(obj.values) ? obj.values[0] : null);
+  if (raw == null || raw === '') return null;
+  const indexStr = String(raw);
+  if (/^[0-9]+$/.test(indexStr)) {
+    const idx = parseInt(indexStr, 10);
+    if (idx >= 0 && idx < options.length) return { value: String(idx) };
+    return { value: options[idx]?.value ?? indexStr };
+  }
+  const byValue = options.findIndex(o => (o.value != null && String(o.value) === indexStr) || (o.value == null && indexStr === ''));
+  if (byValue !== -1) return { value: String(options[byValue].value ?? byValue) };
+  const byLabel = options.findIndex(o => (o.label || o.text || '').includes(indexStr) || indexStr.includes((o.label || o.text || '')));
+  if (byLabel !== -1) return { value: String(options[byLabel].value ?? byLabel) };
+  return { value: indexStr };
+}
+
+/**
  * Return true when a correct_answer object carries a meaningful value
  * (i.e. it is not null / empty object / missing key).
  */
@@ -84,7 +107,7 @@ async function callOpenAI(systemPrompt, userPrompt, apiKey) {
         { role: 'user',   content: userPrompt   },
       ],
       temperature: 0.2,
-      max_tokens: 3000,
+      max_tokens: 4096,
     }),
   });
 
@@ -97,17 +120,84 @@ async function callOpenAI(systemPrompt, userPrompt, apiKey) {
   const content = data.choices?.[0]?.message?.content || '';
 
   // Strip markdown fences
-  const clean = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  let clean = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
   try {
     return JSON.parse(clean);
   } catch {
-    // Try extracting first JSON object/array
-    const m = clean.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-    if (m) {
-      try { return JSON.parse(m[1]); } catch { /* fall through */ }
+    // Fix unescaped quotes inside Hebrew text (e.g. נט"ן, אט"ן) that break JSON
+    const fixedQuotes = fixHebrewQuotesInJson(clean);
+    try { return JSON.parse(fixedQuotes); } catch { /* fall through */ }
+    // Try extracting first JSON object (balanced braces)
+    const firstObj = extractFirstJsonObject(fixedQuotes);
+    if (firstObj) {
+      try { return JSON.parse(firstObj); } catch { /* fall through */ }
+    }
+    // Try repairing truncated JSON (close open string, then missing closing brackets)
+    const repaired = repairTruncatedJson(fixedQuotes);
+    if (repaired) {
+      try { return JSON.parse(repaired); } catch { /* fall through */ }
     }
     throw new Error(`לא ניתן לפענח תשובת AI: ${clean.slice(0, 120)}`);
   }
+}
+
+/**
+ * Escape double-quotes that appear inside Hebrew abbreviations (e.g. נט"ן, אט"ן)
+ * so that JSON.parse can succeed. Only affects " between Hebrew letters or before space.
+ */
+function fixHebrewQuotesInJson(str) {
+  return str.replace(/([\u0590-\u05FF])"([\u0590-\u05FF\s])/g, '$1\\"$2');
+}
+
+/**
+ * Extract the first complete JSON object from a string (handles nested braces).
+ */
+function extractFirstJsonObject(str) {
+  const start = str.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let quote = '';
+  for (let i = start; i < str.length; i++) {
+    const c = str[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\' && inString) { escape = true; continue; }
+    if (!inString) {
+      if (c === '"' || c === "'") { inString = true; quote = c; continue; }
+      if (c === '{') depth++;
+      else if (c === '}') { depth--; if (depth === 0) return str.slice(start, i + 1); }
+    } else if (c === quote) inString = false;
+  }
+  return null;
+}
+
+/**
+ * Try to repair truncated JSON: close an open string (if any), then append missing closing brackets.
+ */
+function repairTruncatedJson(str) {
+  const trimmed = str.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
+  const stack = [];
+  let inString = false;
+  let escape = false;
+  let quote = '';
+  for (let i = 0; i < trimmed.length; i++) {
+    const c = trimmed[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\' && inString) { escape = true; continue; }
+    if (!inString) {
+      if (c === '"' || c === "'") { inString = true; quote = c; continue; }
+      if (c === '{') stack.push('}');
+      else if (c === '[') stack.push(']');
+      else if (c === '}' || c === ']') stack.pop();
+    } else if (c === quote) inString = false;
+  }
+  if (stack.length === 0) return null;
+  let out = trimmed;
+  if (inString) out += quote;
+  if (out.slice(-1) === ',') out = out.slice(0, -1);
+  return out + stack.reverse().join('');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -216,12 +306,13 @@ export async function enrichQuestion(question, apiKey) {
       throw new Error(`ה-AI החזיר מסיחים לא תקינים לשאלה: "${question.question_text?.slice(0, 60)}..."`);
     }
 
+    const normalizedCa = normalizeCorrectAnswer(result.correct_answer, result.options) || result.correct_answer;
     // Build the MC sibling
     const mcQuestion = {
       ...question,
       question_type: 'single_choice',
       options: result.options,
-      correct_answer: JSON.stringify(result.correct_answer),
+      correct_answer: JSON.stringify(normalizedCa),
       explanation: result.explanation || question.explanation || '',
       // Mark provenance
       source_question_id: question.id || null,
@@ -253,13 +344,14 @@ export async function enrichQuestion(question, apiKey) {
       apiKey
     );
 
-    if (!result.correct_answer) {
+    const normalizedCa = normalizeCorrectAnswer(result.correct_answer, question.options);
+    if (!normalizedCa) {
       throw new Error(`ה-AI לא הצליח לזהות תשובה נכונה לשאלה: "${question.question_text?.slice(0, 60)}..."`);
     }
 
     const updatedQuestion = {
       ...question,
-      correct_answer: JSON.stringify(result.correct_answer),
+      correct_answer: JSON.stringify(normalizedCa),
       explanation: result.explanation || question.explanation || '',
       generated_by: 'enrichment_ai',
     };

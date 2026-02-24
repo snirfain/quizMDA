@@ -1,20 +1,11 @@
 /**
- * Login Page — matches landing design: two-panel (hero + form)
+ * Login Page — Google sign-in only (two-panel layout)
  * Hebrew: עמוד התחברות
  */
 import React, { useState, useEffect } from 'react';
-import { login, setCurrentUser, getCurrentUser } from '../utils/auth';
+import { setCurrentUser, getCurrentUser } from '../utils/auth';
 import { navigateTo } from '../utils/router';
-import FormField from '../components/FormField';
-import LoadingSpinner from '../components/LoadingSpinner';
-import { announceError } from '../utils/accessibility';
 import GoogleSignIn from '../components/GoogleSignIn';
-
-const DEMO_USERS = [
-  { id: '12345',       label: 'מתאמן',   icon: '🎓', color: '#1976d2', role: 'trainee'    },
-  { id: 'instructor1', label: 'מדריך',   icon: '📚', color: '#7b1fa2', role: 'instructor' },
-  { id: 'admin1',      label: 'מנהל',    icon: '🛡️', color: '#c62828', role: 'admin'      },
-];
 
 const FEATURES = [
   { icon: '📊', title: 'מעקב התקדמות', desc: 'גרפים וסטטיסטיקות שמראים בדיוק היכן אתה עומד' },
@@ -38,10 +29,6 @@ function redirect(user) {
 }
 
 export default function LoginPage() {
-  const [userId, setUserId] = useState('');
-  const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 900);
 
@@ -57,44 +44,11 @@ export default function LoginPage() {
     if (user) redirect(user);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true);
-    try {
-      const result = await login(userId, password);
-      if (result.success) {
-        setCurrentUser(result.user);
-        window.dispatchEvent(new CustomEvent('userUpdated', { detail: result.user }));
-        window.dispatchEvent(new CustomEvent('userLogin', { detail: result.user }));
-        redirect(result.user);
-      } else {
-        setError(result.error || 'שגיאה בהתחברות');
-        announceError('שגיאה בהתחברות');
-      }
-    } catch {
-      setError('שגיאה בהתחברות. אנא נסה שוב.');
-      announceError('שגיאה בהתחברות');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleGoogleSuccess = (user) => {
     setCurrentUser(user);
     window.dispatchEvent(new CustomEvent('userUpdated', { detail: user }));
     window.dispatchEvent(new CustomEvent('userLogin', { detail: user }));
     redirect(user);
-  };
-
-  const quickLogin = async (demoUser) => {
-    const result = await login(demoUser.id, 'demo');
-    if (result.success) {
-      setCurrentUser(result.user);
-      window.dispatchEvent(new CustomEvent('userUpdated', { detail: result.user }));
-      window.dispatchEvent(new CustomEvent('userLogin', { detail: result.user }));
-      redirect(result.user);
-    }
   };
 
   const heroStyle = {
@@ -187,99 +141,22 @@ export default function LoginPage() {
         )}
       </div>
 
-      {/* Form panel */}
+      {/* Form panel — Google only */}
       <div style={formPanelStyle}>
         <div style={cardStyle}>
-          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <div style={{ width: '52px', height: '52px', background: 'linear-gradient(135deg, #1565c0, #42a5f5)', borderRadius: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', boxShadow: '0 4px 16px rgba(33,150,243,0.35)', marginBottom: '16px' }}>🔐</div>
             <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#1a1a2e', margin: '0 0 6px' }}>התחברות למערכת</h2>
-            <p style={{ fontSize: '14px', color: '#9e9e9e', margin: 0 }}>ברוכים הבאים חזרה 👋</p>
+            <p style={{ fontSize: '14px', color: '#9e9e9e', margin: 0 }}>ברוכים הבאים 👋</p>
           </div>
 
-          <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            {error && (
-              <div role="alert" style={{ padding: '12px 16px', background: '#ffebee', color: '#c62828', borderRadius: '10px', fontSize: '14px', textAlign: 'center', borderRight: '4px solid #e53935' }}>
-                {error}
-              </div>
-            )}
-
-            <FormField
-              label='תעודת זהות / מספר עובד מד"א'
-              name="userId"
-              type="text"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              required
-              autoFocus
-              error={error && !userId ? 'נדרש למלא תעודת זהות' : null}
-              placeholder="הזן ת.ז. או מספר עובד"
-              aria-label="תעודת זהות מד א"
-            />
-            <FormField
-              label="סיסמה"
-              name="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              error={error && !password ? 'נדרש למלא סיסמה' : null}
-              placeholder="הזן סיסמה"
-              aria-label="סיסמה"
-            />
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: '#4A4A4A' }}>
-              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} style={{ margin: 0, accentColor: '#CC0000', width: '16px', height: '16px' }} aria-label="זכור אותי" />
-              <span>זכור אותי</span>
-            </label>
-
-            <button
-              type="submit"
-              disabled={isLoading || !userId || !password}
-              style={{
-                width: '100%',
-                padding: '14px',
-                background: (isLoading || !userId || !password) ? '#cfd8dc' : 'linear-gradient(135deg, #1565c0 0%, #CC0000 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                fontSize: '16px',
-                fontWeight: '700',
-                cursor: (isLoading || !userId || !password) ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                boxShadow: (isLoading || !userId || !password) ? 'none' : '0 4px 20px rgba(33,150,243,0.4)',
-                transition: 'all 0.2s',
-                fontFamily: 'inherit',
-                letterSpacing: '0.3px',
-              }}
-              aria-label="התחבר"
-            >
-              {isLoading ? <LoadingSpinner size="sm" /> : 'התחבר'}
-            </button>
-          </form>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '24px 0' }}>
-            <div style={{ flex: 1, height: '1px', background: '#e8ecf0' }} />
-            <span style={{ fontSize: '13px', color: '#bdbdbd', padding: '0 4px' }}>או התחבר עם</span>
-            <div style={{ flex: 1, height: '1px', background: '#e8ecf0' }} />
-          </div>
+          {error && (
+            <div role="alert" style={{ padding: '12px 16px', background: '#ffebee', color: '#c62828', borderRadius: '10px', fontSize: '14px', textAlign: 'center', borderRight: '4px solid #e53935', marginBottom: '20px' }}>
+              {error}
+            </div>
+          )}
 
           <GoogleSignIn onSuccess={handleGoogleSuccess} onError={setError} />
-
-          <div style={{ marginTop: '24px', padding: '14px', background: '#f8f9fa', borderRadius: '12px', border: '1px solid #e8ecf0' }}>
-            <p style={{ fontSize: '12px', color: '#90a4ae', textAlign: 'center', margin: '0 0 10px', fontWeight: '600' }}>כניסה מהירה — מצב דחוף</p>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {DEMO_USERS.map(u => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => quickLogin(u)}
-                  style={{ padding: '7px 14px', border: '1px solid ' + u.color + '60', borderRadius: '20px', background: u.color + '12', color: u.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}
-                >
-                  {u.icon} {u.label}
-                </button>
-              ))}
-            </div>
-          </div>
 
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <a href="/help" style={{ color: '#78909c', textDecoration: 'none', fontSize: '13px' }} onMouseOver={e => { e.target.style.color = '#CC0000'; }} onMouseOut={e => { e.target.style.color = '#78909c'; }}>

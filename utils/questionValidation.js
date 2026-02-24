@@ -140,18 +140,17 @@ export function validateCorrectAnswer(answer, questionType, options = []) {
 }
 
 /**
- * Validate difficulty level
+ * Validate difficulty level.
+ * Difficulty is optional (calculated automatically after enough answers).
+ * If provided, it must be a number between 1 and 10.
  */
 export function validateDifficultyLevel(difficulty) {
   const errors = [];
-  
-  if (difficulty === null || difficulty === undefined) {
-    errors.push('רמת קושי היא שדה חובה');
+  if (difficulty === null || difficulty === undefined || difficulty === '') {
     return errors;
   }
 
   const level = typeof difficulty === 'string' ? parseInt(difficulty) : difficulty;
-  
   if (isNaN(level)) {
     errors.push('רמת קושי חייבת להיות מספר');
   } else {
@@ -159,7 +158,6 @@ export function validateDifficultyLevel(difficulty) {
       errors.push('רמת קושי חייבת להיות בין 1 ל-10');
     }
   }
-
   return errors;
 }
 
