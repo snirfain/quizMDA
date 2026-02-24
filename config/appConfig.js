@@ -176,6 +176,9 @@ export const appConfig = {
     desktopBreakpoint: 1024
   },
   
+  // Admin emails — full access to all pages and functions
+  adminEmails: ['snir@snir-ai.com'],
+
   // Roles
   roles: {
     trainee: 'trainee',

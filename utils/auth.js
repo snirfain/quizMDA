@@ -3,7 +3,9 @@
  * Hebrew: אימות וניהול סשן
  */
 
-import { entities } from '../config/appConfig';
+import { entities, appConfig } from '../config/appConfig';
+
+const ADMIN_EMAILS = (appConfig && appConfig.adminEmails) ? appConfig.adminEmails.map(e => e.toLowerCase()) : ['snir@snir-ai.com'];
 
 /**
  * Get current user
@@ -67,6 +69,11 @@ export async function login(userId, password) {
     
     let user = await entities.Users.findOne({ user_id: userId });
 
+    // Login by email (e.g. snir@snir-ai.com)
+    if (!user && typeof userId === 'string' && userId.includes('@')) {
+      user = await entities.Users.findOne({ email: userId });
+    }
+
     // Demo mode: if user not found, create a temporary instructor session
     if (!user) {
       user = {
@@ -79,6 +86,11 @@ export async function login(userId, password) {
         current_streak: 0,
         longest_streak: 0,
       };
+    }
+
+    // Ensure admin emails always get admin role
+    if (user && user.email && ADMIN_EMAILS.includes((user.email || '').toLowerCase())) {
+      user = { ...user, role: 'admin' };
     }
 
     setCurrentUser(user);

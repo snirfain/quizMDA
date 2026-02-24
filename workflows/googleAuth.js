@@ -112,9 +112,9 @@ async function createUserFromGoogle(googleUser) {
   // Generate user_id from email or use Google ID
   const userId = googleUser.email.split('@')[0] || `google_${googleUser.googleId}`;
   
-  // Admin emails list
-  const adminEmails = ['snir@snir-ai.com', 'snirfain@gmail.com'];
-  const isAdmin = adminEmails.includes(googleUser.email.toLowerCase());
+  const { appConfig } = await import('../config/appConfig');
+  const adminEmails = (appConfig?.adminEmails ?? ['snir@snir-ai.com']).map(e => e.toLowerCase());
+  const isAdmin = adminEmails.includes((googleUser.email || '').toLowerCase());
   
   // Check if Users.create exists
   if (!entities.Users || typeof entities.Users.create !== 'function') {
@@ -172,9 +172,9 @@ async function createUserFromGoogle(googleUser) {
  * Update existing user with Google info
  */
 async function updateUserFromGoogle(user, googleUser) {
-  // Admin emails list
-  const adminEmails = ['snir@snir-ai.com', 'snirfain@gmail.com'];
-  const isAdmin = adminEmails.includes((googleUser.email || user.email).toLowerCase());
+  const { appConfig } = await import('../config/appConfig');
+  const adminEmails = (appConfig?.adminEmails ?? ['snir@snir-ai.com']).map(e => e.toLowerCase());
+  const isAdmin = adminEmails.includes((googleUser.email || user.email || '').toLowerCase());
   
   // Check if Users.update exists
   if (!entities.Users || typeof entities.Users.update !== 'function') {

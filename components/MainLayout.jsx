@@ -178,7 +178,7 @@ const styles = {
     minHeight: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#F6F6F6',
+    backgroundColor: 'var(--panel-bg, #f4f6fb)',
     fontFamily: "'Heebo', 'Assistant', 'Arial Hebrew', Arial, sans-serif",
   },
   header: {
