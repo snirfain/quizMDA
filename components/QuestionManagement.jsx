@@ -143,19 +143,32 @@ export default function QuestionManagement() {
       let allQuestions = [];
       try {
         const res = await fetch('/api/questions');
+        // #region agent log
+        if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1_H2_H4',location:'QuestionManagement.jsx:loadQuestions:afterFetch',message:'GET /api/questions response',data:{status:res.status,ok:res.ok},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data)) {
             allQuestions = data;
             if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = true;
+            // #region agent log
+            if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1_H4',location:'QuestionManagement.jsx:loadQuestions:fromApi',message:'using API data',data:{count:data.length},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        // #region agent log
+        if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'QuestionManagement.jsx:loadQuestions:fetchCatch',message:'fetch failed',data:{err:String(e?.message||e)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+      }
       if (allQuestions.length === 0) {
         allQuestions = await entities.Question_Bank.find({}, {
           sort: { createdAt: -1 }
         });
         if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = false;
+        // #region agent log
+        if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'QuestionManagement.jsx:loadQuestions:fallback',message:'using localStorage fallback',data:{count:allQuestions.length},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
       }
       setQuestions(allQuestions);
       const tagsSet = new Set();
@@ -278,6 +291,9 @@ export default function QuestionManagement() {
       status: q.status ?? 'active',
     }));
     let synced = 0;
+    // #region agent log
+    if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:start',message:'sync start',data:{totalQuestions:payload.length,chunkSize:CHUNK},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     try {
       for (let i = 0; i < payload.length; i += CHUNK) {
         const chunk = payload.slice(i, i + CHUNK);
@@ -286,6 +302,10 @@ export default function QuestionManagement() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(chunk),
         });
+        if (res.status === 200 || res.status === 201) synced += chunk.length;
+        // #region agent log
+        if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:chunk',message:'chunk result',data:{chunkIndex:Math.floor(i/CHUNK),status:res.status,syncedSoFar:synced},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (res.status === 503 || res.status === 500) {
           const msg = res.status === 503
             ? 'השרת לא מחובר ל-MongoDB. ב-Render: בדוק ש-MONGODB_URI מוגדר ב-Environment, וב-MongoDB Atlas אפשר גישה מ-Network Access (0.0.0.0/0).'
@@ -293,8 +313,10 @@ export default function QuestionManagement() {
           showToast(msg, 'error');
           break;
         }
-        if (res.ok) synced += chunk.length;
       }
+      // #region agent log
+      if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:done',message:'sync done',data:{totalPayload:payload.length,synced},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (synced > 0) {
         showToast(`סונכרנו ${synced} שאלות לשרת — יופיעו בכל המכשירים`, 'success');
         await loadQuestions();

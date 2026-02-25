@@ -65,6 +65,7 @@ export async function getQuestions(req, res) {
       return res.status(200).json([]);
     }
     const list = await Question.find({}).sort({ createdAt: -1 }).lean();
+    console.log('[api/questions] GET: count=', list.length);
     const withId = list.map((doc) => {
       const { _id, ...rest } = doc;
       return { id: _id.toString(), ...rest };
@@ -84,12 +85,14 @@ export async function postQuestions(req, res) {
     }
     const body = req.body;
     const items = Array.isArray(body) ? body : [body];
+    console.log('[api/questions] POST: items=', items.length);
     const created = [];
     for (const q of items) {
       const data = normalizeQuestionForDb(q);
       const doc = await Question.create(data);
       created.push({ id: doc._id.toString(), ...doc.toObject() });
     }
+    console.log('[api/questions] POST: created=', created.length);
     res.status(201).json(Array.isArray(body) ? created : created[0]);
   } catch (err) {
     console.error('POST /api/questions error:', err);
