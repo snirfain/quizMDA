@@ -23,6 +23,41 @@ async function ensureDbConnection() {
   }
 }
 
+const DIFFICULTY_MAP = { קל: 3, בינוני: 5, קשה: 8 };
+const VALID_STATUS = new Set(['active', 'draft', 'suspended', 'pending_review', 'rejected', 'needs_revision']);
+
+/** Normalize payload from frontend (mock/localStorage) to MongoDB schema. */
+function normalizeQuestionForDb(q) {
+  let difficulty_level = q.difficulty_level;
+  if (typeof difficulty_level === 'string' && DIFFICULTY_MAP[difficulty_level] != null) {
+    difficulty_level = DIFFICULTY_MAP[difficulty_level];
+  } else if (typeof difficulty_level !== 'number' || difficulty_level < 1 || difficulty_level > 10) {
+    difficulty_level = 5;
+  }
+  const options = (Array.isArray(q.options) ? q.options : []).map((o) => ({
+    value: o.value != null ? String(o.value) : '0',
+    label: String(o.label ?? o.text ?? ''),
+  }));
+  const status = VALID_STATUS.has(q.status) ? q.status : 'active';
+  return {
+    hierarchy_id: q.hierarchy_id ?? null,
+    question_type: q.question_type || 'single_choice',
+    question_text: q.question_text ?? '',
+    options,
+    media_attachment: q.media_attachment ?? null,
+    media_bank_tag: q.media_bank_tag ?? null,
+    difficulty_level,
+    correct_answer: q.correct_answer ?? null,
+    explanation: q.explanation ?? null,
+    hint: q.hint ?? null,
+    tags: Array.isArray(q.tags) ? q.tags : [],
+    status,
+    total_attempts: typeof q.total_attempts === 'number' ? q.total_attempts : 0,
+    total_success: typeof q.total_success === 'number' ? q.total_success : 0,
+    success_rate: typeof q.success_rate === 'number' ? q.success_rate : 0,
+  };
+}
+
 export async function getQuestions(req, res) {
   try {
     await ensureDbConnection();
@@ -51,15 +86,8 @@ export async function postQuestions(req, res) {
     const items = Array.isArray(body) ? body : [body];
     const created = [];
     for (const q of items) {
-      const { id: _skip, ...data } = q;
-      const doc = await Question.create({
-        ...data,
-        hierarchy_id: data.hierarchy_id ?? null,
-        status: data.status || 'active',
-        total_attempts: data.total_attempts ?? 0,
-        total_success: data.total_success ?? 0,
-        success_rate: data.success_rate ?? 0,
-      });
+      const data = normalizeQuestionForDb(q);
+      const doc = await Question.create(data);
       created.push({ id: doc._id.toString(), ...doc.toObject() });
     }
     res.status(201).json(Array.isArray(body) ? created : created[0]);
