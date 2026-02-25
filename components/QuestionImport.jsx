@@ -281,25 +281,35 @@ export default function QuestionImport({ onImportComplete }) {
       if (results.failed > 0) showToast(`${results.failed} נכשלו`, 'warning');
 
       if (results.created?.length > 0) {
+        const CHUNK = 100;
+        const payload = results.created.map(q => ({
+          hierarchy_id: q.hierarchy_id,
+          question_type: q.question_type,
+          question_text: q.question_text,
+          options: q.options ?? [],
+          correct_answer: q.correct_answer,
+          difficulty_level: q.difficulty_level ?? 5,
+          explanation: q.explanation,
+          hint: q.hint,
+          tags: q.tags ?? [],
+          status: q.status ?? 'active',
+        }));
+        let synced = 0;
         try {
-          const res = await fetch('/api/questions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(results.created.map(q => ({
-              hierarchy_id: q.hierarchy_id,
-              question_type: q.question_type,
-              question_text: q.question_text,
-              options: q.options ?? [],
-              correct_answer: q.correct_answer,
-              difficulty_level: q.difficulty_level ?? 5,
-              explanation: q.explanation,
-              hint: q.hint,
-              tags: q.tags ?? [],
-              status: q.status ?? 'active',
-            }))),
-          });
-          if (res.ok) showToast('שאלות סונכרנו לשרת — יופיעו בכל המכשירים', 'success');
-        } catch (_) {}
+          for (let i = 0; i < payload.length; i += CHUNK) {
+            const chunk = payload.slice(i, i + CHUNK);
+            const res = await fetch('/api/questions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(chunk),
+            });
+            if (res.ok) synced += chunk.length;
+          }
+          if (synced > 0) showToast(`שאלות סונכרנו לשרת (${synced}) — יופיעו בכל המכשירים`, 'success');
+          if (synced < payload.length) showToast(`חלק מהשאלות לא סונכרנו (${payload.length - synced})`, 'warning');
+        } catch (_) {
+          showToast('סנכרון לשרת נכשל — השאלות נשמרו במכשיר זה בלבד', 'warning');
+        }
       }
 
       setParsed(null);

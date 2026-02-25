@@ -97,6 +97,7 @@ export default function QuestionManagement() {
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [isReclassifying, setIsReclassifying] = useState(false);
   const [aiReclassifyProgress, setAiReclassifyProgress] = useState({ running: false, current: 0, total: 0, updated: 0 });
+  const [isSyncingToServer, setIsSyncingToServer] = useState(false);
   const hasAutoReclassified = useRef(false);
 
   useEffect(() => {
@@ -257,6 +258,45 @@ export default function QuestionManagement() {
       await loadReviewStats();
     } catch (error) {
       showToast(`שגיאה בבקשת תיקון: ${error.message}`, 'error');
+    }
+  };
+
+  const syncQuestionsToServer = async () => {
+    if (!questions.length) return;
+    setIsSyncingToServer(true);
+    const CHUNK = 100;
+    const payload = questions.map(q => ({
+      hierarchy_id: q.hierarchy_id,
+      question_type: q.question_type,
+      question_text: q.question_text,
+      options: q.options ?? [],
+      correct_answer: q.correct_answer,
+      difficulty_level: q.difficulty_level ?? 5,
+      explanation: q.explanation,
+      hint: q.hint,
+      tags: q.tags ?? [],
+      status: q.status ?? 'active',
+    }));
+    let synced = 0;
+    try {
+      for (let i = 0; i < payload.length; i += CHUNK) {
+        const chunk = payload.slice(i, i + CHUNK);
+        const res = await fetch('/api/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(chunk),
+        });
+        if (res.ok) synced += chunk.length;
+      }
+      if (synced > 0) {
+        showToast(`סונכרנו ${synced} שאלות לשרת — יופיעו בכל המכשירים`, 'success');
+        await loadQuestions();
+      }
+      if (synced < payload.length) showToast(`${payload.length - synced} שאלות לא סונכרנו`, 'warning');
+    } catch (e) {
+      showToast('סנכרון לשרת נכשל: ' + (e?.message || ''), 'error');
+    } finally {
+      setIsSyncingToServer(false);
     }
   };
 
@@ -722,6 +762,25 @@ export default function QuestionManagement() {
               >
                 {isReclassifying ? 'מסווג...' : '📂 יישר קטגוריות לפי תוכן'}
               </button>
+              {typeof window !== 'undefined' && !window.__quizMDA_usingQuestionApi && questions.length > 0 && (
+                <button
+                  type="button"
+                  style={{
+                    ...styles.filterSelect,
+                    cursor: isSyncingToServer ? 'wait' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    background: '#2e7d32',
+                    color: '#fff',
+                    border: 'none',
+                  }}
+                  onClick={syncQuestionsToServer}
+                  disabled={isSyncingToServer}
+                  aria-label="סנכרן את כל השאלות לשרת"
+                  title="שולח את השאלות שבמכשיר זה לשרת — אחר כך יופיעו בכל המכשירים (טלפון, מחשב וכו')"
+                >
+                  {isSyncingToServer ? 'מסנכרן...' : `☁️ סנכרן ${questions.length} שאלות לשרת`}
+                </button>
+              )}
               <PermissionGate permission={permissions.QUESTION_APPROVE}>
                 <button
                   style={{
