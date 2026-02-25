@@ -3,10 +3,18 @@
  * GET /api/questions — list all questions
  * POST /api/questions — create one or more questions (body: object or array)
  */
+import mongoose from 'mongoose';
 import Question from '../models/Question.js';
+
+function isDbConnected() {
+  return mongoose.connection.readyState === 1;
+}
 
 export async function getQuestions(req, res) {
   try {
+    if (!isDbConnected()) {
+      return res.status(200).json([]);
+    }
     const list = await Question.find({}).sort({ createdAt: -1 }).lean();
     const withId = list.map((doc) => {
       const { _id, ...rest } = doc;
@@ -21,6 +29,9 @@ export async function getQuestions(req, res) {
 
 export async function postQuestions(req, res) {
   try {
+    if (!isDbConnected()) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
     const body = req.body;
     const items = Array.isArray(body) ? body : [body];
     const created = [];

@@ -18,22 +18,30 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const MONGODB_URI = process.env.MONGODB_URI;
-if (MONGODB_URI) {
-  mongoose.connect(MONGODB_URI).then(
-    () => console.log('MongoDB connected'),
-    (err) => console.error('MongoDB connection error:', err)
-  );
-} else {
-  console.warn('MONGODB_URI not set; running without database');
+
+async function start() {
+  if (MONGODB_URI) {
+    try {
+      await mongoose.connect(MONGODB_URI);
+      console.log('MongoDB connected');
+    } catch (err) {
+      console.error('MongoDB connection error:', err);
+      console.warn('Server starting without database; /api/questions will return empty.');
+    }
+  } else {
+    console.warn('MONGODB_URI not set; running without database');
+  }
+
+  app.post('/api/extract-doc', (req, res) => extractDocHandler(req, res));
+  app.post('/api/upload-media', uploadMiddleware, uploadMediaHandler);
+  app.get('/api/questions', getQuestions);
+  app.post('/api/questions', postQuestions);
+  app.use(express.static(path.join(__dirname, 'dist')));
+  app.use((_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
+
+  app.listen(PORT, () => {
+    console.log(`Server at http://localhost:${PORT} (includes .doc extraction and media upload)`);
+  });
 }
 
-app.post('/api/extract-doc', (req, res) => extractDocHandler(req, res));
-app.post('/api/upload-media', uploadMiddleware, uploadMediaHandler);
-app.get('/api/questions', getQuestions);
-app.post('/api/questions', postQuestions);
-app.use(express.static(path.join(__dirname, 'dist')));
-app.use((_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
-
-app.listen(PORT, () => {
-  console.log(`Server at http://localhost:${PORT} (includes .doc extraction and media upload)`);
-});
+start();

@@ -143,8 +143,11 @@ export default function QuestionManagement() {
       try {
         const res = await fetch('/api/questions');
         if (res.ok) {
-          allQuestions = await res.json();
-          if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = true;
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            allQuestions = data;
+            if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = true;
+          }
         }
       } catch (_) {}
       if (allQuestions.length === 0) {
