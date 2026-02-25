@@ -15,7 +15,8 @@ const optionSchema = new mongoose.Schema(
 
 const questionSchema = new mongoose.Schema(
   {
-    hierarchy_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Content_Hierarchy', required: true },
+    /** String (e.g. from mock) or ObjectId */
+    hierarchy_id: { type: mongoose.Schema.Types.Mixed, required: true },
     question_type: {
       type: String,
       enum: ['single_choice', 'multi_choice', 'true_false', 'open_ended', 'ordering'],
@@ -36,7 +37,7 @@ const questionSchema = new mongoose.Schema(
     adaptive_difficulty: { type: Number, min: 1, max: 10, default: null },
     status: {
       type: String,
-      enum: ['active', 'draft', 'suspended'],
+      enum: ['active', 'draft', 'suspended', 'pending_review', 'rejected', 'needs_revision'],
       default: 'active'
     },
     total_attempts: { type: Number, default: 0 },

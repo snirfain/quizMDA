@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 import { extractDocHandler } from './server/docExtract.js';
 import { uploadMiddleware, uploadMediaHandler } from './server/upload.js';
+import { getQuestions, postQuestions } from './server/questionApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -28,6 +29,8 @@ if (MONGODB_URI) {
 
 app.post('/api/extract-doc', (req, res) => extractDocHandler(req, res));
 app.post('/api/upload-media', uploadMiddleware, uploadMediaHandler);
+app.get('/api/questions', getQuestions);
+app.post('/api/questions', postQuestions);
 app.use(express.static(path.join(__dirname, 'dist')));
 app.use((_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 

@@ -139,12 +139,21 @@ export default function QuestionManagement() {
   const loadQuestions = async () => {
     setIsLoading(true);
     try {
-      const allQuestions = await entities.Question_Bank.find({}, {
-        sort: { createdAt: -1 }
-      });
+      let allQuestions = [];
+      try {
+        const res = await fetch('/api/questions');
+        if (res.ok) {
+          allQuestions = await res.json();
+          if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = true;
+        }
+      } catch (_) {}
+      if (allQuestions.length === 0) {
+        allQuestions = await entities.Question_Bank.find({}, {
+          sort: { createdAt: -1 }
+        });
+        if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = false;
+      }
       setQuestions(allQuestions);
-      
-      // Extract all unique tags
       const tagsSet = new Set();
       allQuestions.forEach(q => {
         if (q.tags && Array.isArray(q.tags)) {
@@ -152,7 +161,6 @@ export default function QuestionManagement() {
         }
       });
       setAvailableTags(Array.from(tagsSet).sort());
-      
       setFilteredQuestions(allQuestions);
     } catch (error) {
       console.error('Error loading questions:', error);

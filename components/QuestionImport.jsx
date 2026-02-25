@@ -280,6 +280,28 @@ export default function QuestionImport({ onImportComplete }) {
       showToast(`יובאו ${results.successful} שאלות בהצלחה${splitMsg}${enrichMsg}${dupMsg}`, 'success');
       if (results.failed > 0) showToast(`${results.failed} נכשלו`, 'warning');
 
+      if (results.created?.length > 0) {
+        try {
+          const res = await fetch('/api/questions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(results.created.map(q => ({
+              hierarchy_id: q.hierarchy_id,
+              question_type: q.question_type,
+              question_text: q.question_text,
+              options: q.options ?? [],
+              correct_answer: q.correct_answer,
+              difficulty_level: q.difficulty_level ?? 5,
+              explanation: q.explanation,
+              hint: q.hint,
+              tags: q.tags ?? [],
+              status: q.status ?? 'active',
+            }))),
+          });
+          if (res.ok) showToast('שאלות סונכרנו לשרת — יופיעו בכל המכשירים', 'success');
+        } catch (_) {}
+      }
+
       setParsed(null);
       setRawText('');
       setUploadedFiles([]);
@@ -624,6 +646,14 @@ export default function QuestionImport({ onImportComplete }) {
                 </select>
               </label>
             )}
+            <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+              <strong>חשוב:</strong> לחץ על &quot;ייבוא&quot; כדי לשמור את השאלות. בלי לחיצה — השאלות לא נשמרות ונעלמות ברענון או במכשיר אחר.
+              {typeof window !== 'undefined' && !window.__quizMDA_usingQuestionApi && (
+                <span style={{ display: 'block', marginTop: '4px', color: '#E65100' }}>
+                  כרגע השאלות נשמרות במכשיר זה בלבד. לסינכרון בין מכשירים — הרץ את השרת עם MongoDB (ראה README).
+                </span>
+              )}
+            </p>
             <button
               onClick={handleImportParsed}
               disabled={parsedQuestions.length === 0 || isImporting}
