@@ -771,7 +771,7 @@ export default function QuestionManagement() {
               >
                 {isReclassifying ? 'מסווג...' : '📂 יישר קטגוריות לפי תוכן'}
               </button>
-              {typeof window !== 'undefined' && !window.__quizMDA_usingQuestionApi && questions.length > 0 && (
+              {questions.length > 0 && (
                 <button
                   type="button"
                   style={{
@@ -785,7 +785,9 @@ export default function QuestionManagement() {
                   onClick={syncQuestionsToServer}
                   disabled={isSyncingToServer}
                   aria-label="סנכרן את כל השאלות לשרת"
-                  title="שולח את השאלות שבמכשיר זה לשרת — אחר כך יופיעו בכל המכשירים (טלפון, מחשב וכו')"
+                  title={typeof window !== 'undefined' && window.__quizMDA_usingQuestionApi
+                    ? 'שלח שוב את השאלות לשרת (שליחה חוזרת עלולה ליצור כפילויות)'
+                    : 'שולח את השאלות שבמכשיר זה לשרת — יופיעו בכל המכשירים'}
                 >
                   {isSyncingToServer ? 'מסנכרן...' : `☁️ סנכרן ${questions.length} שאלות לשרת`}
                 </button>
