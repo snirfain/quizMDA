@@ -15,6 +15,7 @@ import LoadingSpinner from './components/LoadingSpinner';
 import FloatingAccessibilityButton from './components/FloatingAccessibilityButton';
 import OfflineIndicator from './components/OfflineIndicator';
 import { registerServiceWorker } from './utils/serviceWorker';
+import { syncQuestionsFromServer } from './mockEntities';
 
 // Lazy load pages
 const HomePage = React.lazy(() => import('./pages/HomePage'));
@@ -50,6 +51,10 @@ export default function App() {
   useEffect(() => {
     loadUser();
     updatePath();
+    
+    // Fetch server questions → write to localStorage so all components see them.
+    // Store promise globally so practice engine can await it before reading questions.
+    window.__quizMDA_syncPromise = syncQuestionsFromServer();
     
     // Register service worker for offline support
     registerServiceWorker();

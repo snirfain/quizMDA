@@ -76,6 +76,11 @@ export async function calculateAdaptiveDifficulty(userId, baseDifficulty) {
 }
 
 export async function getAdaptiveQuestions(userId, hierarchyFilters = {}, tagFilters = [], excludeQuestionId = null) {
+  // Wait for boot sync from server → localStorage (ensures mobile has all questions)
+  if (typeof window !== 'undefined' && window.__quizMDA_syncPromise) {
+    await window.__quizMDA_syncPromise;
+  }
+
   const { category_name, topic_name } = hierarchyFilters;
   
   // Build hierarchy filter

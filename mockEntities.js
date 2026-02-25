@@ -306,6 +306,71 @@ function loadFromStorage() {
 const mockData = loadFromStorage();
 if (loadFromStorage._migratedMediaBank) saveToStorage();
 
+/**
+ * Normalize a server question doc into the local format used by components.
+ */
+function serverToLocal(sq) {
+  let diff = sq.difficulty_level;
+  if (typeof diff === 'number') {
+    diff = diff >= 8 ? 'קשה' : diff >= 5 ? 'בינוני' : 'קל';
+  }
+  return {
+    id: sq.id || sq._id || uid('q'),
+    hierarchy_id: sq.hierarchy_id,
+    question_type: sq.question_type || 'single_choice',
+    question_text: sq.question_text,
+    options: sq.options ?? [],
+    correct_answer: sq.correct_answer,
+    difficulty_level: diff ?? null,
+    explanation: sq.explanation ?? null,
+    hint: sq.hint ?? null,
+    tags: sq.tags ?? [],
+    status: sq.status || 'active',
+    media_attachment: sq.media_attachment ?? null,
+    media_bank_tag: sq.media_bank_tag ?? null,
+    total_attempts: sq.total_attempts ?? 0,
+    total_success: sq.total_success ?? 0,
+    success_rate: sq.success_rate ?? 0,
+    createdAt: sq.createdAt,
+    updatedAt: sq.updatedAt,
+  };
+}
+
+/**
+ * Boot: fetch ALL questions from server API and REPLACE the local cache.
+ * Server = single source of truth. localStorage is only a read cache.
+ */
+export async function syncQuestionsFromServer() {
+  if (typeof window === 'undefined') return { fetched: 0 };
+  try {
+    const PAGE_SIZE = 1000;
+    let skip = 0;
+    let apiQuestions = [];
+    let page;
+    do {
+      const res = await fetch(`/api/questions?skip=${skip}&limit=${PAGE_SIZE}&_t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) break;
+      page = await res.json();
+      if (!Array.isArray(page)) break;
+      apiQuestions = apiQuestions.concat(page);
+      skip += PAGE_SIZE;
+    } while (page.length === PAGE_SIZE);
+
+    if (apiQuestions.length === 0) {
+      console.log('[syncQuestionsFromServer] API returned 0 questions; keeping local cache');
+      return { fetched: 0, local: mockData.questions.length };
+    }
+
+    mockData.questions = apiQuestions.map(serverToLocal);
+    saveToStorage();
+    console.log(`[syncQuestionsFromServer] Replaced local cache with ${mockData.questions.length} server questions`);
+    return { fetched: mockData.questions.length };
+  } catch (e) {
+    console.error('[syncQuestionsFromServer] error:', e);
+    return { fetched: 0, local: mockData.questions.length, error: e.message };
+  }
+}
+
 // Mock entity implementations
 export const mockEntities = {
   Question_Bank: {
@@ -325,7 +390,7 @@ export const mockEntities = {
       return null;
     },
     create: async (data) => {
-      const newQuestion = {
+      const local = {
         id: uid('q'),
         ...data,
         total_attempts: 0,
@@ -334,24 +399,52 @@ export const mockEntities = {
         createdAt: new Date(),
         updatedAt: new Date()
       };
-      mockData.questions.push(newQuestion);
+      try {
+        const res = await fetch('/api/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (res.ok) {
+          const created = await res.json();
+          const q = serverToLocal(Array.isArray(created) ? created[0] : created);
+          mockData.questions.push(q);
+          saveToStorage();
+          return q;
+        }
+      } catch (_) { /* server unreachable — save locally as fallback */ }
+      mockData.questions.push(local);
       saveToStorage();
-      return newQuestion;
+      return local;
     },
     update: async (id, data) => {
+      try {
+        const res = await fetch(`/api/questions/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (res.ok) {
+          const updated = serverToLocal(await res.json());
+          const idx = mockData.questions.findIndex(q => q.id === id);
+          if (idx !== -1) mockData.questions[idx] = updated;
+          else mockData.questions.push(updated);
+          saveToStorage();
+          return updated;
+        }
+      } catch (_) { /* fallback to local */ }
       const index = mockData.questions.findIndex(q => q.id === id);
       if (index !== -1) {
-        mockData.questions[index] = {
-          ...mockData.questions[index],
-          ...data,
-          updatedAt: new Date()
-        };
+        mockData.questions[index] = { ...mockData.questions[index], ...data, updatedAt: new Date() };
         saveToStorage();
         return mockData.questions[index];
       }
       return null;
     },
     delete: async (id) => {
+      try {
+        await fetch(`/api/questions/${id}`, { method: 'DELETE' });
+      } catch (_) { /* best-effort */ }
       const index = mockData.questions.findIndex(q => q.id === id);
       if (index !== -1) {
         mockData.questions.splice(index, 1);
@@ -361,7 +454,6 @@ export const mockEntities = {
       return { success: false };
     },
     distinct: async (field) => {
-      // Get unique values for a specific field
       const values = mockData.questions
         .map(q => q[field])
         .filter((value, index, self) => value != null && self.indexOf(value) === index);

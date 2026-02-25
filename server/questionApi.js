@@ -103,6 +103,40 @@ export async function postQuestions(req, res) {
   }
 }
 
+export async function updateQuestion(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const { id } = req.params;
+    const data = normalizeQuestionForDb(req.body);
+    const doc = await Question.findByIdAndUpdate(id, data, { new: true, runValidators: true }).lean();
+    if (!doc) return res.status(404).json({ error: 'Question not found' });
+    const { _id, ...rest } = doc;
+    res.json({ id: _id.toString(), ...rest });
+  } catch (err) {
+    console.error('PUT /api/questions/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function deleteQuestion(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const { id } = req.params;
+    const doc = await Question.findByIdAndDelete(id);
+    if (!doc) return res.status(404).json({ error: 'Question not found' });
+    res.json({ success: true, id });
+  } catch (err) {
+    console.error('DELETE /api/questions/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 /**
  * Upsert-based sync: load all existing question_texts from DB into a Set,
  * then bulk-create only the ones that don't exist. Fast and regex-free.

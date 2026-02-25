@@ -26,6 +26,9 @@ export default function TraineeDashboard({ userId }) {
 
   const loadAvailableTags = async () => {
     try {
+      if (typeof window !== 'undefined' && window.__quizMDA_syncPromise) {
+        await window.__quizMDA_syncPromise;
+      }
       const questions = await entities.Question_Bank.find({ status: 'active' });
       const tagsSet = new Set();
       questions.forEach(q => {

@@ -280,40 +280,6 @@ export default function QuestionImport({ onImportComplete }) {
       showToast(`יובאו ${results.successful} שאלות בהצלחה${splitMsg}${enrichMsg}${dupMsg}`, 'success');
       if (results.failed > 0) showToast(`${results.failed} נכשלו`, 'warning');
 
-      if (results.created?.length > 0) {
-        const CHUNK = 100;
-        const payload = results.created.map(q => ({
-          hierarchy_id: q.hierarchy_id,
-          question_type: q.question_type,
-          question_text: q.question_text,
-          options: q.options ?? [],
-          correct_answer: q.correct_answer,
-          difficulty_level: q.difficulty_level ?? 5,
-          explanation: q.explanation,
-          hint: q.hint,
-          tags: q.tags ?? [],
-          status: q.status ?? 'active',
-        }));
-        let totalSynced = 0;
-        try {
-          for (let i = 0; i < payload.length; i += CHUNK) {
-            const chunk = payload.slice(i, i + CHUNK);
-            const res = await fetch('/api/questions/sync', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(chunk),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              totalSynced += data.synced || 0;
-            }
-          }
-          if (totalSynced > 0) showToast(`סונכרנו ${totalSynced} שאלות חדשות לשרת — יופיעו בכל המכשירים`, 'success');
-        } catch (_) {
-          showToast('סנכרון לשרת נכשל — השאלות נשמרו במכשיר זה בלבד', 'warning');
-        }
-      }
-
       setParsed(null);
       setRawText('');
       setUploadedFiles([]);

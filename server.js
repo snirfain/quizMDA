@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 import { extractDocHandler } from './server/docExtract.js';
 import { uploadMiddleware, uploadMediaHandler } from './server/upload.js';
-import { getQuestions, postQuestions, syncQuestions, dedupeQuestions } from './server/questionApi.js';
+import { getQuestions, postQuestions, syncQuestions, dedupeQuestions, updateQuestion, deleteQuestion } from './server/questionApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -38,6 +38,8 @@ async function start() {
   app.post('/api/questions', postQuestions);
   app.post('/api/questions/sync', syncQuestions);
   app.post('/api/questions/dedupe', dedupeQuestions);
+  app.put('/api/questions/:id', updateQuestion);
+  app.delete('/api/questions/:id', deleteQuestion);
   app.use(express.static(path.join(__dirname, 'dist')));
   app.use((_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 

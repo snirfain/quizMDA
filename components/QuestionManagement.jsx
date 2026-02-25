@@ -142,52 +142,11 @@ export default function QuestionManagement() {
   const loadQuestions = async (opts = {}) => {
     setIsLoading(true);
     try {
-      // --- Source 1: Server API (paginated) ---
-      let apiQuestions = [];
-      let apiReachable = false;
-      try {
-        const PAGE_SIZE = 1000;
-        let skip = 0;
-        let page;
-        do {
-          const res = await fetch(`/api/questions?skip=${skip}&limit=${PAGE_SIZE}&_t=${Date.now()}`, { cache: 'no-store' });
-          if (!res.ok) break;
-          apiReachable = true;
-          page = await res.json();
-          if (!Array.isArray(page)) break;
-          apiQuestions = apiQuestions.concat(page);
-          skip += PAGE_SIZE;
-        } while (page.length === PAGE_SIZE);
-      } catch (_) { /* server unreachable */ }
-
-      // --- Source 2: localStorage ---
-      let localQuestions = [];
-      try {
-        localQuestions = await entities.Question_Bank.find({}, { sort: { createdAt: -1 } });
-      } catch (_) { /* no local data */ }
-
-      console.log(`[loadQuestions] API: ${apiQuestions.length}, localStorage: ${localQuestions.length}, apiReachable: ${apiReachable}`);
-
-      // --- Merge: combine both sources, deduplicate by question_text ---
-      const seenTexts = new Set();
-      const merged = [];
-      const addUnique = (list) => {
-        for (const q of list) {
-          const key = (q.question_text || '').trim().toLowerCase();
-          if (!key || seenTexts.has(key)) continue;
-          seenTexts.add(key);
-          merged.push(q);
-        }
-      };
-      addUnique(apiQuestions);
-      const localOnlyCount = merged.length;
-      addUnique(localQuestions);
-      const newFromLocal = merged.length - localOnlyCount;
-
-      const allQuestions = merged;
-      const fromApi = apiReachable && apiQuestions.length > 0;
-      if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = fromApi;
-
+      if (typeof window !== 'undefined' && window.__quizMDA_syncPromise) {
+        await window.__quizMDA_syncPromise;
+      }
+      const allQuestions = await entities.Question_Bank.find({}, { sort: { createdAt: -1 } });
+      console.log(`[loadQuestions] ${allQuestions.length} questions from synced cache`);
       setQuestions(allQuestions);
       const tagsSet = new Set();
       allQuestions.forEach(q => {
@@ -195,55 +154,9 @@ export default function QuestionManagement() {
       });
       setAvailableTags(Array.from(tagsSet).sort());
       setFilteredQuestions(allQuestions);
-      setLoadSource({ fromApi, count: allQuestions.length });
-
+      setLoadSource({ fromApi: true, count: allQuestions.length });
       if (opts?.showToastOnRefresh) {
-        if (fromApi) showToast(`נטענו ${allQuestions.length} שאלות (${apiQuestions.length} מהשרת, ${newFromLocal} מהמכשיר)`, 'success');
-        else showToast(`נטענו ${allQuestions.length} שאלות ממכשיר — השרת לא זמין`, 'warning');
-      }
-
-      // --- Auto-sync: if localStorage has questions not on server, push them ---
-      if (apiReachable && newFromLocal > 0) {
-        console.log(`[loadQuestions] Auto-syncing ${newFromLocal} local-only questions to server...`);
-        const serverTexts = new Set(apiQuestions.map(q => (q.question_text || '').trim().toLowerCase()));
-        const toSync = localQuestions.filter(q => {
-          const key = (q.question_text || '').trim().toLowerCase();
-          return key && !serverTexts.has(key);
-        }).map(q => ({
-          hierarchy_id: q.hierarchy_id,
-          question_type: q.question_type,
-          question_text: q.question_text,
-          options: q.options ?? [],
-          correct_answer: q.correct_answer,
-          difficulty_level: q.difficulty_level ?? 5,
-          explanation: q.explanation,
-          hint: q.hint,
-          tags: q.tags ?? [],
-          status: q.status ?? 'active',
-        }));
-        if (toSync.length > 0) {
-          const CHUNK = 100;
-          let synced = 0;
-          try {
-            for (let i = 0; i < toSync.length; i += CHUNK) {
-              const chunk = toSync.slice(i, i + CHUNK);
-              const res = await fetch('/api/questions/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(chunk),
-              });
-              if (res.ok) {
-                const result = await res.json();
-                synced += result.synced || 0;
-              }
-            }
-            if (synced > 0) {
-              showToast(`סונכרנו ${synced} שאלות חדשות לשרת — עכשיו כל המכשירים מסונכרנים`, 'success');
-            }
-          } catch (e) {
-            console.error('[loadQuestions] auto-sync error:', e);
-          }
-        }
+        showToast(`נטענו ${allQuestions.length} שאלות`, 'success');
       }
     } catch (error) {
       console.error('Error loading questions:', error);
