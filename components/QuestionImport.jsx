@@ -294,19 +294,21 @@ export default function QuestionImport({ onImportComplete }) {
           tags: q.tags ?? [],
           status: q.status ?? 'active',
         }));
-        let synced = 0;
+        let totalSynced = 0;
         try {
           for (let i = 0; i < payload.length; i += CHUNK) {
             const chunk = payload.slice(i, i + CHUNK);
-            const res = await fetch('/api/questions', {
+            const res = await fetch('/api/questions/sync', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(chunk),
             });
-            if (res.ok) synced += chunk.length;
+            if (res.ok) {
+              const data = await res.json();
+              totalSynced += data.synced || 0;
+            }
           }
-          if (synced > 0) showToast(`שאלות סונכרנו לשרת (${synced}) — יופיעו בכל המכשירים`, 'success');
-          if (synced < payload.length) showToast(`חלק מהשאלות לא סונכרנו (${payload.length - synced})`, 'warning');
+          if (totalSynced > 0) showToast(`סונכרנו ${totalSynced} שאלות חדשות לשרת — יופיעו בכל המכשירים`, 'success');
         } catch (_) {
           showToast('סנכרון לשרת נכשל — השאלות נשמרו במכשיר זה בלבד', 'warning');
         }

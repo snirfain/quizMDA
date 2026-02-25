@@ -146,10 +146,6 @@ export async function extractTextFromPDF(file) {
     fullText += pageText.trimEnd() + '\n';
   }
 
-  // #region agent log
-  if (import.meta.env.DEV) fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1',location:'questionImport.js:extractTextFromPDF',message:'hasEOL stats',data:{hasEOLCount,itemCount,totalChars:fullText.length,lineCount:fullText.split('\n').length,sampleFirstLine:fullText.split('\n')[0]?.slice(0,150)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
   if (worker) worker.destroy();
   return fullText;
 }
@@ -222,9 +218,6 @@ function parseQuestionsJson(content) {
     .trim();
 
   const jsonMatch = stripped.match(/\[[\s\S]*\]/);
-  // #region agent log
-  if (import.meta.env.DEV && !jsonMatch) fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'questionImport.js:parseQuestionsJson',message:'no JSON array in content',data:{strippedLen:stripped.length,strippedPreview:stripped.slice(0,400)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!jsonMatch) return [];
 
   let raw = jsonMatch[0];
@@ -249,9 +242,6 @@ function parseQuestionsJson(content) {
   if (lastGood > 1) {
     try { return JSON.parse(raw.slice(0, lastGood)); } catch (_) {}
   }
-  // #region agent log
-  if (import.meta.env.DEV) fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H5',location:'questionImport.js:parseQuestionsJson',message:'parse and salvage failed',data:{rawLen:raw.length,rawPreview:raw.slice(0,300)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return [];
 }
 
@@ -330,14 +320,6 @@ function smartChunkText(text) {
 
     bytePos += raw.length + 1;  // +1 for the '\n'
   }
-
-  // #region agent log
-  if (import.meta.env.DEV) {
-    const sectionCount = boundaries.filter(b => b.type === 'section').length;
-    const questionCount = boundaries.filter(b => b.type === 'question').length;
-    fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'questionImport.js:smartChunkText',message:'boundary stats',data:{totalBoundaries:boundaries.length,sectionCount,questionCount,lineCount:lines.length,sampleLines:lines.slice(0,5).map(l=>l.slice(0,80))},timestamp:Date.now()})}).catch(()=>{});
-  }
-  // #endregion
 
   // ── Fallback: try global regex for question starts (DOCX often has few line breaks) ─────────
   if (boundaries.length < 3) {
@@ -424,11 +406,6 @@ function smartChunkText(text) {
   flush(text.length);
 
   const finalChunks = chunks.filter(c => c.trim().length > 30);
-  const sizes = finalChunks.map(c => c.length).sort((a,b)=>b-a);
-
-  // #region agent log
-  if (import.meta.env.DEV) fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H4',location:'questionImport.js:smartChunkText',message:'chunk sizes',data:{chunkCount:finalChunks.length,maxChunk:sizes[0],minChunk:sizes[sizes.length-1],top5:sizes.slice(0,5)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   return finalChunks;
 }
@@ -494,13 +471,7 @@ async function parseOneChunkWithAI(fullText, apiKey) {
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || '[]';
-  // #region agent log
-  if (import.meta.env.DEV) fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1',location:'questionImport.js:parseOneChunkWithAI',message:'API response content',data:{contentLength:content.length,contentPreview:(typeof content==='string'?content:JSON.stringify(content)).slice(0,800),hasArray:(typeof content==='string'?content:'').indexOf('[')!==-1},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const parsed = parseQuestionsJson(content);
-  // #region agent log
-  if (import.meta.env.DEV) fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'questionImport.js:parseOneChunkWithAI',message:'after parseQuestionsJson',data:{parsedCount:Array.isArray(parsed)?parsed.length:-1},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return parsed;
 }
 

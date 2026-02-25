@@ -1,6 +1,6 @@
 // Service Worker for MDA Quiz App — /api/questions always from network (no cache)
-const CACHE_NAME = 'mda-quiz-v2';
-const STATIC_CACHE_NAME = 'mda-static-v2';
+const CACHE_NAME = 'mda-quiz-v3';
+const STATIC_CACHE_NAME = 'mda-static-v3';
 
 const STATIC_ASSETS = ['/', '/index.html'];
 
@@ -29,7 +29,7 @@ self.addEventListener('fetch', (event) => {
   if (!event.request.url.startsWith('http')) return;
 
   const url = new URL(event.request.url);
-  if (url.pathname === '/api/questions') {
+  if (url.pathname.startsWith('/api/')) {
     event.respondWith(fetch(event.request));
     return;
   }

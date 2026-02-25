@@ -103,6 +103,40 @@ export async function postQuestions(req, res) {
   }
 }
 
+/**
+ * Upsert-based sync: for each question, if question_text already exists in DB → skip;
+ * otherwise create it. Returns { synced, skipped }.
+ */
+export async function syncQuestions(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const body = req.body;
+    const items = Array.isArray(body) ? body : [body];
+    console.log('[api/questions/sync] incoming:', items.length);
+    let synced = 0;
+    let skipped = 0;
+    for (const q of items) {
+      const text = (q.question_text || '').trim();
+      if (!text) { skipped++; continue; }
+      const exists = await Question.findOne({
+        question_text: { $regex: `^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+      }).lean();
+      if (exists) { skipped++; continue; }
+      const data = normalizeQuestionForDb(q);
+      await Question.create(data);
+      synced++;
+    }
+    console.log('[api/questions/sync] synced:', synced, 'skipped:', skipped);
+    res.status(201).json({ synced, skipped, total: items.length });
+  } catch (err) {
+    console.error('POST /api/questions/sync error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 /** Remove duplicate questions in DB by question_text (keep first, delete rest). */
 export async function dedupeQuestions(req, res) {
   try {

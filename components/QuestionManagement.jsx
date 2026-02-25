@@ -142,7 +142,9 @@ export default function QuestionManagement() {
   const loadQuestions = async (opts = {}) => {
     setIsLoading(true);
     try {
-      let allQuestions = [];
+      // --- Source 1: Server API (paginated) ---
+      let apiQuestions = [];
+      let apiReachable = false;
       try {
         const PAGE_SIZE = 1000;
         let skip = 0;
@@ -150,38 +152,98 @@ export default function QuestionManagement() {
         do {
           const res = await fetch(`/api/questions?skip=${skip}&limit=${PAGE_SIZE}&_t=${Date.now()}`, { cache: 'no-store' });
           if (!res.ok) break;
+          apiReachable = true;
           page = await res.json();
           if (!Array.isArray(page)) break;
-          allQuestions = allQuestions.concat(page);
-          if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = true;
+          apiQuestions = apiQuestions.concat(page);
           skip += PAGE_SIZE;
         } while (page.length === PAGE_SIZE);
-      } catch (e) {
-        allQuestions = [];
-      }
-      if (allQuestions.length === 0) {
-        allQuestions = await entities.Question_Bank.find({}, {
-          sort: { createdAt: -1 }
-        });
-        if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = false;
-        // #region agent log
-        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'QuestionManagement.jsx:loadQuestions:fallback',message:'using localStorage fallback',data:{count:allQuestions.length},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-      }
+      } catch (_) { /* server unreachable */ }
+
+      // --- Source 2: localStorage ---
+      let localQuestions = [];
+      try {
+        localQuestions = await entities.Question_Bank.find({}, { sort: { createdAt: -1 } });
+      } catch (_) { /* no local data */ }
+
+      console.log(`[loadQuestions] API: ${apiQuestions.length}, localStorage: ${localQuestions.length}, apiReachable: ${apiReachable}`);
+
+      // --- Merge: combine both sources, deduplicate by question_text ---
+      const seenTexts = new Set();
+      const merged = [];
+      const addUnique = (list) => {
+        for (const q of list) {
+          const key = (q.question_text || '').trim().toLowerCase();
+          if (!key || seenTexts.has(key)) continue;
+          seenTexts.add(key);
+          merged.push(q);
+        }
+      };
+      addUnique(apiQuestions);
+      const localOnlyCount = merged.length;
+      addUnique(localQuestions);
+      const newFromLocal = merged.length - localOnlyCount;
+
+      const allQuestions = merged;
+      const fromApi = apiReachable && apiQuestions.length > 0;
+      if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = fromApi;
+
       setQuestions(allQuestions);
       const tagsSet = new Set();
       allQuestions.forEach(q => {
-        if (q.tags && Array.isArray(q.tags)) {
-          q.tags.forEach(tag => tagsSet.add(tag));
-        }
+        if (q.tags && Array.isArray(q.tags)) q.tags.forEach(tag => tagsSet.add(tag));
       });
       setAvailableTags(Array.from(tagsSet).sort());
       setFilteredQuestions(allQuestions);
-      const fromApi = !!(typeof window !== 'undefined' && window.__quizMDA_usingQuestionApi);
       setLoadSource({ fromApi, count: allQuestions.length });
+
       if (opts?.showToastOnRefresh) {
-        if (fromApi) showToast(`נטענו ${allQuestions.length} שאלות מהשרת`, 'success');
-        else showToast(`נטענו ${allQuestions.length} שאלות ממכשיר — השרת לא זמין או ריק`, 'warning');
+        if (fromApi) showToast(`נטענו ${allQuestions.length} שאלות (${apiQuestions.length} מהשרת, ${newFromLocal} מהמכשיר)`, 'success');
+        else showToast(`נטענו ${allQuestions.length} שאלות ממכשיר — השרת לא זמין`, 'warning');
+      }
+
+      // --- Auto-sync: if localStorage has questions not on server, push them ---
+      if (apiReachable && newFromLocal > 0) {
+        console.log(`[loadQuestions] Auto-syncing ${newFromLocal} local-only questions to server...`);
+        const serverTexts = new Set(apiQuestions.map(q => (q.question_text || '').trim().toLowerCase()));
+        const toSync = localQuestions.filter(q => {
+          const key = (q.question_text || '').trim().toLowerCase();
+          return key && !serverTexts.has(key);
+        }).map(q => ({
+          hierarchy_id: q.hierarchy_id,
+          question_type: q.question_type,
+          question_text: q.question_text,
+          options: q.options ?? [],
+          correct_answer: q.correct_answer,
+          difficulty_level: q.difficulty_level ?? 5,
+          explanation: q.explanation,
+          hint: q.hint,
+          tags: q.tags ?? [],
+          status: q.status ?? 'active',
+        }));
+        if (toSync.length > 0) {
+          const CHUNK = 100;
+          let synced = 0;
+          try {
+            for (let i = 0; i < toSync.length; i += CHUNK) {
+              const chunk = toSync.slice(i, i + CHUNK);
+              const res = await fetch('/api/questions/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(chunk),
+              });
+              if (res.ok) {
+                const result = await res.json();
+                synced += result.synced || 0;
+              }
+            }
+            if (synced > 0) {
+              showToast(`סונכרנו ${synced} שאלות חדשות לשרת — עכשיו כל המכשירים מסונכרנים`, 'success');
+            }
+          } catch (e) {
+            console.error('[loadQuestions] auto-sync error:', e);
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading questions:', error);
@@ -279,55 +341,67 @@ export default function QuestionManagement() {
   };
 
   const syncQuestionsToServer = async () => {
-    if (!questions.length) return;
     setIsSyncingToServer(true);
-    const CHUNK = 100;
-    const payload = questions.map(q => ({
-      hierarchy_id: q.hierarchy_id,
-      question_type: q.question_type,
-      question_text: q.question_text,
-      options: q.options ?? [],
-      correct_answer: q.correct_answer,
-      difficulty_level: q.difficulty_level ?? 5,
-      explanation: q.explanation,
-      hint: q.hint,
-      tags: q.tags ?? [],
-      status: q.status ?? 'active',
-    }));
-    let synced = 0;
-    // #region agent log
-    if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:start',message:'sync start',data:{totalQuestions:payload.length,chunkSize:CHUNK},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     try {
+      // Collect from BOTH current state and localStorage to make sure nothing is missed
+      let localQuestions = [];
+      try { localQuestions = await entities.Question_Bank.find({}); } catch (_) {}
+      const allSources = [...questions, ...localQuestions];
+      const seenTexts = new Set();
+      const unique = [];
+      for (const q of allSources) {
+        const key = (q.question_text || '').trim().toLowerCase();
+        if (!key || seenTexts.has(key)) continue;
+        seenTexts.add(key);
+        unique.push(q);
+      }
+      if (unique.length === 0) {
+        showToast('אין שאלות לסנכרן', 'warning');
+        return;
+      }
+      const CHUNK = 100;
+      const payload = unique.map(q => ({
+        hierarchy_id: q.hierarchy_id,
+        question_type: q.question_type,
+        question_text: q.question_text,
+        options: q.options ?? [],
+        correct_answer: q.correct_answer,
+        difficulty_level: q.difficulty_level ?? 5,
+        explanation: q.explanation,
+        hint: q.hint,
+        tags: q.tags ?? [],
+        status: q.status ?? 'active',
+      }));
+      let totalSynced = 0;
+      let totalSkipped = 0;
       for (let i = 0; i < payload.length; i += CHUNK) {
         const chunk = payload.slice(i, i + CHUNK);
-        const res = await fetch('/api/questions', {
+        const res = await fetch('/api/questions/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(chunk),
         });
-        if (res.status === 200 || res.status === 201) synced += chunk.length;
-        // #region agent log
-        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:chunk',message:'chunk result',data:{chunkIndex:Math.floor(i/CHUNK),status:res.status,syncedSoFar:synced},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        if (res.status === 503 || res.status === 500) {
-          const msg = res.status === 503
-            ? 'השרת לא מחובר ל-MongoDB. ב-Render: בדוק ש-MONGODB_URI מוגדר ב-Environment, וב-MongoDB Atlas אפשר גישה מ-Network Access (0.0.0.0/0).'
-            : (await res.json().catch(() => ({}))).error || 'שגיאת שרת';
-          showToast(msg, 'error');
+        if (res.ok) {
+          const result = await res.json();
+          totalSynced += result.synced || 0;
+          totalSkipped += result.skipped || 0;
+        } else if (res.status === 503) {
+          showToast('השרת לא מחובר ל-MongoDB. ב-Render: בדוק ש-MONGODB_URI מוגדר ב-Environment, וב-MongoDB Atlas: Network Access → 0.0.0.0/0.', 'error');
+          break;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          showToast(errData.error || 'שגיאת שרת', 'error');
           break;
         }
       }
-      // #region agent log
-      if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:done',message:'sync done',data:{totalPayload:payload.length,synced},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      if (synced > 0) {
-        showToast(`סונכרנו ${synced} שאלות לשרת — יופיעו בכל המכשירים`, 'success');
+      if (totalSynced > 0) {
+        showToast(`סונכרנו ${totalSynced} שאלות חדשות לשרת (${totalSkipped} כבר קיימות)`, 'success');
         await loadQuestions();
-      } else if (synced === 0 && payload.length > 0) {
+      } else if (totalSkipped > 0) {
+        showToast(`כל ${totalSkipped} השאלות כבר קיימות בשרת`, 'info');
+      } else {
         showToast('לא סונכרנו שאלות — השרת לא מחובר למסד הנתונים', 'error');
       }
-      if (synced > 0 && synced < payload.length) showToast(`${payload.length - synced} שאלות לא סונכרנו`, 'warning');
     } catch (e) {
       showToast('סנכרון לשרת נכשל: ' + (e?.message || ''), 'error');
     } finally {
