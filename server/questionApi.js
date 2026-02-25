@@ -104,8 +104,8 @@ export async function postQuestions(req, res) {
 }
 
 /**
- * Upsert-based sync: for each question, if question_text already exists in DB → skip;
- * otherwise create it. Returns { synced, skipped }.
+ * Upsert-based sync: load all existing question_texts from DB into a Set,
+ * then bulk-create only the ones that don't exist. Fast and regex-free.
  */
 export async function syncQuestions(req, res) {
   try {
@@ -116,19 +116,29 @@ export async function syncQuestions(req, res) {
     const body = req.body;
     const items = Array.isArray(body) ? body : [body];
     console.log('[api/questions/sync] incoming:', items.length);
-    let synced = 0;
+
+    const allExisting = await Question.find({}, { question_text: 1 }).lean();
+    const existingTexts = new Set(
+      allExisting.map(doc => (doc.question_text || '').trim().toLowerCase())
+    );
+    console.log('[api/questions/sync] existing texts in DB:', existingTexts.size);
+
+    const toCreate = [];
     let skipped = 0;
     for (const q of items) {
       const text = (q.question_text || '').trim();
       if (!text) { skipped++; continue; }
-      const exists = await Question.findOne({
-        question_text: { $regex: `^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
-      }).lean();
-      if (exists) { skipped++; continue; }
-      const data = normalizeQuestionForDb(q);
-      await Question.create(data);
-      synced++;
+      if (existingTexts.has(text.toLowerCase())) { skipped++; continue; }
+      existingTexts.add(text.toLowerCase());
+      toCreate.push(normalizeQuestionForDb(q));
     }
+
+    let synced = 0;
+    if (toCreate.length > 0) {
+      const result = await Question.insertMany(toCreate, { ordered: false });
+      synced = result.length;
+    }
+
     console.log('[api/questions/sync] synced:', synced, 'skipped:', skipped);
     res.status(201).json({ synced, skipped, total: items.length });
   } catch (err) {
