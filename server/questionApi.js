@@ -10,8 +10,22 @@ function isDbConnected() {
   return mongoose.connection.readyState === 1;
 }
 
+/** Try to connect once if not connected (helps after Render cold start). */
+async function ensureDbConnection() {
+  if (isDbConnected()) return true;
+  const uri = process.env.MONGODB_URI;
+  if (!uri) return false;
+  try {
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
+    return isDbConnected();
+  } catch (_) {
+    return false;
+  }
+}
+
 export async function getQuestions(req, res) {
   try {
+    await ensureDbConnection();
     if (!isDbConnected()) {
       return res.status(200).json([]);
     }
@@ -29,6 +43,7 @@ export async function getQuestions(req, res) {
 
 export async function postQuestions(req, res) {
   try {
+    await ensureDbConnection();
     if (!isDbConnected()) {
       return res.status(503).json({ error: 'Database not connected' });
     }

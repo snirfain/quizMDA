@@ -286,13 +286,22 @@ export default function QuestionManagement() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(chunk),
         });
+        if (res.status === 503 || res.status === 500) {
+          const msg = res.status === 503
+            ? 'השרת לא מחובר ל-MongoDB. ב-Render: בדוק ש-MONGODB_URI מוגדר ב-Environment, וב-MongoDB Atlas אפשר גישה מ-Network Access (0.0.0.0/0).'
+            : (await res.json().catch(() => ({}))).error || 'שגיאת שרת';
+          showToast(msg, 'error');
+          break;
+        }
         if (res.ok) synced += chunk.length;
       }
       if (synced > 0) {
         showToast(`סונכרנו ${synced} שאלות לשרת — יופיעו בכל המכשירים`, 'success');
         await loadQuestions();
+      } else if (synced === 0 && payload.length > 0) {
+        showToast('לא סונכרנו שאלות — השרת לא מחובר למסד הנתונים', 'error');
       }
-      if (synced < payload.length) showToast(`${payload.length - synced} שאלות לא סונכרנו`, 'warning');
+      if (synced > 0 && synced < payload.length) showToast(`${payload.length - synced} שאלות לא סונכרנו`, 'warning');
     } catch (e) {
       showToast('סנכרון לשרת נכשל: ' + (e?.message || ''), 'error');
     } finally {
