@@ -99,6 +99,7 @@ export default function QuestionManagement() {
   const [aiReclassifyProgress, setAiReclassifyProgress] = useState({ running: false, current: 0, total: 0, updated: 0 });
   const [isSyncingToServer, setIsSyncingToServer] = useState(false);
   const [isDeduping, setIsDeduping] = useState(false);
+  const [loadSource, setLoadSource] = useState({ fromApi: false, count: 0 });
   const hasAutoReclassified = useRef(false);
 
   useEffect(() => {
@@ -138,29 +139,25 @@ export default function QuestionManagement() {
     filterQuestions();
   }, [searchQuery, filters, questions, selectedTags]);
 
-  const loadQuestions = async () => {
+  const loadQuestions = async (opts = {}) => {
     setIsLoading(true);
     try {
       let allQuestions = [];
       try {
-        const res = await fetch(`/api/questions?_t=${Date.now()}`, { cache: 'no-store' });
-        // #region agent log
-        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1_H2_H4',location:'QuestionManagement.jsx:loadQuestions:afterFetch',message:'GET /api/questions response',data:{status:res.status,ok:res.ok},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            allQuestions = data;
-            if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = true;
-            // #region agent log
-            if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1_H4',location:'QuestionManagement.jsx:loadQuestions:fromApi',message:'using API data',data:{count:data.length},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
-          }
-        }
+        const PAGE_SIZE = 1000;
+        let skip = 0;
+        let page;
+        do {
+          const res = await fetch(`/api/questions?skip=${skip}&limit=${PAGE_SIZE}&_t=${Date.now()}`, { cache: 'no-store' });
+          if (!res.ok) break;
+          page = await res.json();
+          if (!Array.isArray(page)) break;
+          allQuestions = allQuestions.concat(page);
+          if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = true;
+          skip += PAGE_SIZE;
+        } while (page.length === PAGE_SIZE);
       } catch (e) {
-        // #region agent log
-        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'QuestionManagement.jsx:loadQuestions:fetchCatch',message:'fetch failed',data:{err:String(e?.message||e)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
+        allQuestions = [];
       }
       if (allQuestions.length === 0) {
         allQuestions = await entities.Question_Bank.find({}, {
@@ -180,6 +177,12 @@ export default function QuestionManagement() {
       });
       setAvailableTags(Array.from(tagsSet).sort());
       setFilteredQuestions(allQuestions);
+      const fromApi = !!(typeof window !== 'undefined' && window.__quizMDA_usingQuestionApi);
+      setLoadSource({ fromApi, count: allQuestions.length });
+      if (opts?.showToastOnRefresh) {
+        if (fromApi) showToast(`נטענו ${allQuestions.length} שאלות מהשרת`, 'success');
+        else showToast(`נטענו ${allQuestions.length} שאלות ממכשיר — השרת לא זמין או ריק`, 'warning');
+      }
     } catch (error) {
       console.error('Error loading questions:', error);
       showToast('שגיאה בטעינת שאלות', 'error');
@@ -731,6 +734,41 @@ export default function QuestionManagement() {
           {/* Tab Panels */}
           {activeTab === 'list' && (
             <div role="tabpanel" aria-labelledby="list-tab" id="list-panel">
+
+          {/* Source indicator + Refresh from server */}
+          {activeTab === 'list' && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              flexWrap: 'wrap',
+              marginBottom: '10px',
+              padding: '8px 12px',
+              background: loadSource.fromApi ? '#E8F5E9' : '#FFF3E0',
+              borderRadius: '8px',
+              border: `1px solid ${loadSource.fromApi ? '#81C784' : '#FFB74D'}`,
+            }}>
+              <span style={{ fontWeight: 600, color: loadSource.fromApi ? '#2E7D32' : '#E65100' }}>
+                {loadSource.fromApi ? `מהשרת: ${loadSource.count} שאלות` : `ממכשיר: ${loadSource.count} שאלות`}
+              </span>
+              <button
+                type="button"
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: '#1565C0',
+                  color: '#fff',
+                  cursor: isLoading ? 'wait' : 'pointer',
+                  fontSize: '13px',
+                }}
+                onClick={() => loadQuestions({ showToastOnRefresh: true })}
+                disabled={isLoading}
+              >
+                {isLoading ? 'טוען...' : 'רענן מהשרת'}
+              </button>
+            </div>
+          )}
 
           {/* Search and Filters */}
           <div style={styles.filtersSection}>

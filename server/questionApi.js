@@ -64,8 +64,10 @@ export async function getQuestions(req, res) {
     if (!isDbConnected()) {
       return res.status(200).json([]);
     }
-    const list = await Question.find({}).sort({ createdAt: -1 }).lean();
-    console.log('[api/questions] GET: count=', list.length);
+    const skip = Math.max(0, parseInt(req.query.skip, 10) || 0);
+    const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit, 10) || 100000));
+    const list = await Question.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+    console.log('[api/questions] GET: skip=', skip, 'limit=', limit, 'count=', list.length);
     const withId = list.map((doc) => {
       const { _id, ...rest } = doc;
       return { id: _id.toString(), ...rest };
