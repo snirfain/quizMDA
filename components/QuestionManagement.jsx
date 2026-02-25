@@ -98,6 +98,7 @@ export default function QuestionManagement() {
   const [isReclassifying, setIsReclassifying] = useState(false);
   const [aiReclassifyProgress, setAiReclassifyProgress] = useState({ running: false, current: 0, total: 0, updated: 0 });
   const [isSyncingToServer, setIsSyncingToServer] = useState(false);
+  const [isDeduping, setIsDeduping] = useState(false);
   const hasAutoReclassified = useRef(false);
 
   useEffect(() => {
@@ -142,9 +143,9 @@ export default function QuestionManagement() {
     try {
       let allQuestions = [];
       try {
-        const res = await fetch('/api/questions');
+        const res = await fetch(`/api/questions?_t=${Date.now()}`, { cache: 'no-store' });
         // #region agent log
-        if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1_H2_H4',location:'QuestionManagement.jsx:loadQuestions:afterFetch',message:'GET /api/questions response',data:{status:res.status,ok:res.ok},timestamp:Date.now()})}).catch(()=>{});
+        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1_H2_H4',location:'QuestionManagement.jsx:loadQuestions:afterFetch',message:'GET /api/questions response',data:{status:res.status,ok:res.ok},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
         if (res.ok) {
           const data = await res.json();
@@ -152,13 +153,13 @@ export default function QuestionManagement() {
             allQuestions = data;
             if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = true;
             // #region agent log
-            if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1_H4',location:'QuestionManagement.jsx:loadQuestions:fromApi',message:'using API data',data:{count:data.length},timestamp:Date.now()})}).catch(()=>{});
+            if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H1_H4',location:'QuestionManagement.jsx:loadQuestions:fromApi',message:'using API data',data:{count:data.length},timestamp:Date.now()})}).catch(()=>{});
             // #endregion
           }
         }
       } catch (e) {
         // #region agent log
-        if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'QuestionManagement.jsx:loadQuestions:fetchCatch',message:'fetch failed',data:{err:String(e?.message||e)},timestamp:Date.now()})}).catch(()=>{});
+        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'QuestionManagement.jsx:loadQuestions:fetchCatch',message:'fetch failed',data:{err:String(e?.message||e)},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
       }
       if (allQuestions.length === 0) {
@@ -167,7 +168,7 @@ export default function QuestionManagement() {
         });
         if (typeof window !== 'undefined') window.__quizMDA_usingQuestionApi = false;
         // #region agent log
-        if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'QuestionManagement.jsx:loadQuestions:fallback',message:'using localStorage fallback',data:{count:allQuestions.length},timestamp:Date.now()})}).catch(()=>{});
+        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H2',location:'QuestionManagement.jsx:loadQuestions:fallback',message:'using localStorage fallback',data:{count:allQuestions.length},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
       }
       setQuestions(allQuestions);
@@ -292,7 +293,7 @@ export default function QuestionManagement() {
     }));
     let synced = 0;
     // #region agent log
-    if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:start',message:'sync start',data:{totalQuestions:payload.length,chunkSize:CHUNK},timestamp:Date.now()})}).catch(()=>{});
+    if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:start',message:'sync start',data:{totalQuestions:payload.length,chunkSize:CHUNK},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     try {
       for (let i = 0; i < payload.length; i += CHUNK) {
@@ -304,7 +305,7 @@ export default function QuestionManagement() {
         });
         if (res.status === 200 || res.status === 201) synced += chunk.length;
         // #region agent log
-        if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:chunk',message:'chunk result',data:{chunkIndex:Math.floor(i/CHUNK),status:res.status,syncedSoFar:synced},timestamp:Date.now()})}).catch(()=>{});
+        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:chunk',message:'chunk result',data:{chunkIndex:Math.floor(i/CHUNK),status:res.status,syncedSoFar:synced},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
         if (res.status === 503 || res.status === 500) {
           const msg = res.status === 503
@@ -315,7 +316,7 @@ export default function QuestionManagement() {
         }
       }
       // #region agent log
-      if (typeof fetch !== 'undefined') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:done',message:'sync done',data:{totalPayload:payload.length,synced},timestamp:Date.now()})}).catch(()=>{});
+      if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') fetch('http://127.0.0.1:7243/ingest/128e287e-a01f-48c3-a335-b3685c6b2ca9',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'28554a'},body:JSON.stringify({sessionId:'28554a',hypothesisId:'H3',location:'QuestionManagement.jsx:syncQuestionsToServer:done',message:'sync done',data:{totalPayload:payload.length,synced},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
       if (synced > 0) {
         showToast(`סונכרנו ${synced} שאלות לשרת — יופיעו בכל המכשירים`, 'success');
@@ -328,6 +329,24 @@ export default function QuestionManagement() {
       showToast('סנכרון לשרת נכשל: ' + (e?.message || ''), 'error');
     } finally {
       setIsSyncingToServer(false);
+    }
+  };
+
+  const removeDuplicateQuestions = async () => {
+    setIsDeduping(true);
+    try {
+      const res = await fetch('/api/questions/dedupe', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.removed != null) {
+        showToast(`הוסרו ${data.removed} שאלות כפולות מהשרת`, 'success');
+        await loadQuestions();
+      } else {
+        showToast(data.error || 'הסרת כפילויות נכשלה', 'error');
+      }
+    } catch (e) {
+      showToast('שגיאה: ' + (e?.message || ''), 'error');
+    } finally {
+      setIsDeduping(false);
     }
   };
 
@@ -812,6 +831,25 @@ export default function QuestionManagement() {
                     : 'שולח את השאלות שבמכשיר זה לשרת — יופיעו בכל המכשירים'}
                 >
                   {isSyncingToServer ? 'מסנכרן...' : `☁️ סנכרן ${questions.length} שאלות לשרת`}
+                </button>
+              )}
+              {questions.length > 0 && (
+                <button
+                  type="button"
+                  style={{
+                    ...styles.filterSelect,
+                    cursor: isDeduping ? 'wait' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    background: '#7b1fa2',
+                    color: '#fff',
+                    border: 'none',
+                  }}
+                  onClick={removeDuplicateQuestions}
+                  disabled={isDeduping}
+                  aria-label="הסר שאלות כפולות מהשרת"
+                  title="מוחק מהשרת שאלות עם טקסט זהה (משאיר אחת מכל כפילות)"
+                >
+                  {isDeduping ? 'מסיר כפילויות...' : '🗑️ הסר שאלות כפולות'}
                 </button>
               )}
               <PermissionGate permission={permissions.QUESTION_APPROVE}>

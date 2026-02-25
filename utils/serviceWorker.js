@@ -15,9 +15,8 @@ const STATIC_ASSETS = [
   '/App.jsx'
 ];
 
-// API endpoints to cache (Cache First strategy)
+// API endpoints to cache (Cache First strategy) — do NOT cache /api/questions (must always be fresh)
 const CACHE_FIRST_PATTERNS = [
-  /\/api\/questions/,
   /\/api\/hierarchies/
 ];
 

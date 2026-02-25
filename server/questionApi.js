@@ -70,6 +70,7 @@ export async function getQuestions(req, res) {
       const { _id, ...rest } = doc;
       return { id: _id.toString(), ...rest };
     });
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json(withId);
   } catch (err) {
     console.error('GET /api/questions error:', err);
@@ -96,6 +97,38 @@ export async function postQuestions(req, res) {
     res.status(201).json(Array.isArray(body) ? created : created[0]);
   } catch (err) {
     console.error('POST /api/questions error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/** Remove duplicate questions in DB by question_text (keep first, delete rest). */
+export async function dedupeQuestions(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const list = await Question.find({}).sort({ createdAt: 1 }).lean();
+    const seen = new Map();
+    const toDelete = [];
+    for (const doc of list) {
+      const key = (doc.question_text || '').trim().replace(/\s+/g, ' ').slice(0, 500);
+      if (!key) continue;
+      if (seen.has(key)) {
+        toDelete.push(doc._id);
+      } else {
+        seen.set(key, doc._id);
+      }
+    }
+    let removed = 0;
+    for (const id of toDelete) {
+      await Question.findByIdAndDelete(id);
+      removed++;
+    }
+    console.log('[api/questions] dedupe: removed=', removed);
+    res.json({ removed, total: list.length });
+  } catch (err) {
+    console.error('POST /api/questions/dedupe error:', err);
     res.status(500).json({ error: err.message });
   }
 }
