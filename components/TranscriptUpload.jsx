@@ -141,6 +141,7 @@ export default function TranscriptUpload() {
   const [generatedQuestions, setGeneratedQuestions] = useState([]);
   const [generatedForName, setGeneratedForName] = useState(null);
   const [selectedForAdd, setSelectedForAdd] = useState(new Set());
+  const [expandedQuestions, setExpandedQuestions] = useState(new Set());
   const [hierarchies, setHierarchies] = useState([]);
   const [selectedHierarchyId, setSelectedHierarchyId] = useState('');
   const [saving, setSaving] = useState(false);
@@ -221,8 +222,9 @@ export default function TranscriptUpload() {
         setGeneratedQuestions(questions);
         setGeneratedForName(data.transcriptName || t.name);
         setSelectedForAdd(new Set(questions.map((_, i) => i)));
+        setExpandedQuestions(new Set());
         showToast(`נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, 'success');
-        await loadList();
+        await loadList(searchQuery);
       } else {
         showToast(data.error || 'יצירת שאלות נכשלה', 'error');
       }
@@ -234,6 +236,27 @@ export default function TranscriptUpload() {
   };
 
   const selectedCount = selectedForAdd.size;
+  const toggleExpanded = (index) => {
+    setExpandedQuestions((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+  const getCorrectAnswerLabels = (q) => {
+    const opts = q.options || [];
+    const ca = q.correct_answer;
+    if (!ca) return [];
+    if (ca.value === 'true' || ca.value === 'false') {
+      const fromOpt = opts.find((o) => String(o.value) === String(ca.value))?.label;
+      return [fromOpt || (ca.value === 'true' ? 'נכון' : 'לא נכון')];
+    }
+    if (Array.isArray(ca.values)) return ca.values.map((v) => opts.find((o) => String(o.value) === String(v))?.label).filter(Boolean);
+    const o = opts.find((opt) => String(opt.value) === String(ca.value));
+    return o ? [o.label] : [];
+  };
+  const selectedHierarchyLabel = selectedHierarchyId && hierarchies.find((h) => h.id === selectedHierarchyId);
   const toggleSelectQuestion = (index) => {
     setSelectedForAdd((prev) => {
       const next = new Set(prev);
@@ -266,6 +289,7 @@ export default function TranscriptUpload() {
         const remaining = generatedQuestions.filter((_, i) => !selectedForAdd.has(i));
         setGeneratedQuestions(remaining);
         setSelectedForAdd(new Set(remaining.map((_, i) => i)));
+        setExpandedQuestions(new Set());
         if (remaining.length === 0) setGeneratedForName(null);
         await loadList();
       } else {
@@ -279,25 +303,40 @@ export default function TranscriptUpload() {
   };
 
   const handleFileChange = async (e) => {
-    const file = e.target?.files?.[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.srt')) {
-      showToast('נא לבחור קובץ SRT', 'warning');
+    const fileList = e.target?.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList).filter((f) => f.name && f.name.toLowerCase().endsWith('.srt'));
+    if (files.length === 0) {
+      showToast('נא לבחור קבצי SRT', 'warning');
+      e.target.value = '';
       return;
+    }
+    if (files.length !== fileList.length) {
+      showToast(`הועלו רק קבצי SRT (${files.length} מתוך ${fileList.length})`, 'warning');
     }
     setUploading(true);
     try {
       const form = new FormData();
-      form.append('file', file);
-      if (file.name) form.append('filename', file.name);
+      for (const file of files) {
+        form.append('file', file);
+      }
+      form.append('filenames', JSON.stringify(files.map((f) => f.name)));
       const res = await fetch('/api/transcripts/upload', {
         method: 'POST',
         body: form,
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        showToast(`הועלה: ${data.name || file.name}`, 'success');
-        await loadList();
+        const count = data.uploaded ?? (data.id ? 1 : 0);
+        const items = data.items || (data.id ? [data] : []);
+        if (count > 1) {
+          showToast(`הועלו ${count} תמלילים`, 'success');
+        } else if (items[0]) {
+          showToast(`הועלה: ${items[0].name}`, 'success');
+        } else {
+          showToast('הועלה', 'success');
+        }
+        await loadList(searchQuery);
       } else {
         showToast(data.error || 'העלאה נכשלה', 'error');
       }
@@ -408,13 +447,14 @@ export default function TranscriptUpload() {
           <input
             type="file"
             accept=".srt"
+            multiple
             onChange={handleFileChange}
             disabled={uploading}
-            aria-label="בחר קובץ תמליל SRT"
+            aria-label="בחר קבצי תמליל SRT (ניתן לבחור כמה)"
             style={{ ...styles.input, marginBottom: 0, cursor: uploading ? 'not-allowed' : 'pointer' }}
           />
         </label>
-        <p style={styles.note}>כל תמליל בקובץ נפרד. פורמט SRT בלבד.</p>
+        <p style={styles.note}>ניתן לבחור קובץ אחד או רבים (עד 200). פורמט SRT בלבד.</p>
         {uploading && <LoadingSpinner />}
       </div>
 
@@ -537,35 +577,84 @@ export default function TranscriptUpload() {
             </button>
             <span style={{ alignSelf: 'center', fontSize: 14, color: '#666' }}>נבחרו: {selectedCount}</span>
           </div>
-          <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 20, border: '1px solid #eee', borderRadius: 8, padding: 8, backgroundColor: '#fafafa' }}>
-            {generatedQuestions.map((q, i) => (
-              <label
-                key={i}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 10,
-                  padding: '10px 12px',
-                  marginBottom: 6,
-                  borderRadius: 8,
-                  backgroundColor: selectedForAdd.has(i) ? '#fff' : '#f0f0f0',
-                  border: `1px solid ${selectedForAdd.has(i) ? '#CC0000' : '#e0e0e0'}`,
-                  cursor: 'pointer',
-                  textAlign: 'right',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedForAdd.has(i)}
-                  onChange={() => toggleSelectQuestion(i)}
-                  aria-label={`אשר שאלה ${i + 1}`}
-                />
-                <span style={{ flex: 1, fontSize: 14, lineHeight: 1.5 }}>
-                  {q.question_text ? (q.question_text.length > 120 ? q.question_text.slice(0, 120) + '…' : q.question_text) : '(ללא טקסט)'}
-                </span>
-                <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>{q.question_type}</span>
-              </label>
-            ))}
+          <div style={{ maxHeight: 420, overflowY: 'auto', marginBottom: 20, border: '1px solid #eee', borderRadius: 8, padding: 8, backgroundColor: '#fafafa' }}>
+            {generatedQuestions.map((q, i) => {
+              const expanded = expandedQuestions.has(i);
+              const correctLabels = getCorrectAnswerLabels(q);
+              const typeLabel = { single_choice: 'חד־ברירה', multi_choice: 'רב־ברירה', true_false: 'נכון/לא נכון', open_ended: 'פתוחה', ordering: 'סדר' }[q.question_type] || q.question_type;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    padding: '10px 12px',
+                    marginBottom: 8,
+                    borderRadius: 8,
+                    backgroundColor: selectedForAdd.has(i) ? '#fff' : '#f0f0f0',
+                    border: `1px solid ${selectedForAdd.has(i) ? '#CC0000' : '#e0e0e0'}`,
+                    textAlign: 'right',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedForAdd.has(i)}
+                        onChange={() => toggleSelectQuestion(i)}
+                        aria-label={`אשר שאלה ${i + 1}`}
+                      />
+                      <span style={{ marginRight: 6 }}>בחר</span>
+                    </label>
+                    <span style={{ flex: 1, fontSize: 14, lineHeight: 1.5, minWidth: 0 }}>
+                      {q.question_text ? (q.question_text.length > 120 && !expanded ? q.question_text.slice(0, 120) + '…' : q.question_text) : '(ללא טקסט)'}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#666', flexShrink: 0 }}>{typeLabel}</span>
+                    <button
+                      type="button"
+                      style={{ ...styles.buttonSecondary, padding: '4px 10px', fontSize: 13, flexShrink: 0 }}
+                      onClick={(e) => { e.preventDefault(); toggleExpanded(i); }}
+                      aria-expanded={expanded}
+                      aria-label={expanded ? 'כווץ' : 'הרחב להצגה מלאה'}
+                    >
+                      {expanded ? '△ כווץ' : '▽ הצג מלא'}
+                    </button>
+                  </div>
+                  {expanded && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #eee', fontSize: 14, lineHeight: 1.6 }}>
+                      <div style={{ marginBottom: 8 }}>
+                        <strong style={{ color: '#333' }}>גזע (שאלה):</strong>
+                        <p style={{ margin: '4px 0 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{q.question_text || '—'}</p>
+                      </div>
+                      {(q.options || []).length > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <strong style={{ color: '#333' }}>מסיחים (אפשרויות):</strong>
+                          <ul style={{ margin: '4px 0 0 0', paddingRight: 20, listStyle: 'disc' }}>
+                            {(q.options || []).map((opt, j) => (
+                              <li key={j}>{opt.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {correctLabels.length > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <strong style={{ color: '#0a5f8c' }}>תשובה נכונה:</strong>
+                          <p style={{ margin: '4px 0 0 0', color: '#0a5f8c' }}>{correctLabels.join(' · ')}</p>
+                        </div>
+                      )}
+                      {q.explanation && (
+                        <div style={{ marginBottom: 8 }}>
+                          <strong style={{ color: '#333' }}>הסבר:</strong>
+                          <p style={{ margin: '4px 0 0 0' }}>{q.explanation}</p>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#666' }}>
+                        <span><strong>תגיות:</strong> {(q.tags && q.tags.length) ? q.tags.join(', ') : '—'}</span>
+                        <span><strong>קטגוריה (לאחר הוספה):</strong> {selectedHierarchyLabel ? (selectedHierarchyLabel.category_name || selectedHierarchyLabel.topic_name || selectedHierarchyLabel.id) : '—'}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <p style={{ ...styles.note, marginBottom: 12 }}>יחידת תוכן להוספה:</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>

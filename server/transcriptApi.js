@@ -9,6 +9,7 @@ import Transcript from '../models/Transcript.js';
 import { TRANSCRIPT_QUESTION_SYSTEM_PROMPT, buildTranscriptQuestionUserPrompt } from './transcriptQuestionPrompt.js';
 
 const memoryStorage = multer.memoryStorage();
+const MAX_FILES = 200;
 export const uploadTranscriptMiddleware = multer({
   storage: memoryStorage,
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -17,7 +18,7 @@ export const uploadTranscriptMiddleware = multer({
     if (ok) cb(null, true);
     else cb(new Error('רק קבצי SRT נתמכים'), false);
   },
-}).single('file');
+}).array('file', MAX_FILES);
 
 /**
  * Decode filename that may have been received as Latin-1 but is actually UTF-8 (e.g. Hebrew).
@@ -163,18 +164,33 @@ export async function uploadTranscript(req, res) {
     if (!isDbConnected()) {
       return res.status(503).json({ error: 'Database not connected' });
     }
-    const file = req.file;
-    if (!file || !file.buffer) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    const files = Array.isArray(req.files) ? req.files : req.file ? [req.file] : [];
+    if (files.length === 0) {
+      return res.status(400).json({ error: 'לא נבחרו קבצים להעלאה' });
     }
-    const fullText = parseSrtToText(file.buffer);
-    const rawFromMulter = (file.originalname || '').trim();
-    const fromBody = (req.body && typeof req.body.filename === 'string' && req.body.filename.trim()) || '';
-    const originalFilename = fromBody || decodeUtf8Filename(rawFromMulter);
-    const name = originalFilename.replace(/\.srt$/i, '').trim() || `תמליל ${Date.now()}`;
-    const doc = await Transcript.create({ name, fullText, originalFilename });
-    console.log('[api/transcripts] uploaded:', name, 'length:', fullText.length);
-    res.status(201).json({ id: doc._id.toString(), name, originalFilename, createdAt: doc.createdAt });
+    let filenames = [];
+    if (req.body && typeof req.body.filenames === 'string') {
+      try {
+        filenames = JSON.parse(req.body.filenames);
+        if (!Array.isArray(filenames)) filenames = [];
+      } catch (_) {}
+    } else if (req.body && typeof req.body.filename === 'string') {
+      filenames = [req.body.filename];
+    }
+    const created = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file || !file.buffer) continue;
+      const fullText = parseSrtToText(file.buffer);
+      const rawFromMulter = (file.originalname || '').trim();
+      const fromBody = filenames[i] != null && String(filenames[i]).trim() ? String(filenames[i]).trim() : '';
+      const originalFilename = fromBody || decodeUtf8Filename(rawFromMulter);
+      const name = originalFilename.replace(/\.srt$/i, '').trim() || `תמליל ${Date.now()}_${i}`;
+      const doc = await Transcript.create({ name, fullText, originalFilename });
+      created.push({ id: doc._id.toString(), name, originalFilename, createdAt: doc.createdAt });
+    }
+    console.log('[api/transcripts] uploaded:', created.length, 'files');
+    res.status(201).json(created.length === 1 ? created[0] : { uploaded: created.length, items: created });
   } catch (err) {
     console.error('POST /api/transcripts/upload error:', err);
     res.status(500).json({ error: err.message });
