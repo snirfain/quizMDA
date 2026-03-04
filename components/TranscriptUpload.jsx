@@ -6,6 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { showToast } from './Toast';
 import LoadingSpinner from './LoadingSpinner';
+import Modal from './Modal';
+import ConfirmDialog from './ConfirmDialog';
 import { entities } from '../config/appConfig';
 
 const styles = {
@@ -138,15 +140,24 @@ export default function TranscriptUpload() {
   const [generatingId, setGeneratingId] = useState(null);
   const [generatedQuestions, setGeneratedQuestions] = useState([]);
   const [generatedForName, setGeneratedForName] = useState(null);
+  const [selectedForAdd, setSelectedForAdd] = useState(new Set());
   const [hierarchies, setHierarchies] = useState([]);
   const [selectedHierarchyId, setSelectedHierarchyId] = useState('');
   const [saving, setSaving] = useState(false);
   const [completeToPerTranscript, setCompleteToPerTranscript] = useState({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [transcriptToDelete, setTranscriptToDelete] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editFullText, setEditFullText] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
 
-  const loadList = async () => {
+  const loadList = async (search = searchQuery) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/transcripts', { cache: 'no-store' });
+      const url = search.trim() ? `/api/transcripts?search=${encodeURIComponent(search.trim())}` : '/api/transcripts';
+      const res = await fetch(url, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setList(Array.isArray(data) ? data : []);
@@ -159,8 +170,9 @@ export default function TranscriptUpload() {
   };
 
   useEffect(() => {
-    loadList();
-  }, []);
+    const t = setTimeout(() => loadList(searchQuery), searchQuery ? 250 : 0);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   const loadHierarchies = async () => {
     try {
@@ -208,7 +220,8 @@ export default function TranscriptUpload() {
         const questions = data.questions || [];
         setGeneratedQuestions(questions);
         setGeneratedForName(data.transcriptName || t.name);
-        showToast(`נוצרו ${questions.length} שאלות`, 'success');
+        setSelectedForAdd(new Set(questions.map((_, i) => i)));
+        showToast(`נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, 'success');
         await loadList();
       } else {
         showToast(data.error || 'יצירת שאלות נכשלה', 'error');
@@ -220,14 +233,27 @@ export default function TranscriptUpload() {
     }
   };
 
+  const selectedCount = selectedForAdd.size;
+  const toggleSelectQuestion = (index) => {
+    setSelectedForAdd((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+  const selectAllQuestions = () => setSelectedForAdd(new Set(generatedQuestions.map((_, i) => i)));
+  const clearSelection = () => setSelectedForAdd(new Set());
+
   const handleAddToBank = async () => {
-    if (!selectedHierarchyId || generatedQuestions.length === 0) {
-      showToast('בחר יחידה (היררכיה) או וודא שיש שאלות להוספה', 'warning');
+    if (!selectedHierarchyId || selectedCount === 0) {
+      showToast('בחר יחידה ובחר לפחות שאלה אחת להוספה', 'warning');
       return;
     }
+    const toAdd = generatedQuestions.filter((_, i) => selectedForAdd.has(i));
     setSaving(true);
     try {
-      const payload = generatedQuestions.map((q) => ({ ...q, hierarchy_id: selectedHierarchyId }));
+      const payload = toAdd.map((q) => ({ ...q, hierarchy_id: selectedHierarchyId }));
       const res = await fetch('/api/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -237,9 +263,10 @@ export default function TranscriptUpload() {
       if (res.ok) {
         const created = Array.isArray(data) ? data : [data];
         showToast(`נוספו ${created.length} שאלות למאגר`, 'success');
-        setGeneratedQuestions([]);
-        setGeneratedForName(null);
-        setSelectedHierarchyId('');
+        const remaining = generatedQuestions.filter((_, i) => !selectedForAdd.has(i));
+        setGeneratedQuestions(remaining);
+        setSelectedForAdd(new Set(remaining.map((_, i) => i)));
+        if (remaining.length === 0) setGeneratedForName(null);
         await loadList();
       } else {
         showToast(data.error || 'הוספה למאגר נכשלה', 'error');
@@ -262,6 +289,7 @@ export default function TranscriptUpload() {
     try {
       const form = new FormData();
       form.append('file', file);
+      if (file.name) form.append('filename', file.name);
       const res = await fetch('/api/transcripts/upload', {
         method: 'POST',
         body: form,
@@ -295,6 +323,75 @@ export default function TranscriptUpload() {
       showToast('שגיאה: ' + (err?.message || ''), 'error');
     } finally {
       setMatching(false);
+    }
+  };
+
+  const handleDeleteTranscript = async () => {
+    if (!transcriptToDelete) return;
+    const id = transcriptToDelete._id;
+    setTranscriptToDelete(null);
+    try {
+      const res = await fetch(`/api/transcripts/${id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('התמליל נמחק', 'success');
+        loadList(searchQuery);
+      } else {
+        showToast(data.error || 'מחיקה נכשלה', 'error');
+      }
+    } catch (err) {
+      showToast('שגיאה: ' + (err?.message || ''), 'error');
+    }
+  };
+
+  const openEdit = async (t) => {
+    setEditingId(t._id);
+    setEditName(t.name);
+    setEditFullText('');
+    setEditLoading(true);
+    try {
+      const res = await fetch(`/api/transcripts/${t._id}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setEditName(data.name || t.name);
+        setEditFullText(data.fullText || '');
+      } else {
+        showToast(data.error || 'טעינת תמליל נכשלה', 'error');
+        setEditingId(null);
+      }
+    } catch (err) {
+      showToast('שגיאה: ' + (err?.message || ''), 'error');
+      setEditingId(null);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return;
+    if (!editName.trim()) {
+      showToast('יש להזין שם תמליל', 'warning');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/transcripts/${editingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName.trim(), fullText: editFullText }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('התמליל עודכן', 'success');
+        setEditingId(null);
+        loadList(searchQuery);
+      } else {
+        showToast(data.error || 'עדכון נכשל', 'error');
+      }
+    } catch (err) {
+      showToast('שגיאה: ' + (err?.message || ''), 'error');
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -339,6 +436,14 @@ export default function TranscriptUpload() {
 
       <div style={styles.section} role="region" aria-label="רשימת תמלילים">
         <h2 style={styles.sectionTitle}>📄 תמלילים שהועלו ({list.length})</h2>
+        <input
+          type="search"
+          placeholder="חיפוש לפי שם תמליל או תוכן..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="חיפוש תמלילים"
+          style={{ ...styles.input, marginBottom: 16 }}
+        />
         {loading ? (
           <LoadingSpinner />
         ) : (
@@ -370,6 +475,24 @@ export default function TranscriptUpload() {
                   </div>
                   <span style={styles.badge}>{t.questionCount ?? 0} שאלות</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      style={styles.buttonSecondary}
+                      onClick={() => openEdit(t)}
+                      disabled={editingId != null}
+                      aria-label={`ערוך תמליל ${t.name}`}
+                    >
+                      ערוך
+                    </button>
+                    <button
+                      type="button"
+                      style={{ ...styles.buttonSecondary, color: '#b00' }}
+                      onClick={() => setTranscriptToDelete(t)}
+                      disabled={!!transcriptToDelete}
+                      aria-label={`מחק תמליל ${t.name}`}
+                    >
+                      מחק
+                    </button>
                     <label style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span>השלמה ל־</span>
                       <input
@@ -400,11 +523,51 @@ export default function TranscriptUpload() {
       </div>
 
       {generatedQuestions.length > 0 && (
-        <div style={{ ...styles.section, ...styles.addToBankCard }} role="region" aria-label="הוספת שאלות למאגר">
+        <div style={{ ...styles.section, ...styles.addToBankCard }} role="region" aria-label="אישור והוספת שאלות למאגר">
           <h2 style={styles.sectionTitle}>
             ✅ נוצרו {generatedQuestions.length} שאלות {generatedForName ? `מתוך &quot;${generatedForName}&quot;` : ''}
           </h2>
-          <p style={{ ...styles.note, marginBottom: 16 }}>בחר יחידת תוכן והוסף את השאלות למאגר:</p>
+          <p style={{ ...styles.note, marginBottom: 12 }}>סמן את השאלות שאיתן ברצונך להוסיף למאגר (אחת אחת או בקבוצה):</p>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            <button type="button" style={styles.buttonSecondary} onClick={selectAllQuestions} aria-label="בחר הכל">
+              בחר הכל
+            </button>
+            <button type="button" style={styles.buttonSecondary} onClick={clearSelection} aria-label="נקה בחירה">
+              נקה בחירה
+            </button>
+            <span style={{ alignSelf: 'center', fontSize: 14, color: '#666' }}>נבחרו: {selectedCount}</span>
+          </div>
+          <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: 20, border: '1px solid #eee', borderRadius: 8, padding: 8, backgroundColor: '#fafafa' }}>
+            {generatedQuestions.map((q, i) => (
+              <label
+                key={i}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  padding: '10px 12px',
+                  marginBottom: 6,
+                  borderRadius: 8,
+                  backgroundColor: selectedForAdd.has(i) ? '#fff' : '#f0f0f0',
+                  border: `1px solid ${selectedForAdd.has(i) ? '#CC0000' : '#e0e0e0'}`,
+                  cursor: 'pointer',
+                  textAlign: 'right',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedForAdd.has(i)}
+                  onChange={() => toggleSelectQuestion(i)}
+                  aria-label={`אשר שאלה ${i + 1}`}
+                />
+                <span style={{ flex: 1, fontSize: 14, lineHeight: 1.5 }}>
+                  {q.question_text ? (q.question_text.length > 120 ? q.question_text.slice(0, 120) + '…' : q.question_text) : '(ללא טקסט)'}
+                </span>
+                <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>{q.question_type}</span>
+              </label>
+            ))}
+          </div>
+          <p style={{ ...styles.note, marginBottom: 12 }}>יחידת תוכן להוספה:</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <select
               value={selectedHierarchyId}
@@ -423,14 +586,67 @@ export default function TranscriptUpload() {
               type="button"
               style={styles.button}
               onClick={handleAddToBank}
-              disabled={saving || !selectedHierarchyId}
+              disabled={saving || !selectedHierarchyId || selectedCount === 0}
               aria-label="הוסף למאגר"
             >
-              {saving ? 'מוסיף...' : `הוסף ${generatedQuestions.length} למאגר`}
+              {saving ? 'מוסיף...' : `הוסף ${selectedCount} למאגר`}
             </button>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!transcriptToDelete}
+        onClose={() => setTranscriptToDelete(null)}
+        onConfirm={handleDeleteTranscript}
+        title="מחיקת תמליל"
+        message={transcriptToDelete ? `למחוק את התמליל "${transcriptToDelete.name}"? פעולה זו לא ניתנת לביטול.` : ''}
+        confirmText="מחק"
+        cancelText="ביטול"
+        danger={true}
+      />
+
+      <Modal
+        isOpen={!!editingId}
+        onClose={() => !editSaving && setEditingId(null)}
+        title="עריכת תמליל"
+        size="lg"
+        ariaLabel="עריכת תמליל"
+      >
+        <div style={{ padding: 8 }}>
+          {editLoading ? (
+            <LoadingSpinner />
+          ) : (
+            <>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>שם התמליל</label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                style={{ ...styles.input, marginBottom: 16 }}
+                aria-label="שם התמליל"
+              />
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>תוכן התמליל</label>
+              <textarea
+                value={editFullText}
+                onChange={(e) => setEditFullText(e.target.value)}
+                rows={14}
+                style={{ ...styles.input, resize: 'vertical', fontFamily: 'inherit' }}
+                aria-label="תוכן התמליל"
+                dir="rtl"
+              />
+              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                <button type="button" style={styles.button} onClick={handleSaveEdit} disabled={editSaving}>
+                  {editSaving ? 'שומר...' : 'שמור'}
+                </button>
+                <button type="button" style={styles.buttonSecondary} onClick={() => setEditingId(null)} disabled={editSaving}>
+                  ביטול
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

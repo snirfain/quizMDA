@@ -180,9 +180,6 @@ export function getNavigationItems(userRole) {
     trainee: [
       { path: routes.practice.path, label: 'תרגול', icon: '📚' },
       { path: routes.progress.path, label: 'התקדמות', icon: '📊' },
-      { path: routes.studyPlans.path, label: 'תוכניות לימוד', icon: '📋' },
-      { path: routes.bookmarks.path, label: 'סימניות', icon: '🔖' },
-      { path: routes.mockExam.path, label: 'בחינה מדומה', icon: '📝' },
       { path: routes.settings.path, label: 'הגדרות', icon: '⚙️' }
     ],
     instructor: [

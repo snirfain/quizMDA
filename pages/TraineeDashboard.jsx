@@ -96,8 +96,19 @@ export default function TraineeDashboard({ userId }) {
     }));
   };
 
+  const maxDifficultyTotal = () => {
+    const fromCat = totalFromCategories();
+    if (createSpec.selectedCategories.length > 0 && fromCat > 0) return fromCat;
+    return null; // no cap when no categories
+  };
+
   const setDifficultyCount = (level, count) => {
-    const n = Math.max(0, parseInt(count, 10) || 0);
+    let n = Math.max(0, parseInt(count, 10) || 0);
+    const cap = maxDifficultyTotal();
+    if (cap != null) {
+      const rest = ['קל', 'בינוני', 'קשה'].filter(l => l !== level).reduce((s, l) => s + (createSpec.difficultyCounts[l] || 0), 0);
+      n = Math.min(n, Math.max(0, cap - rest));
+    }
     setCreateSpec(prev => ({
       ...prev,
       difficultyCounts: { ...prev.difficultyCounts, [level]: n },
@@ -169,8 +180,8 @@ export default function TraineeDashboard({ userId }) {
 
   return (
     <div style={styles.container} aria-label="לוח בקרה מתאמן">
-      <div style={styles.header}>
-        <h1 style={styles.title}>מערכת תרגול מד"א</h1>
+      <div style={styles.pageTop}>
+        <h1 style={styles.pageTitle}>תרגול</h1>
         <div style={styles.headerActions}>
           <div style={styles.tabs} role="tablist" aria-label="טאבים">
             <button
@@ -204,10 +215,10 @@ export default function TraineeDashboard({ userId }) {
             <button
               style={styles.filterButton}
               onClick={() => setShowFilters(!showFilters)}
-              aria-label={showFilters ? 'סגור סינון' : 'פתח סינון נושאים'}
+              aria-label={showFilters ? 'סגור סינון' : 'פתח סינון קטגוריות'}
               aria-expanded={showFilters}
             >
-              {showFilters ? 'סגור סינון' : 'סינון נושאים'}
+              {showFilters ? 'סגור סינון' : 'סינון קטגוריות'}
             </button>
           )}
         </div>
@@ -218,6 +229,7 @@ export default function TraineeDashboard({ userId }) {
           {practiceMode === 'create' ? (
             <div style={styles.createPanel} role="region" aria-labelledby="create-exam-heading">
               <h2 id="create-exam-heading" style={styles.createTitle}>צור מבחן</h2>
+              <p style={styles.createSubtitle}>בחר קטגוריות וכמות שאלות לכל אחת, ואפשר גם להתאים לפי רמת קושי.</p>
 
               {filterOptions && (
                 <>
@@ -252,6 +264,9 @@ export default function TraineeDashboard({ userId }) {
 
                   <div style={styles.formSection}>
                     <h3 style={styles.sectionTitle}>כמה שאלות מכל רמת קושי</h3>
+                    {maxDifficultyTotal() != null && (
+                      <p style={styles.hint}>סה״כ עד {maxDifficultyTotal()} שאלות (לפי הקטגוריות שבחרת)</p>
+                    )}
                     <div style={styles.difficultyRow}>
                       {['קל', 'בינוני', 'קשה'].map(level => (
                         <label key={level} style={styles.diffLabel}>
@@ -259,6 +274,7 @@ export default function TraineeDashboard({ userId }) {
                           <input
                             type="number"
                             min={0}
+                            max={maxDifficultyTotal() ?? undefined}
                             value={createSpec.difficultyCounts[level] ?? 0}
                             onChange={(e) => setDifficultyCount(level, e.target.value)}
                             style={styles.numberInput}
@@ -267,21 +283,6 @@ export default function TraineeDashboard({ userId }) {
                         </label>
                       ))}
                     </div>
-                  </div>
-
-                  <div style={styles.formSection}>
-                    <label style={styles.label}>נושא (אופציונלי)</label>
-                    <select
-                      style={styles.select}
-                      value={createSpec.topic_name}
-                      onChange={(e) => setCreateSpec(prev => ({ ...prev, topic_name: e.target.value }))}
-                      aria-label="בחר נושא"
-                    >
-                      <option value="">כל הנושאים</option>
-                      {filterOptions.topics.map(t => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
                   </div>
 
                   {availableTags.length > 0 && (
@@ -359,44 +360,24 @@ export default function TraineeDashboard({ userId }) {
                     />
                   )}
                   {filterOptions && (
-                    <>
-                      <div style={styles.filterGroup}>
-                        <label htmlFor="category-filter" style={styles.label}>קטגוריה:</label>
-                        <select
-                          id="category-filter"
-                          style={styles.select}
-                          value={hierarchyFilters.category_name || ''}
-                          onChange={(e) => setHierarchyFilters({
-                            ...hierarchyFilters,
-                            category_name: e.target.value || undefined
-                          })}
-                          aria-label="בחר קטגוריה"
-                        >
-                          <option value="">כל הקטגוריות</option>
-                          {filterOptions.categories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div style={styles.filterGroup}>
-                        <label htmlFor="topic-filter" style={styles.label}>נושא:</label>
-                        <select
-                          id="topic-filter"
-                          style={styles.select}
-                          value={hierarchyFilters.topic_name || ''}
-                          onChange={(e) => setHierarchyFilters({
-                            ...hierarchyFilters,
-                            topic_name: e.target.value || undefined
-                          })}
-                          aria-label="בחר נושא"
-                        >
-                          <option value="">כל הנושאים</option>
-                          {filterOptions.topics.map(topic => (
-                            <option key={topic} value={topic}>{topic}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </>
+                    <div style={styles.filterGroup}>
+                      <label htmlFor="category-filter" style={styles.label}>קטגוריה:</label>
+                      <select
+                        id="category-filter"
+                        style={styles.select}
+                        value={hierarchyFilters.category_name || ''}
+                        onChange={(e) => {
+                          const v = e.target.value || undefined;
+                          setHierarchyFilters({ category_name: v, topic_name: v });
+                        }}
+                        aria-label="בחר קטגוריה"
+                      >
+                        <option value="">כל הקטגוריות</option>
+                        {filterOptions.categories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
                   )}
                 </div>
               )}
@@ -423,79 +404,87 @@ const styles = {
   container: {
     direction: 'rtl',
     textAlign: 'right',
-    fontFamily: 'Arial, Helvetica, sans-serif',
-    backgroundColor: '#f5f5f5',
+    fontFamily: "'Heebo', 'Assistant', Arial, sans-serif",
+    backgroundColor: '#f8f9fa',
+    minHeight: '100vh',
   },
-  header: {
-    backgroundColor: '#CC0000',
-    color: 'white',
-    padding: '20px',
+  pageTop: {
+    padding: '24px 24px 16px',
+    backgroundColor: '#fff',
+    borderBottom: '1px solid #e8e8e8',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
     flexWrap: 'wrap',
-    gap: '15px',
+    gap: '16px',
+  },
+  pageTitle: {
+    margin: 0,
+    fontSize: '26px',
+    fontWeight: 700,
+    color: '#1a1a1a',
   },
   headerActions: {
     display: 'flex',
-    gap: '15px',
+    gap: '12px',
     alignItems: 'center',
     flexWrap: 'wrap'
   },
   tabs: {
     display: 'flex',
-    gap: '5px',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: '4px',
+    gap: '4px',
+    backgroundColor: '#f0f0f0',
+    borderRadius: '10px',
     padding: '4px'
   },
   tabButton: {
-    padding: '8px 16px',
+    padding: '10px 20px',
     backgroundColor: 'transparent',
-    color: 'white',
+    color: '#555',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '14px',
-    transition: 'background-color 0.2s',
+    fontSize: '15px',
+    fontWeight: 500,
+    transition: 'background-color 0.2s, color 0.2s',
     minHeight: '44px',
-    '&:focus': {
-      outline: '3px solid white',
-      outlineOffset: '2px'
-    }
   },
   tabButtonActive: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    fontWeight: 'bold'
-  },
-  title: {
-    margin: 0,
-    fontSize: '24px',
-    fontWeight: 'bold'
+    backgroundColor: '#fff',
+    color: '#CC0000',
+    fontWeight: 600,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
   },
   filterButton: {
-    padding: '10px 20px',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    color: 'white',
-    border: '1px solid rgba(255,255,255,0.3)',
-    borderRadius: '4px',
+    padding: '10px 18px',
+    backgroundColor: '#f0f0f0',
+    color: '#333',
+    border: '1px solid #ddd',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '14px'
+    fontSize: '14px',
+    fontWeight: 500,
   },
   filtersPanel: {
-    backgroundColor: 'white',
+    backgroundColor: '#fff',
     padding: '20px',
     display: 'flex',
     gap: '20px',
     flexWrap: 'wrap',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
     marginBottom: '20px',
+    borderRadius: '12px',
+    border: '1px solid #eee',
   },
   filterGroup: {
     display: 'flex',
     flexDirection: 'column',
     minWidth: '200px',
+  },
+  hint: {
+    margin: '0 0 10px 0',
+    fontSize: '13px',
+    color: '#666',
   },
   label: {
     marginBottom: '5px',
@@ -515,38 +504,49 @@ const styles = {
     }
   },
   createPanel: {
-    backgroundColor: 'white',
-    padding: 24,
-    margin: 20,
-    borderRadius: 8,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    maxWidth: 640,
+    backgroundColor: '#fff',
+    padding: '32px 28px',
+    margin: '24px auto',
+    borderRadius: 12,
+    boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+    maxWidth: 720,
+    border: '1px solid #eee',
   },
   createTitle: {
-    margin: '0 0 20px 0',
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
+    margin: '0 0 8px 0',
+    fontSize: '22px',
+    fontWeight: 700,
+    color: '#1a1a1a',
+  },
+  createSubtitle: {
+    margin: '0 0 24px 0',
+    fontSize: '14px',
+    color: '#666',
+    lineHeight: 1.5,
   },
   formSection: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   sectionTitle: {
-    margin: '0 0 10px 0',
-    fontSize: 16,
+    margin: '0 0 12px 0',
+    fontSize: '16px',
     fontWeight: 600,
-    color: '#555',
+    color: '#333',
   },
   checkboxGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+    gap: '10px 24px',
   },
   categoryRow: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
-    flexWrap: 'wrap',
+    padding: '10px 12px',
+    backgroundColor: '#fafafa',
+    borderRadius: 8,
+    border: '1px solid #eee',
   },
   checkboxLabel: {
     display: 'inline-flex',

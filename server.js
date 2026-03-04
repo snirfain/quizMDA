@@ -9,7 +9,7 @@ import mongoose from 'mongoose';
 import { extractDocHandler } from './server/docExtract.js';
 import { uploadMiddleware, uploadMediaHandler } from './server/upload.js';
 import { getQuestions, postQuestions, syncQuestions, dedupeQuestions, updateQuestion, deleteQuestion } from './server/questionApi.js';
-import { listTranscripts, uploadTranscript, uploadTranscriptMiddleware, matchAllQuestions, generateQuestionsFromTranscript } from './server/transcriptApi.js';
+import { listTranscripts, getTranscript, updateTranscript, deleteTranscript, uploadTranscript, uploadTranscriptMiddleware, matchAllQuestions, generateQuestionsFromTranscript } from './server/transcriptApi.js';
 import { getUsers, postUser } from './server/userApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +45,9 @@ async function start() {
   app.get('/api/users', getUsers);
   app.post('/api/users', postUser);
   app.get('/api/transcripts', listTranscripts);
+  app.get('/api/transcripts/:id', getTranscript);
+  app.put('/api/transcripts/:id', updateTranscript);
+  app.delete('/api/transcripts/:id', deleteTranscript);
   app.post('/api/transcripts/upload', uploadTranscriptMiddleware, uploadTranscript);
   app.post('/api/transcripts/match-all', matchAllQuestions);
   app.post('/api/transcripts/generate-questions', generateQuestionsFromTranscript);

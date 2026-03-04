@@ -84,46 +84,44 @@ const styles = {
   container: {
     direction: 'rtl',
     textAlign: 'right',
-    fontFamily: 'Arial, Helvetica, sans-serif',
-    backgroundColor: '#f5f5f5',
+    fontFamily: "'Heebo', 'Assistant', Arial, sans-serif",
+    backgroundColor: '#f8f9fa',
   },
   header: {
-    backgroundColor: '#CC0000',
-    color: 'white',
-    padding: '20px 30px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+    padding: '24px 28px',
+    borderBottom: '1px solid #e8e8e8',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   title: {
-    margin: '0 0 15px 0',
-    fontSize: '28px',
-    fontWeight: 'bold',
+    margin: '0 0 16px 0',
+    fontSize: '26px',
+    fontWeight: 700,
+    color: '#1a1a1a',
   },
   nav: {
     display: 'flex',
-    gap: '10px',
+    gap: '8px',
     flexWrap: 'wrap',
   },
   navButton: {
-    padding: '10px 20px',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    color: 'white',
+    padding: '10px 18px',
+    backgroundColor: '#f0f0f0',
+    color: '#555',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '14px',
+    fontSize: '15px',
+    fontWeight: 500,
     minHeight: '44px',
-    '&:hover': {
-      backgroundColor: 'rgba(255,255,255,0.3)'
-    },
-    '&:focus': {
-      outline: '3px solid white',
-      outlineOffset: '2px'
-    },
+    transition: 'background-color 0.2s, color 0.2s',
   },
   navButtonActive: {
-    backgroundColor: 'white',
+    backgroundColor: '#fff',
     color: '#CC0000',
-    fontWeight: 'bold'
+    fontWeight: 600,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+    border: '1px solid #e8e8e8',
   },
   main: {
     padding: '0'

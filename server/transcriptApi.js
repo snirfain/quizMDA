@@ -20,6 +20,17 @@ export const uploadTranscriptMiddleware = multer({
 }).single('file');
 
 /**
+ * Decode filename that may have been received as Latin-1 but is actually UTF-8 (e.g. Hebrew).
+ */
+function decodeUtf8Filename(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  try {
+    const decoded = Buffer.from(raw, 'latin1').toString('utf8');
+    if (decoded && /[\u0590-\u05FF]/.test(decoded)) return decoded;
+  } catch (_) {}
+  return raw;
+}
+/**
  * Parse SRT buffer to plain text (strip timestamps, join lines)
  */
 function parseSrtToText(buffer) {
@@ -63,13 +74,24 @@ async function ensureDbConnection() {
   }
 }
 
+function escapeRegex(s) {
+  if (typeof s !== 'string') return '';
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export async function listTranscripts(req, res) {
   try {
     await ensureDbConnection();
     if (!isDbConnected()) {
       return res.status(200).json([]);
     }
-    const list = await Transcript.find({}, { name: 1, originalFilename: 1, createdAt: 1 }).sort({ createdAt: -1 }).lean();
+    const search = (req.query.search || req.query.q || '').trim();
+    const query = {};
+    if (search) {
+      const re = new RegExp(escapeRegex(search), 'i');
+      query.$or = [{ name: re }, { fullText: re }];
+    }
+    const list = await Transcript.find(query, { name: 1, originalFilename: 1, createdAt: 1 }).sort({ createdAt: -1 }).lean();
     const Question = (await import('../models/Question.js')).default;
     const tagCounts = await Question.aggregate([{ $unwind: '$tags' }, { $group: { _id: '$tags', count: { $sum: 1 } } }]);
     const countByTag = Object.fromEntries((tagCounts || []).map((t) => [t._id, t.count]));
@@ -88,6 +110,53 @@ export async function listTranscripts(req, res) {
   }
 }
 
+export async function getTranscript(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+    const { id } = req.params;
+    const doc = await Transcript.findById(id).lean();
+    if (!doc) return res.status(404).json({ error: 'תמליל לא נמצא' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ _id: doc._id, name: doc.name, fullText: doc.fullText || '', originalFilename: doc.originalFilename, createdAt: doc.createdAt });
+  } catch (err) {
+    console.error('GET /api/transcripts/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function updateTranscript(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+    const { id } = req.params;
+    const { name, fullText } = req.body || {};
+    const update = {};
+    if (typeof name === 'string' && name.trim()) update.name = name.trim();
+    if (typeof fullText === 'string') update.fullText = fullText;
+    const doc = await Transcript.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+    if (!doc) return res.status(404).json({ error: 'תמליל לא נמצא' });
+    res.json({ _id: doc._id, name: doc.name, fullText: doc.fullText, originalFilename: doc.originalFilename, createdAt: doc.createdAt });
+  } catch (err) {
+    console.error('PUT /api/transcripts/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function deleteTranscript(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+    const { id } = req.params;
+    const doc = await Transcript.findByIdAndDelete(id);
+    if (!doc) return res.status(404).json({ error: 'תמליל לא נמצא' });
+    res.json({ deleted: true, id });
+  } catch (err) {
+    console.error('DELETE /api/transcripts/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
 export async function uploadTranscript(req, res) {
   try {
     await ensureDbConnection();
@@ -99,7 +168,9 @@ export async function uploadTranscript(req, res) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
     const fullText = parseSrtToText(file.buffer);
-    const originalFilename = file.originalname || '';
+    const rawFromMulter = (file.originalname || '').trim();
+    const fromBody = (req.body && typeof req.body.filename === 'string' && req.body.filename.trim()) || '';
+    const originalFilename = fromBody || decodeUtf8Filename(rawFromMulter);
     const name = originalFilename.replace(/\.srt$/i, '').trim() || `תמליל ${Date.now()}`;
     const doc = await Transcript.create({ name, fullText, originalFilename });
     console.log('[api/transcripts] uploaded:', name, 'length:', fullText.length);
