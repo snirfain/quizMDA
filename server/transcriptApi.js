@@ -301,8 +301,9 @@ function normalizeGeneratedQuestion(q, transcriptName) {
 
 /**
  * POST /api/transcripts/generate-questions
- * Body: { transcriptId?: string, transcriptName?: string, count: number }
- * Loads transcript, existing questions tagged with it, builds prompt, calls OpenAI, returns normalized questions (with transcript tag).
+ * Body: { transcriptId?, transcriptName?, transcriptIds?: string[], count: number }
+ * Single: transcriptId or transcriptName. Multiple: transcriptIds (array).
+ * Loads transcript(s), combines text if multiple, builds prompt, returns questions tagged with all source transcript names.
  */
 export async function generateQuestionsFromTranscript(req, res) {
   try {
@@ -314,23 +315,33 @@ export async function generateQuestionsFromTranscript(req, res) {
     if (!apiKey) {
       return res.status(400).json({ error: 'OPENAI_API_KEY לא מוגדר בסביבת השרת' });
     }
-    const { transcriptId, transcriptName, count: requestedCount } = req.body || {};
-    const count = Math.min(Math.max(1, parseInt(requestedCount, 10) || 10), 50);
-    let transcript;
-    if (transcriptId) {
-      transcript = await Transcript.findById(transcriptId).lean();
+    const { transcriptId, transcriptName, transcriptIds: transcriptIdsBody, count: requestedCount } = req.body || {};
+    const count = Math.min(Math.max(1, parseInt(requestedCount, 10) || 10), 100);
+    let transcripts = [];
+    if (Array.isArray(transcriptIdsBody) && transcriptIdsBody.length > 0) {
+      transcripts = await Transcript.find({ _id: { $in: transcriptIdsBody } }).sort({ createdAt: 1 }).lean();
+    } else if (transcriptId) {
+      const one = await Transcript.findById(transcriptId).lean();
+      if (one) transcripts = [one];
     } else if (transcriptName) {
-      transcript = await Transcript.findOne({ name: transcriptName }).lean();
-    } else {
-      return res.status(400).json({ error: 'נדרש transcriptId או transcriptName' });
+      const one = await Transcript.findOne({ name: transcriptName }).lean();
+      if (one) transcripts = [one];
     }
-    if (!transcript || !transcript.fullText) {
-      return res.status(404).json({ error: 'תמליל לא נמצא או ריק' });
+    if (transcripts.length === 0) {
+      return res.status(404).json({ error: 'לא נמצאו תמלילים' });
     }
+    const combinedText = transcripts
+      .map((t) => (t.fullText || '').trim())
+      .filter(Boolean)
+      .join('\n\n---\n\n');
+    if (!combinedText) {
+      return res.status(400).json({ error: 'התמלילים ריקים' });
+    }
+    const transcriptNames = [...new Set(transcripts.map((t) => t.name).filter(Boolean))];
     const Question = (await import('../models/Question.js')).default;
-    const existing = await Question.find({ tags: transcript.name }).select('question_text').lean();
-    const existingTexts = existing.map(q => (q.question_text || '').trim()).filter(Boolean);
-    const userPrompt = buildTranscriptQuestionUserPrompt(transcript.fullText, count, existingTexts);
+    const existing = await Question.find({ tags: { $in: transcriptNames } }).select('question_text').lean();
+    const existingTexts = [...new Set(existing.map((q) => (q.question_text || '').trim()).filter(Boolean))];
+    const userPrompt = buildTranscriptQuestionUserPrompt(combinedText, count, existingTexts);
     const response = await fetch(OPENAI_URL, {
       method: 'POST',
       headers: {
@@ -355,9 +366,16 @@ export async function generateQuestionsFromTranscript(req, res) {
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '[]';
     const raw = parseQuestionsJsonFromAI(content);
-    const questions = raw.map(q => normalizeGeneratedQuestion(q, transcript.name)).filter(q => q.question_text);
-    console.log('[api/transcripts/generate-questions]', transcript.name, 'requested', count, 'got', questions.length);
-    res.json({ questions, transcriptName: transcript.name });
+    const questions = raw
+      .map((q) => {
+        const normalized = normalizeGeneratedQuestion(q, transcriptNames[0]);
+        normalized.tags = [...new Set([...(normalized.tags || []), ...transcriptNames])];
+        return normalized;
+      })
+      .filter((q) => q.question_text);
+    const transcriptNameLabel = transcriptNames.length === 1 ? transcriptNames[0] : transcriptNames.join(', ');
+    console.log('[api/transcripts/generate-questions]', transcriptNameLabel, 'requested', count, 'got', questions.length);
+    res.json({ questions, transcriptName: transcriptNameLabel, transcriptNames });
   } catch (err) {
     console.error('POST /api/transcripts/generate-questions error:', err);
     res.status(500).json({ error: err.message });

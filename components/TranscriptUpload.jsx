@@ -146,6 +146,8 @@ export default function TranscriptUpload() {
   const [selectedHierarchyId, setSelectedHierarchyId] = useState('');
   const [saving, setSaving] = useState(false);
   const [completeToPerTranscript, setCompleteToPerTranscript] = useState({});
+  const [selectedForBatch, setSelectedForBatch] = useState(new Set());
+  const [batchCount, setBatchCount] = useState(20);
   const [searchQuery, setSearchQuery] = useState('');
   const [transcriptToDelete, setTranscriptToDelete] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -199,6 +201,52 @@ export default function TranscriptUpload() {
     const completeTo = getCompleteTo(t);
     const current = t.questionCount ?? 0;
     return Math.max(0, Math.min(MAX_GENERATE, completeTo - current));
+  };
+
+  const toggleBatchSelect = (id) => {
+    setSelectedForBatch((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const selectAllForBatch = () => setSelectedForBatch(new Set(list.map((t) => t._id)));
+  const clearBatchSelection = () => setSelectedForBatch(new Set());
+
+  const handleGenerateBatch = async () => {
+    const ids = Array.from(selectedForBatch);
+    if (ids.length === 0) {
+      showToast('בחר לפחות תמליל אחד', 'warning');
+      return;
+    }
+    const n = Math.min(MAX_GENERATE * 2, Math.max(1, parseInt(batchCount, 10) || 20));
+    setGeneratingId('batch');
+    setGeneratedQuestions([]);
+    setGeneratedForName(null);
+    try {
+      const res = await fetch('/api/transcripts/generate-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcriptIds: ids, count: n }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const questions = data.questions || [];
+        setGeneratedQuestions(questions);
+        setGeneratedForName(data.transcriptName || (ids.length === 1 ? list.find((x) => x._id === ids[0])?.name : `${ids.length} תמלילים`));
+        setSelectedForAdd(new Set(questions.map((_, i) => i)));
+        setExpandedQuestions(new Set());
+        showToast(`נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, 'success');
+        await loadList(searchQuery);
+      } else {
+        showToast(data.error || 'יצירת שאלות נכשלה', 'error');
+      }
+    } catch (err) {
+      showToast('שגיאה: ' + (err?.message || ''), 'error');
+    } finally {
+      setGeneratingId(null);
+    }
   };
 
   const handleGenerate = async (t) => {
@@ -484,6 +532,38 @@ export default function TranscriptUpload() {
           aria-label="חיפוש תמלילים"
           style={{ ...styles.input, marginBottom: 16 }}
         />
+        {list.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16, padding: '12px 0', borderBottom: '1px solid #eee' }}>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>צור שאלות מתמלילים מרובים / מכולם:</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+              כמות שאלות
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={batchCount}
+                onChange={(e) => setBatchCount(Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 20)))}
+                style={{ width: 56, padding: '6px 8px', ...styles.input }}
+              />
+            </label>
+            <button type="button" style={styles.buttonSecondary} onClick={selectAllForBatch} aria-label="בחר כל התמלילים">
+              בחר הכל
+            </button>
+            <button type="button" style={styles.buttonSecondary} onClick={clearBatchSelection} aria-label="נקה בחירה">
+              נקה
+            </button>
+            <span style={{ fontSize: 13, color: '#666' }}>נבחרו: {selectedForBatch.size}</span>
+            <button
+              type="button"
+              style={styles.button}
+              onClick={handleGenerateBatch}
+              disabled={generatingId !== null || selectedForBatch.size === 0}
+              aria-label="צור שאלות מתמלילים נבחרים"
+            >
+              {generatingId === 'batch' ? 'יוצר...' : `צור מתמלילים נבחרים (${selectedForBatch.size})`}
+            </button>
+          </div>
+        )}
         {loading ? (
           <LoadingSpinner />
         ) : (
@@ -506,6 +586,15 @@ export default function TranscriptUpload() {
                     listStyle: 'none',
                   }}
                 >
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flexShrink: 0 }} title="לבחירה ליצירה מרובה">
+                    <input
+                      type="checkbox"
+                      checked={selectedForBatch.has(t._id)}
+                      onChange={() => toggleBatchSelect(t._id)}
+                      aria-label={`בחר לתמליל ${t.name} ליצירה מרובה`}
+                    />
+                    <span style={{ fontSize: 12, color: '#666' }}>ליצירה מרובה</span>
+                  </label>
                   <div style={{ flex: '1 1 200px', minWidth: 0 }}>
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>{t.name}</div>
                     <div style={{ fontSize: 12, color: '#666' }}>
