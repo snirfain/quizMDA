@@ -5,9 +5,10 @@
  */
 
 import React, { useState } from 'react';
+import * as XLSX from 'xlsx';
 import { entities } from '../config/appConfig';
 import { showToast } from './Toast';
-import { announce } from '../utils/accessibility';
+import { announce, announceError } from '../utils/accessibility';
 import Modal from './Modal';
 import LoadingSpinner from './LoadingSpinner';
 import PermissionGate from './PermissionGate';
@@ -17,7 +18,7 @@ export default function DataImportExport() {
   const [activeTab, setActiveTab] = useState('export');
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
-  const [exportFormat, setExportFormat] = useState('csv');
+  const [exportFormat, setExportFormat] = useState('excel');
 
   const handleExport = async () => {
     try {
@@ -91,9 +92,65 @@ export default function DataImportExport() {
     link.click();
   };
 
-  const exportToExcel = async (data) => {
-    // In production, use a library like xlsx
-    showToast('ייצוא ל-Excel דורש ספרייה נוספת', 'info');
+  const exportToExcel = (data) => {
+    if (data.length === 0) {
+      showToast('אין נתונים לייצוא', 'warning');
+      return;
+    }
+    const safe = (v) => (v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+    const headers = [
+      'ID',
+      'היררכיה',
+      'סוג שאלה',
+      'טקסט השאלה',
+      'אפשרויות (value;label)',
+      'תשובה נכונה',
+      'הסבר',
+      'רמז',
+      'קושי',
+      'סטטוס',
+      'תגיות',
+      'מדיה מצורפת',
+      'תג מאגר מדיה',
+      'ניסיונות',
+      'הצלחות',
+      'אחוז הצלחה',
+      'נוצר',
+      'עודכן',
+    ];
+    const rows = data.map((q) => [
+      safe(q.id),
+      safe(q.hierarchy_id),
+      safe(q.question_type),
+      safe(q.question_text),
+      Array.isArray(q.options) ? q.options.map((o) => `${o.value};${o.label || ''}`).join(' | ') : '',
+      safe(q.correct_answer),
+      safe(q.explanation),
+      safe(q.hint),
+      q.difficulty_level != null ? q.difficulty_level : '',
+      safe(q.status),
+      Array.isArray(q.tags) ? q.tags.join(';') : '',
+      safe(q.media_attachment),
+      safe(q.media_bank_tag),
+      typeof q.total_attempts === 'number' ? q.total_attempts : '',
+      typeof q.total_success === 'number' ? q.total_success : '',
+      typeof q.success_rate === 'number' ? q.success_rate : '',
+      q.createdAt ? new Date(q.createdAt).toISOString() : '',
+      q.updatedAt ? new Date(q.updatedAt).toISOString() : '',
+    ]);
+    const wsData = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const colWidths = [{ wch: 26 }, { wch: 12 }, { wch: 14 }, { wch: 50 }, { wch: 40 }, { wch: 20 }, { wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 22 }, { wch: 22 }];
+    ws['!cols'] = colWidths;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'שאלות');
+    const xlsxBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: false });
+    const blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `questions_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
 
   const handleImport = async (file) => {

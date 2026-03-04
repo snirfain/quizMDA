@@ -179,22 +179,23 @@ export default function TranscriptUpload() {
 
   const wakeServerIfNeeded = async () => {
     if (!isRenderHost) return;
-    const maxAttempts = 10;
-    const delayMs = 3000;
+    const maxAttempts = 25;
+    const delayMs = 4000;
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        const r = await fetch('/api/health', { method: 'GET' });
+        const r = await fetch('/api/health', { method: 'GET', cache: 'no-store' });
         if (r.ok) {
-          await new Promise((r) => setTimeout(r, 6000));
+          showToast('השרת מוכן, מתחיל ליצור שאלות...', 'info');
+          await new Promise((r) => setTimeout(r, 8000));
           return;
         }
       } catch (_) {}
       if (i < maxAttempts - 1) await new Promise((res) => setTimeout(res, delayMs));
     }
-    await new Promise((r) => setTimeout(r, 6000));
+    await new Promise((r) => setTimeout(r, 8000));
   };
 
-  const CHUNK_SIZE = 3;
+  const CHUNK_SIZE = 1;
 
   const callGenerateQuestions = async (body, retriesLeft = 2) => {
     const res = await fetch('/api/transcripts/generate-questions', {
@@ -236,6 +237,7 @@ export default function TranscriptUpload() {
       });
       allQuestions.push(...chunk);
       excludeQuestionTexts = excludeQuestionTexts.concat(chunk.map((q) => (q.question_text || '').trim()).filter(Boolean));
+      if (isRenderHost && i < numChunks - 1) await new Promise((r) => setTimeout(r, 2000));
     }
     return { questions: allQuestions, failed: false };
   };
