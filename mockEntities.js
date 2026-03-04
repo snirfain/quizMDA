@@ -482,18 +482,39 @@ export const mockEntities = {
   
   Users: {
     find: async (query = {}) => {
+      try {
+        const res = await fetch('/api/users', { cache: 'no-store' });
+        if (res.ok) {
+          const list = await res.json();
+          if (Array.isArray(list)) return list.filter(u => matchQuery(u, query));
+        }
+      } catch (_) { /* server unreachable — use local */ }
       return mockData.users.filter(u => matchQuery(u, query));
     },
     findOne: async (query) => {
-      if (query.user_id) {
-        return mockData.users.find(u => u.user_id === query.user_id) || null;
-      }
-      if (query.email) {
-        return mockData.users.find(u => u.email === query.email) || null;
-      }
-      if (query.google_id) {
-        return mockData.users.find(u => u.google_id === query.google_id) || null;
-      }
+      try {
+        const res = await fetch('/api/users', { cache: 'no-store' });
+        if (res.ok) {
+          const list = await res.json();
+          if (Array.isArray(list)) {
+            if (query.user_id) {
+              const u = list.find(x => x.user_id === query.user_id);
+              if (u) return u;
+            }
+            if (query.email) {
+              const u = list.find(x => (x.email || '').toLowerCase() === (query.email || '').toLowerCase());
+              if (u) return u;
+            }
+            if (query.google_id) {
+              const u = list.find(x => x.google_id === query.google_id);
+              if (u) return u;
+            }
+          }
+        }
+      } catch (_) { /* fallback to local */ }
+      if (query.user_id) return mockData.users.find(u => u.user_id === query.user_id) || null;
+      if (query.email) return mockData.users.find(u => u.email === query.email) || null;
+      if (query.google_id) return mockData.users.find(u => u.google_id === query.google_id) || null;
       return null;
     },
     create: async (data) => {
@@ -505,6 +526,13 @@ export const mockEntities = {
       };
       mockData.users.push(newUser);
       saveToStorage();
+      try {
+        await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newUser),
+        });
+      } catch (_) { /* server unreachable */ }
       return newUser;
     },
     update: async (userId, data) => {
@@ -516,6 +544,13 @@ export const mockEntities = {
           updatedAt: new Date()
         };
         saveToStorage();
+        try {
+          await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(mockData.users[index]),
+          });
+        } catch (_) { /* server unreachable */ }
         return mockData.users[index];
       }
       return null;

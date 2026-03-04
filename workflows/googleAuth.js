@@ -6,6 +6,20 @@
 import { entities } from '../config/appConfig';
 import { setCurrentUser } from '../utils/auth';
 
+/** Sync user to server so admins on other devices see new/updated users. */
+async function syncUserToServer(user) {
+  if (!user || typeof window === 'undefined') return;
+  try {
+    await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user),
+    });
+  } catch (e) {
+    console.warn('Could not sync user to server:', e?.message);
+  }
+}
+
 /**
  * Verify Google ID token and login/create user
  */
@@ -165,6 +179,7 @@ async function createUserFromGoogle(googleUser) {
     updatedAt: new Date()
   });
 
+  await syncUserToServer(newUser);
   return newUser;
 }
 
@@ -216,7 +231,9 @@ async function updateUserFromGoogle(user, googleUser) {
     last_login: new Date()
   });
 
-  return updatedUser || user;
+  const final = updatedUser || user;
+  await syncUserToServer(final);
+  return final;
 }
 
 /**
