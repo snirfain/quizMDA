@@ -20,16 +20,16 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
     hierarchy_id:    question?.hierarchy_id    || '',
     question_type:   question?.question_type   || 'single_choice',
     question_text:   question?.question_text   || '',
-    media_attachment: null,
+    media_attachment: question?.media_attachment ?? null,
     media_bank_tag:  question?.media_bank_tag  || '',
-    difficulty_level: question?.difficulty_level || null,
+    difficulty_level: question?.difficulty_level ?? null,
     correct_answer:  question?.correct_answer  || '',
     explanation:     question?.explanation     || '',
     hint:            question?.hint            || '',
     tags:            question?.tags            || [],
     status:          question?.status          || 'active'
   });
-  // 'none' | 'static' | 'bank'
+  // 'none' | 'static' | 'bank' — preserve existing media so it doesn't reset when editing
   const [mediaMode, setMediaMode] = useState(() => {
     if (question?.media_bank_tag) return 'bank';
     if (question?.media_attachment) return 'static';

@@ -142,24 +142,11 @@ export function validateCorrectAnswer(answer, questionType, options = []) {
 
 /**
  * Validate difficulty level.
- * Difficulty is optional (calculated automatically after enough answers).
- * If provided, it must be a number between 1 and 10.
+ * Difficulty is never required — it is calculated automatically after ≥50 answers.
+ * We do not add any validation errors for difficulty (so form save is never blocked).
  */
 export function validateDifficultyLevel(difficulty) {
-  const errors = [];
-  if (difficulty === null || difficulty === undefined || difficulty === '') {
-    return errors;
-  }
-
-  const level = typeof difficulty === 'string' ? parseInt(difficulty) : difficulty;
-  if (isNaN(level)) {
-    errors.push('רמת קושי חייבת להיות מספר');
-  } else {
-    if (level < 1 || level > 10) {
-      errors.push('רמת קושי חייבת להיות בין 1 ל-10');
-    }
-  }
-  return errors;
+  return [];
 }
 
 /**
