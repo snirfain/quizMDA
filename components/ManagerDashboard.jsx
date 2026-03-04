@@ -267,7 +267,7 @@ export default function ManagerDashboard({ managerId }) {
                       {question.hierarchy?.category_name} / {question.hierarchy?.topic_name}
                     </span>
                     <span style={s.badge}>{getQuestionTypeLabel(question.question_type)}</span>
-                    <span style={s.badge}>קושי: {question.difficulty_level}/10</span>
+                    <span style={s.badge}>קושי: {(question.total_attempts ?? 0) >= 50 && question.difficulty_level != null ? (typeof question.difficulty_level === 'number' ? `${question.difficulty_level}/10` : question.difficulty_level) : 'לא מדורג'}</span>
                   </div>
                   <div
                     style={s.qText}

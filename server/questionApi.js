@@ -30,11 +30,12 @@ const VALID_STATUS = new Set(['active', 'draft', 'suspended', 'pending_review', 
 
 /** Normalize payload from frontend (mock/localStorage) to MongoDB schema. */
 function normalizeQuestionForDb(q) {
+  // Difficulty is not set manually; it is computed after ≥50 attempts (see difficultyEngine).
   let difficulty_level = q.difficulty_level;
   if (typeof difficulty_level === 'string' && DIFFICULTY_MAP[difficulty_level] != null) {
     difficulty_level = DIFFICULTY_MAP[difficulty_level];
   } else if (typeof difficulty_level !== 'number' || difficulty_level < 1 || difficulty_level > 10) {
-    difficulty_level = 5;
+    difficulty_level = null; // unrated until enough attempts
   }
   const options = (Array.isArray(q.options) ? q.options : []).map((o) => ({
     value: o.value != null ? String(o.value) : '0',

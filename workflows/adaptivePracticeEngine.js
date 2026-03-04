@@ -211,7 +211,7 @@ export async function getNextPracticeQuestion(userId, hierarchyFilters = {}, tag
       hierarchy_id: 'h1',
       question_type: 'single_choice',
       question_text: 'מהו מספר הלחיצות המומלץ בהחייאה?',
-      difficulty_level: 5,
+      difficulty_level: null,
       correct_answer: JSON.stringify({ value: '30', options: [
         { value: '15', label: '15' },
         { value: '30', label: '30' },
@@ -229,7 +229,7 @@ export async function getNextPracticeQuestion(userId, hierarchyFilters = {}, tag
       hierarchy_id: 'h1',
       question_type: 'single_choice',
       question_text: 'מהו מספר הלחיצות המומלץ בהחייאה?',
-      difficulty_level: 5,
+      difficulty_level: null,
       correct_answer: JSON.stringify({ value: '30', options: [
         { value: '15', label: '15' },
         { value: '30', label: '30' },

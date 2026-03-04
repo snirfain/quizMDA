@@ -473,8 +473,9 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
             רמת קושי
           </label>
           {(() => {
-            const d = getDifficultyDisplay(question?.difficulty_level);
             const attempts = question?.total_attempts ?? 0;
+            const showRated = attempts >= MIN_ATTEMPTS_FOR_RATING;
+            const d = getDifficultyDisplay(showRated ? question?.difficulty_level : null);
             const rate = question?.success_rate;
             return (
               <div style={{
@@ -491,7 +492,7 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
                   {d.label}
                 </span>
                 <span style={{ fontSize: '13px', color: '#666' }}>
-                  {attempts < MIN_ATTEMPTS_FOR_RATING
+                  {!showRated
                     ? `מחושב אוטומטי לאחר ${MIN_ATTEMPTS_FOR_RATING} תשובות (${attempts} עד כה)`
                     : rate != null
                       ? `${rate}% מענה נכון · ${attempts} ניסיונות`

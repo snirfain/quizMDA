@@ -660,8 +660,8 @@ export function parseCSV(csvText) {
   // Parse header
   const headers = lines[0].split(',').map(h => h.trim());
   
-  // Required columns
-  const requiredColumns = ['question_text', 'question_type', 'correct_answer', 'difficulty_level', 'hierarchy_id'];
+  // Required columns (difficulty_level is optional — computed after ≥50 attempts)
+  const requiredColumns = ['question_text', 'question_type', 'correct_answer', 'hierarchy_id'];
   const missingColumns = requiredColumns.filter(col => !headers.includes(col));
   
   if (missingColumns.length > 0) {

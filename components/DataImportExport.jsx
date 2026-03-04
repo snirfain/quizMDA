@@ -153,7 +153,7 @@ export default function DataImportExport() {
           hierarchy_id: values[headers.indexOf('היררכיה')] || values[headers.indexOf('hierarchy_id')],
           question_type: values[headers.indexOf('סוג שאלה')] || values[headers.indexOf('question_type')],
           question_text: values[headers.indexOf('טקסט שאלה')] || values[headers.indexOf('question_text')],
-          difficulty_level: parseInt(values[headers.indexOf('קושי')] || values[headers.indexOf('difficulty_level')]) || 5,
+          difficulty_level: (() => { const v = values[headers.indexOf('קושי')] ?? values[headers.indexOf('difficulty_level')]; return v ? parseInt(v) : null; })(),
           correct_answer: values[headers.indexOf('תשובה נכונה')] || values[headers.indexOf('correct_answer')],
           status: values[headers.indexOf('סטטוס')] || values[headers.indexOf('status')] || 'active',
           tags: (values[headers.indexOf('תגיות')] || values[headers.indexOf('tags')] || '').split(';').filter(t => t.trim())

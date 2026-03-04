@@ -1035,10 +1035,10 @@ function QuestionEditCard({ draft, setDraft, onSave, onCancel }) {
           </select>
         </div>
         <div style={{ flex: 1, minWidth: '120px' }}>
-          <label style={s.editLabel}>רמת קושי (1-10)</label>
-          <input type="number" min="1" max="10"
-            value={draft.difficulty_level || 5}
-            onChange={e => setDraft({ ...draft, difficulty_level: parseInt(e.target.value) })}
+          <label style={s.editLabel}>רמת קושי (אופציונלי – מחושבת אוטומטית אחרי 50 תשובות)</label>
+          <input type="number" min="1" max="10" placeholder="—"
+            value={draft.difficulty_level ?? ''}
+            onChange={e => setDraft({ ...draft, difficulty_level: e.target.value === '' ? null : parseInt(e.target.value) })}
             style={s.editInput} />
         </div>
       </div>

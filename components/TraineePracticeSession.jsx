@@ -10,7 +10,7 @@ import { saveOpenEndedAnswer } from '../workflows/openEndedValidation';
 import { entities } from '../config/appConfig';
 import { announce } from '../utils/accessibility';
 import { savePracticeSession, loadQuestions, addToSyncQueue } from '../utils/offlineStorage';
-import { getDifficultyDisplay } from '../workflows/difficultyEngine';
+import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { pickRandomMedia, recalcMediaStats } from '../workflows/mediaEngine';
 import LoadingSpinner from './LoadingSpinner';
 // Responsive styles are handled via CSS media queries
@@ -301,12 +301,15 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         {/* Question Header */}
         <div style={styles.questionHeader} role="group" aria-label="פרטי שאלה">
           {(() => {
-            const d = getDifficultyDisplay(currentQuestion.difficulty_level);
+            const attempts = currentQuestion.total_attempts ?? 0;
+            const showRated = attempts >= MIN_ATTEMPTS_FOR_RATING;
+            const level = showRated ? currentQuestion.difficulty_level : null;
+            const d = getDifficultyDisplay(level);
             return (
               <span style={{ ...styles.difficulty, color: d.color, background: d.bg,
                 border: `1px solid ${d.border}`, borderRadius: '10px', padding: '3px 10px' }}
                 aria-label={`רמת קושי: ${d.label}`}>
-                {currentQuestion.difficulty_level ? `קושי: ${d.label}` : 'לא מדורג'}
+                {d.label === 'לא מדורג' ? d.label : `קושי: ${d.label}`}
               </span>
             );
           })()}

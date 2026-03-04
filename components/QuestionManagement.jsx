@@ -28,11 +28,12 @@ import { reclassifyAllQuestionsByContent, reclassifyUnanalyzedQuestionsWithAI } 
 import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { fixQuestionWithAI } from '../workflows/questionEnrich';
 
-/** Small reusable badge component for difficulty */
+/** Small reusable badge component for difficulty. Shows "לא מדורג" until ≥50 attempts. */
 function DifficultyBadge({ level, attempts, successRate }) {
-  const unrated = !level;
   const belowThreshold = !attempts || attempts < MIN_ATTEMPTS_FOR_RATING;
-  const d = getDifficultyDisplay(level);
+  const effectiveLevel = belowThreshold ? null : level;
+  const unrated = !effectiveLevel;
+  const d = getDifficultyDisplay(effectiveLevel);
   const rateStr = successRate != null ? `${successRate}% נכון` : '';
   const attStr  = attempts != null ? `${attempts} ניסיונות` : '';
   const tooltip = unrated
@@ -279,7 +280,7 @@ export default function QuestionManagement() {
         question_text: q.question_text,
         options: q.options ?? [],
         correct_answer: q.correct_answer,
-        difficulty_level: q.difficulty_level ?? 5,
+        difficulty_level: q.difficulty_level ?? null,
         explanation: q.explanation,
         hint: q.hint,
         tags: q.tags ?? [],
