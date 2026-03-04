@@ -175,6 +175,20 @@ export default function TranscriptUpload() {
   const selectAllForBatch = () => setSelectedForBatch(new Set(list.map((t) => t._id)));
   const clearBatchSelection = () => setSelectedForBatch(new Set());
 
+  const callGenerateQuestions = async (body, retryOn503 = true) => {
+    const res = await fetch('/api/transcripts/generate-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 503 && retryOn503) {
+      await new Promise((r) => setTimeout(r, 3500));
+      return callGenerateQuestions(body, false);
+    }
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  };
+
   const handleGenerateBatch = async () => {
     const ids = Array.from(selectedForBatch);
     if (ids.length === 0) {
@@ -186,12 +200,7 @@ export default function TranscriptUpload() {
     setGeneratedQuestions([]);
     setGeneratedForName(null);
     try {
-      const res = await fetch('/api/transcripts/generate-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcriptIds: ids, count: n }),
-      });
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await callGenerateQuestions({ transcriptIds: ids, count: n });
       if (res.ok) {
         const questions = data.questions || [];
         setGeneratedQuestions(questions);
@@ -201,7 +210,8 @@ export default function TranscriptUpload() {
         showToast(`נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, 'success');
         await loadList(searchQuery);
       } else {
-        showToast(data.error || 'יצירת שאלות נכשלה', 'error');
+        const msg = data.error || (res.status === 503 ? 'השרת לא זמין. חכה כ־30 שניות ונסה שוב (ייתכן שהשרת מתעורר).' : 'יצירת שאלות נכשלה');
+        showToast(msg, 'error');
       }
     } catch (err) {
       showToast('שגיאה: ' + (err?.message || ''), 'error');
@@ -220,12 +230,7 @@ export default function TranscriptUpload() {
     setGeneratedQuestions([]);
     setGeneratedForName(null);
     try {
-      const res = await fetch('/api/transcripts/generate-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcriptId: t._id, count }),
-      });
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await callGenerateQuestions({ transcriptId: t._id, count });
       if (res.ok) {
         const questions = data.questions || [];
         setGeneratedQuestions(questions);
@@ -235,7 +240,8 @@ export default function TranscriptUpload() {
         showToast(`נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, 'success');
         await loadList(searchQuery);
       } else {
-        showToast(data.error || 'יצירת שאלות נכשלה', 'error');
+        const msg = data.error || (res.status === 503 ? 'השרת לא זמין. חכה כ־30 שניות ונסה שוב (ייתכן שהשרת מתעורר).' : 'יצירת שאלות נכשלה');
+        showToast(msg, 'error');
       }
     } catch (err) {
       showToast('שגיאה: ' + (err?.message || ''), 'error');

@@ -45,9 +45,11 @@ export function trapFocus(element) {
   };
 
   element.addEventListener('keydown', handleTab);
-  
-  // Focus first element
-  firstElement.focus();
+
+  // Focus first element only when opening (focus not already inside modal) so we don't steal focus on re-renders
+  if (!element.contains(document.activeElement)) {
+    firstElement.focus();
+  }
 
   return () => {
     element.removeEventListener('keydown', handleTab);

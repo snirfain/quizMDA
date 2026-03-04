@@ -20,6 +20,8 @@ export default function Modal({
 }) {
   const modalRef = useRef(null);
   const previousFocusRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (isOpen) {
@@ -38,7 +40,7 @@ export default function Modal({
 
       // Close on Escape
       const escapeCleanup = closeOnEscape(() => {
-        if (onClose) onClose();
+        if (onCloseRef.current) onCloseRef.current();
       });
 
       // Prevent body scroll
@@ -51,7 +53,7 @@ export default function Modal({
         restoreFocus();
       };
     }
-  }, [isOpen, title, onClose]);
+  }, [isOpen, title]);
 
   if (!isOpen) return null;
 
