@@ -28,6 +28,97 @@ import { reclassifyAllQuestionsByContent, reclassifyUnanalyzedQuestionsWithAI } 
 import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { fixQuestionWithAI } from '../workflows/questionEnrich';
 
+/** Custom dropdown for filters — avoids native select dropdown positioning issues in RTL. */
+function FilterDropdown({ value, onChange, options, ariaLabel }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [open]);
+  const label = options.find(o => o.value === value)?.label ?? value;
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '160px', flexShrink: 0 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        style={{
+          width: '100%',
+          padding: '8px 12px',
+          border: '1px solid #e0e0e0',
+          borderRadius: '4px',
+          fontSize: '14px',
+          direction: 'rtl',
+          textAlign: 'right',
+          cursor: 'pointer',
+          backgroundColor: '#fff',
+          fontFamily: 'inherit',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ opacity: 0.7 }}>{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <ul
+          role="listbox"
+          aria-label={ariaLabel}
+          style={{
+            position: 'absolute',
+            top: '100%',
+            right: 0,
+            margin: 0,
+            marginTop: '2px',
+            padding: 0,
+            listStyle: 'none',
+            minWidth: '100%',
+            maxHeight: '280px',
+            overflowY: 'auto',
+            background: '#fff',
+            border: '1px solid #e0e0e0',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+            zIndex: 1000,
+            direction: 'rtl',
+            textAlign: 'right',
+          }}
+        >
+          {options.map((opt) => (
+            <li
+              key={opt.value}
+              role="option"
+              aria-selected={value === opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              style={{
+                padding: '10px 14px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                borderBottom: '1px solid #f0f0f0',
+                background: value === opt.value ? 'var(--mda-red-bg)' : 'transparent',
+                color: value === opt.value ? 'var(--mda-red)' : 'var(--color-text)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = value === opt.value ? 'var(--mda-red-bg)' : '#f5f5f5'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = value === opt.value ? 'var(--mda-red-bg)' : 'transparent'; }}
+            >
+              {opt.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Small reusable badge component for difficulty. Shows "לא מדורג" until ≥50 attempts. */
 function DifficultyBadge({ level, attempts, successRate }) {
   const belowThreshold = !attempts || attempts < MIN_ATTEMPTS_FOR_RATING;
@@ -775,58 +866,64 @@ export default function QuestionManagement() {
             )}
 
             <div style={styles.filters}>
-              <select
-                style={styles.filterSelect}
+              <FilterDropdown
+                ariaLabel="סינון לפי סטטוס"
                 value={filters.status}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                aria-label="סינון לפי סטטוס"
-              >
-                <option value="all">כל הסטטוסים</option>
-                <option value="active">פעיל</option>
-                <option value="draft">טיוטה</option>
-                <option value="pending_review">לבדיקה</option>
-                <option value="suspended">מושעה</option>
-              </select>
+                onChange={(v) => setFilters({ ...filters, status: v })}
+                options={[
+                  { value: 'all', label: 'כל הסטטוסים' },
+                  { value: 'active', label: 'פעיל' },
+                  { value: 'draft', label: 'טיוטה' },
+                  { value: 'pending_review', label: 'לבדיקה' },
+                  { value: 'suspended', label: 'מושעה' },
+                ]}
+              />
 
-              <select
-                style={styles.filterSelect}
-                value={filters.questionType}
-                onChange={(e) => setFilters({ ...filters, questionType: e.target.value })}
-                aria-label="סינון לפי סוג שאלה"
-              >
-                <option value="all">כל הסוגים</option>
-                <option value="single_choice">בחירה יחידה</option>
-                <option value="multi_choice">בחירה מרובה</option>
-                <option value="true_false">נכון/לא נכון</option>
-                <option value="open_ended">שאלה פתוחה</option>
-              </select>
+              <div style={styles.filterSelectWrap}>
+                <select
+                  style={styles.filterSelect}
+                  value={filters.questionType}
+                  onChange={(e) => setFilters({ ...filters, questionType: e.target.value })}
+                  aria-label="סינון לפי סוג שאלה"
+                >
+                  <option value="all">כל הסוגים</option>
+                  <option value="single_choice">בחירה יחידה</option>
+                  <option value="multi_choice">בחירה מרובה</option>
+                  <option value="true_false">נכון/לא נכון</option>
+                  <option value="open_ended">שאלה פתוחה</option>
+                </select>
+              </div>
 
-              <select
-                style={styles.filterSelect}
-                value={filters.difficulty}
-                onChange={(e) => setFilters({ ...filters, difficulty: e.target.value })}
-                aria-label="סינון לפי קושי"
-              >
-                <option value="all">כל רמות הקושי</option>
-                <option value="קל">קל (95–100%)</option>
-                <option value="בינוני">בינוני (80–94%)</option>
-                <option value="קשה">קשה (70–79%)</option>
-                <option value="unrated">לא מדורג (פחות מ-50 ניסיונות)</option>
-              </select>
+              <div style={styles.filterSelectWrap}>
+                <select
+                  style={styles.filterSelect}
+                  value={filters.difficulty}
+                  onChange={(e) => setFilters({ ...filters, difficulty: e.target.value })}
+                  aria-label="סינון לפי קושי"
+                >
+                  <option value="all">כל רמות הקושי</option>
+                  <option value="קל">קל (95–100%)</option>
+                  <option value="בינוני">בינוני (80–94%)</option>
+                  <option value="קשה">קשה (70–79%)</option>
+                  <option value="unrated">לא מדורג (פחות מ-50 ניסיונות)</option>
+                </select>
+              </div>
 
-              <select
-                style={styles.filterSelect}
-                value={filters.hierarchyId || ''}
-                onChange={(e) => setFilters({ ...filters, hierarchyId: e.target.value || null })}
-                aria-label="סינון לפי נושא"
-              >
-                <option value="">כל הנושאים</option>
-                {hierarchies.map(h => (
-                  <option key={h.id} value={h.id}>
-                    {h.category_name} - {h.topic_name}
-                  </option>
-                ))}
-              </select>
+              <div style={styles.filterSelectWrap}>
+                <select
+                  style={styles.filterSelect}
+                  value={filters.hierarchyId || ''}
+                  onChange={(e) => setFilters({ ...filters, hierarchyId: e.target.value || null })}
+                  aria-label="סינון לפי נושא"
+                >
+                  <option value="">כל הנושאים</option>
+                  {hierarchies.map(h => (
+                    <option key={h.id} value={h.id}>
+                      {h.category_name} - {h.topic_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <button
                 type="button"
@@ -1887,13 +1984,23 @@ const styles = {
     gap: '12px',
     flexWrap: 'wrap'
   },
+  filterSelectWrap: {
+    position: 'relative',
+    overflow: 'visible',
+    width: '160px',
+    flexShrink: 0
+  },
   filterSelect: {
     padding: '8px 12px',
     border: '1px solid #e0e0e0',
     borderRadius: '4px',
     fontSize: '14px',
     direction: 'rtl',
-    minWidth: '150px'
+    width: '100%',
+    boxSizing: 'border-box',
+    appearance: 'menulist',
+    cursor: 'pointer',
+    backgroundColor: '#fff'
   },
   questionsList: {
     backgroundColor: '#FFFFFF',

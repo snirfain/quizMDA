@@ -342,26 +342,45 @@ export async function generateQuestionsFromTranscript(req, res) {
     const existing = await Question.find({ tags: { $in: transcriptNames } }).select('question_text').lean();
     const existingTexts = [...new Set(existing.map((q) => (q.question_text || '').trim()).filter(Boolean))];
     const userPrompt = buildTranscriptQuestionUserPrompt(combinedText, count, existingTexts);
-    const response = await fetch(OPENAI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        messages: [
-          { role: 'system', content: TRANSCRIPT_QUESTION_SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 16000,
-      }),
-    });
+    const OPENAI_TIMEOUT_MS = 90_000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(OPENAI_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          messages: [
+            { role: 'system', content: TRANSCRIPT_QUESTION_SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: 16000,
+        }),
+        signal: controller.signal,
+      });
+    } catch (fetchErr) {
+      clearTimeout(timeoutId);
+      const isTimeout = fetchErr?.name === 'AbortError';
+      console.error('OpenAI fetch failed:', isTimeout ? 'timeout' : fetchErr?.message || fetchErr);
+      return res.status(503).json({
+        error: isTimeout
+          ? 'בקשה ל־OpenAI ארכה יותר מדי זמן. נסה שוב או הפחת את מספר השאלות.'
+          : 'שגיאת רשת אל OpenAI: ' + (fetchErr?.message || 'לא ניתן להתחבר'),
+      });
+    }
+    clearTimeout(timeoutId);
     if (!response.ok) {
-      const err = await response.text();
+      const err = await response.text().catch(() => '');
       console.error('OpenAI error:', response.status, err.slice(0, 300));
-      return res.status(502).json({ error: 'שגיאה מקריאת OpenAI: ' + (err.slice(0, 200) || response.statusText) });
+      return res.status(503).json({
+        error: 'שגיאה מקריאת OpenAI: ' + (err.slice(0, 200) || response.statusText),
+      });
     }
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '[]';
@@ -378,6 +397,8 @@ export async function generateQuestionsFromTranscript(req, res) {
     res.json({ questions, transcriptName: transcriptNameLabel, transcriptNames });
   } catch (err) {
     console.error('POST /api/transcripts/generate-questions error:', err);
-    res.status(500).json({ error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'שגיאה בשרת בעת יצירת השאלות' });
+    }
   }
 }
