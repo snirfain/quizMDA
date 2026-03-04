@@ -309,6 +309,10 @@ export async function generateQuestionsFromTranscript(req, res) {
   try {
     await ensureDbConnection();
     if (!isDbConnected()) {
+      await new Promise((r) => setTimeout(r, 3000));
+      await ensureDbConnection();
+    }
+    if (!isDbConnected()) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;

@@ -179,22 +179,32 @@ export default function TranscriptUpload() {
 
   const wakeServerIfNeeded = async () => {
     if (!isRenderHost) return;
-    try {
-      await fetch('/api/health', { method: 'GET' });
-    } catch (_) {}
-    await new Promise((r) => setTimeout(r, 3000));
+    const maxAttempts = 10;
+    const delayMs = 3000;
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const r = await fetch('/api/health', { method: 'GET' });
+        if (r.ok) {
+          await new Promise((r) => setTimeout(r, 6000));
+          return;
+        }
+      } catch (_) {}
+      if (i < maxAttempts - 1) await new Promise((res) => setTimeout(res, delayMs));
+    }
+    await new Promise((r) => setTimeout(r, 6000));
   };
 
-  const callGenerateQuestions = async (body, retryOn503 = true) => {
+  const callGenerateQuestions = async (body, retriesLeft = 2) => {
     const res = await fetch('/api/transcripts/generate-questions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (res.status === 503 && retryOn503) {
-      showToast('השרת מתעורר, מנסה שוב בעוד כמה שניות...', 'info');
-      await new Promise((r) => setTimeout(r, 6000));
-      return callGenerateQuestions(body, false);
+    if (res.status === 503 && retriesLeft > 0) {
+      const delay = retriesLeft === 2 ? 10000 : 20000;
+      showToast(`השרת לא זמין. ניסיון חוזר בעוד ${delay / 1000} שניות...`, 'info');
+      await new Promise((r) => setTimeout(r, delay));
+      return callGenerateQuestions(body, retriesLeft - 1);
     }
     const data = await res.json().catch(() => ({}));
     return { res, data };
