@@ -82,7 +82,7 @@ export const routes = {
     path: '/instructor/transcripts',
     component: 'TranscriptUpload',
     public: false,
-    roles: ['instructor', 'admin']
+    roles: ['admin']
   },
   manager: {
     path: '/manager',
@@ -189,7 +189,6 @@ export function getNavigationItems(userRole) {
       { path: routes.instructor.path,             label: 'מחולל מבחנים',   icon: '📝' },
       { path: routes.instructorQuestions.path,    label: 'ניהול שאלות',    icon: '❓' },
       { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',      icon: '🗃️' },
-      { path: routes.instructorTranscripts.path,  label: 'העלאת תמלילים',  icon: '📄' },
       { path: routes.instructorStudyPlans.path,   label: 'תוכניות לימוד',  icon: '📋' },
       { path: routes.instructorAnalytics.path,   label: 'אנליטיקה',       icon: '📊' },
       { path: routes.settings.path,               label: 'הגדרות',          icon: '⚙️' }

@@ -12,54 +12,74 @@ const styles = {
   container: {
     direction: 'rtl',
     textAlign: 'right',
-    padding: 24,
-    maxWidth: 720,
+    padding: '32px 24px 48px',
+    maxWidth: 820,
+    margin: '0 auto',
+    fontFamily: "'Heebo', 'Assistant', sans-serif",
   },
   title: {
-    margin: '0 0 20px 0',
-    fontSize: 22,
-    fontWeight: 'bold',
+    margin: '0 0 8px 0',
+    fontSize: 28,
+    fontWeight: 700,
+    color: '#1a1a1a',
+  },
+  subtitle: {
+    margin: '0 0 28px 0',
+    fontSize: 15,
+    color: '#555',
+    lineHeight: 1.5,
   },
   section: {
-    marginBottom: 24,
-    padding: 16,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
+    marginBottom: 28,
+    padding: 24,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+    border: '1px solid #eee',
   },
   sectionTitle: {
-    margin: '0 0 12px 0',
-    fontSize: 16,
+    margin: '0 0 16px 0',
+    fontSize: 18,
     fontWeight: 600,
+    color: '#1a1a1a',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
   },
   input: {
     display: 'block',
     marginBottom: 12,
-    padding: 8,
+    padding: '10px 12px',
     border: '1px solid #ccc',
-    borderRadius: 4,
+    borderRadius: 8,
     fontSize: 14,
     direction: 'rtl',
+    width: '100%',
+    boxSizing: 'border-box',
   },
   button: {
     padding: '10px 20px',
     backgroundColor: '#CC0000',
     color: 'white',
     border: 'none',
-    borderRadius: 6,
+    borderRadius: 8,
     fontSize: 14,
     fontWeight: 600,
     cursor: 'pointer',
     marginLeft: 8,
+    transition: 'background-color 0.2s, opacity 0.2s',
   },
   buttonSecondary: {
     padding: '10px 20px',
-    backgroundColor: '#666',
+    backgroundColor: '#5a5a5a',
     color: 'white',
     border: 'none',
-    borderRadius: 6,
+    borderRadius: 8,
     fontSize: 14,
+    fontWeight: 500,
     cursor: 'pointer',
     marginLeft: 8,
+    transition: 'background-color 0.2s, opacity 0.2s',
   },
   list: {
     listStyle: 'none',
@@ -67,16 +87,42 @@ const styles = {
     margin: 0,
   },
   listItem: {
-    padding: '8px 0',
+    padding: '14px 16px',
     borderBottom: '1px solid #eee',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
+    transition: 'background-color 0.15s',
   },
   note: {
     fontSize: 13,
     color: '#666',
-    marginTop: 8,
+    marginTop: 10,
+    lineHeight: 1.5,
+  },
+  transcriptCard: {
+    padding: 16,
+    borderRadius: 10,
+    border: '1px solid #e8e8e8',
+    backgroundColor: '#fafafa',
+    marginBottom: 12,
+  },
+  badge: {
+    display: 'inline-block',
+    padding: '2px 8px',
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: 500,
+    backgroundColor: '#e8f4fc',
+    color: '#0a5f8c',
+  },
+  addToBankCard: {
+    padding: 24,
+    borderRadius: 12,
+    border: '2px solid #CC0000',
+    backgroundColor: '#fffaf9',
+    boxShadow: '0 2px 8px rgba(204,0,0,0.08)',
   },
 };
 
@@ -255,23 +301,28 @@ export default function TranscriptUpload() {
   return (
     <div style={styles.container} aria-label="העלאת תמלילים">
       <h1 style={styles.title}>העלאת תמלילים</h1>
+      <p style={styles.subtitle}>
+        העלה קבצי SRT, צור שאלות מתוך התמליל והוסף אותן למאגר. השאלות משמשות לתרגול חניכי קורסי פראמדיקים וסימולציות בחינה.
+      </p>
 
       <div style={styles.section} role="region" aria-label="העלאת קובץ">
-        <h2 style={styles.sectionTitle}>העלאת קובץ SRT</h2>
-        <input
-          type="file"
-          accept=".srt"
-          onChange={handleFileChange}
-          disabled={uploading}
-          aria-label="בחר קובץ תמליל SRT"
-          style={styles.input}
-        />
-        <p style={styles.note}>כל תמליל בקובץ נפרד. פורמט SRT (נתמך).</p>
+        <h2 style={styles.sectionTitle}>📤 העלאת קובץ SRT</h2>
+        <label style={{ display: 'block', cursor: 'pointer' }}>
+          <input
+            type="file"
+            accept=".srt"
+            onChange={handleFileChange}
+            disabled={uploading}
+            aria-label="בחר קובץ תמליל SRT"
+            style={{ ...styles.input, marginBottom: 0, cursor: uploading ? 'not-allowed' : 'pointer' }}
+          />
+        </label>
+        <p style={styles.note}>כל תמליל בקובץ נפרד. פורמט SRT בלבד.</p>
         {uploading && <LoadingSpinner />}
       </div>
 
       <div style={styles.section} role="region" aria-label="התאמת שאלות לתמלילים">
-        <h2 style={styles.sectionTitle}>התאמת שאלות לתמלילים</h2>
+        <h2 style={styles.sectionTitle}>🔗 התאמת שאלות לתמלילים</h2>
         <button
           type="button"
           style={styles.buttonSecondary}
@@ -282,36 +333,52 @@ export default function TranscriptUpload() {
           {matching ? 'מריץ...' : 'הרץ התאמה לכל השאלות'}
         </button>
         <p style={styles.note}>
-          עובר על כל השאלות באתר, מוצא תמליל שמכיל את השאלה ומתייג בשם התמליל. שאלה שלא נמצא לה תמליל מתויגת &quot;לא נמצא בתמלול&quot;.
+          עובר על כל השאלות במאגר, מוצא תמליל שמכיל את השאלה ומתייג בשם התמליל. שאלה שלא נמצא לה תמליל מתויגת &quot;לא נמצא בתמלול&quot;.
         </p>
       </div>
 
       <div style={styles.section} role="region" aria-label="רשימת תמלילים">
-        <h2 style={styles.sectionTitle}>תמלילים שהועלו ({list.length})</h2>
+        <h2 style={styles.sectionTitle}>📄 תמלילים שהועלו ({list.length})</h2>
         {loading ? (
           <LoadingSpinner />
         ) : (
           <ul style={styles.list}>
             {list.length === 0 ? (
-              <li style={styles.listItem}>אין תמלילים. העלה קבצי SRT למעלה.</li>
+              <li style={{ ...styles.listItem, justifyContent: 'center', color: '#888' }}>
+                אין תמלילים. העלה קובץ SRT בסעיף למעלה.
+              </li>
             ) : (
               list.map((t) => (
-                <li key={t._id || t.name} style={{ ...styles.listItem, flexWrap: 'wrap', gap: 8 }}>
-                  <span style={{ flex: '1 1 auto' }}>{t.name}</span>
-                  <span style={{ fontSize: 12, color: '#888' }}>
-                    {t.originalFilename || ''} {t.createdAt ? new Date(t.createdAt).toLocaleDateString('he-IL') : ''}
-                    {' · '}({t.questionCount ?? 0} שאלות)
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <label style={{ fontSize: 13 }}>
-                      השלמה ל־
+                <li
+                  key={t._id || t.name}
+                  style={{
+                    ...styles.transcriptCard,
+                    marginBottom: 12,
+                    flexWrap: 'wrap',
+                    gap: 12,
+                    alignItems: 'center',
+                    display: 'flex',
+                    listStyle: 'none',
+                  }}
+                >
+                  <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>{t.name}</div>
+                    <div style={{ fontSize: 12, color: '#666' }}>
+                      {t.originalFilename && <span>{t.originalFilename} · </span>}
+                      {t.createdAt ? new Date(t.createdAt).toLocaleDateString('he-IL') : ''}
+                    </div>
+                  </div>
+                  <span style={styles.badge}>{t.questionCount ?? 0} שאלות</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <label style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>השלמה ל־</span>
                       <input
                         type="number"
                         min={MIN_GENERATE}
                         max={MAX_GENERATE}
                         value={getCompleteTo(t)}
                         onChange={(e) => setCompleteTo(t._id, e.target.value)}
-                        style={{ width: 48, marginRight: 4, ...styles.input }}
+                        style={{ width: 52, padding: '6px 8px', margin: 0, ...styles.input }}
                         aria-label={`השלמה ל־ ${t.name}`}
                       />
                     </label>
@@ -324,7 +391,7 @@ export default function TranscriptUpload() {
                     >
                       {generatingId === t._id ? 'יוצר...' : 'צור שאלות'}
                     </button>
-                  </span>
+                  </div>
                 </li>
               ))
             )}
@@ -333,16 +400,16 @@ export default function TranscriptUpload() {
       </div>
 
       {generatedQuestions.length > 0 && (
-        <div style={styles.section} role="region" aria-label="הוספת שאלות למאגר">
+        <div style={{ ...styles.section, ...styles.addToBankCard }} role="region" aria-label="הוספת שאלות למאגר">
           <h2 style={styles.sectionTitle}>
-            נוצרו {generatedQuestions.length} שאלות {generatedForName ? `(תמליל: ${generatedForName})` : ''}
+            ✅ נוצרו {generatedQuestions.length} שאלות {generatedForName ? `מתוך &quot;${generatedForName}&quot;` : ''}
           </h2>
-          <p style={styles.note}>הוסף למאגר השאלות (בחר יחידה):</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+          <p style={{ ...styles.note, marginBottom: 16 }}>בחר יחידת תוכן והוסף את השאלות למאגר:</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <select
               value={selectedHierarchyId}
               onChange={(e) => setSelectedHierarchyId(e.target.value)}
-              style={styles.input}
+              style={{ ...styles.input, width: 'auto', minWidth: 200, margin: 0 }}
               aria-label="בחר יחידה"
             >
               {hierarchies.length === 0 && <option value="">טוען יחידות...</option>}
