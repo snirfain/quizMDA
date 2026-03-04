@@ -43,7 +43,7 @@ function normalizeQuestionForDb(q) {
   }));
   const status = VALID_STATUS.has(q.status) ? q.status : 'active';
   return {
-    hierarchy_id: q.hierarchy_id ?? null,
+    hierarchy_id: q.hierarchy_id != null && q.hierarchy_id !== '' ? q.hierarchy_id : 'unsorted',
     question_type: q.question_type || 'single_choice',
     question_text: q.question_text ?? '',
     options,
@@ -123,6 +123,9 @@ export async function updateQuestion(req, res) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid question id' });
+    }
     const data = normalizeQuestionForDb(req.body);
     const doc = await Question.findByIdAndUpdate(id, data, { new: true, runValidators: true }).lean();
     if (!doc) return res.status(404).json({ error: 'Question not found' });
@@ -130,7 +133,8 @@ export async function updateQuestion(req, res) {
     res.json({ id: _id.toString(), ...rest });
   } catch (err) {
     console.error('PUT /api/questions/:id error:', err);
-    res.status(500).json({ error: err.message });
+    const isValidation = err.name === 'ValidationError';
+    res.status(isValidation ? 400 : 500).json({ error: err.message || 'Update failed' });
   }
 }
 
@@ -141,6 +145,9 @@ export async function deleteQuestion(req, res) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid question id' });
+    }
     const doc = await Question.findByIdAndDelete(id);
     if (!doc) return res.status(404).json({ error: 'Question not found' });
     res.json({ success: true, id });

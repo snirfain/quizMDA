@@ -348,7 +348,7 @@ export async function generateQuestionsFromTranscript(req, res) {
     const excludeList = Array.isArray(excludeFromBody) ? excludeFromBody.map((t) => String(t || '').trim()).filter(Boolean) : [];
     const existingTexts = [...new Set([...fromDb, ...excludeList])];
     const userPrompt = buildTranscriptQuestionUserPrompt(combinedText, count, existingTexts);
-    const OPENAI_TIMEOUT_MS = 90_000;
+    const OPENAI_TIMEOUT_MS = 45_000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
     let response;

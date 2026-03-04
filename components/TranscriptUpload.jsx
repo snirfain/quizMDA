@@ -194,7 +194,7 @@ export default function TranscriptUpload() {
     await new Promise((r) => setTimeout(r, 6000));
   };
 
-  const CHUNK_SIZE = 5;
+  const CHUNK_SIZE = 3;
 
   const callGenerateQuestions = async (body, retriesLeft = 2) => {
     const res = await fetch('/api/transcripts/generate-questions', {
