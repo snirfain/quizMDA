@@ -101,6 +101,99 @@ export async function exportTestToPDF(testQuestions, testMetadata = {}) {
   };
 }
 
+const DIFFICULTY_LABELS = { קל: 'קל', בינוני: 'בינוני', קשה: 'קשה' };
+
+/**
+ * Generate exam for trainee: by categories (with per-category counts), difficulty breakdown, topic/tags.
+ * Returns { questions, totalAvailable }.
+ * @param {Object} spec
+ * @param {Object} spec.categoryCounts - { categoryName: number } e.g. { "מבוא": 5, "קרדיולוגיה": 10 }
+ * @param {Object} spec.difficultyCounts - { "קל": n, "בינוני": m, "קשה": k }
+ * @param {string} [spec.topic_name]
+ * @param {string[]} [spec.tagFilters]
+ * @param {number} [spec.maxTotal] - cap total questions (default: sum of category counts or difficulty counts)
+ */
+export async function generateTraineeExam(spec) {
+  const { categoryCounts = {}, difficultyCounts = {}, topic_name, tagFilters = [], maxTotal } = spec;
+  const categories = Object.keys(categoryCounts).filter(c => categoryCounts[c] > 0);
+  const hasCategorySpec = categories.length > 0;
+  const hasDifficultySpec = Object.keys(difficultyCounts).some(k => (difficultyCounts[k] || 0) > 0);
+
+  let pool = [];
+  if (hasCategorySpec) {
+    const hierarchyQuery = { category_name: { $in: categories } };
+    if (topic_name) hierarchyQuery.topic_name = topic_name;
+    const hierarchies = await entities.Content_Hierarchy.find(hierarchyQuery);
+    const hierarchyIds = hierarchies.map(h => h.id);
+    if (hierarchyIds.length === 0) {
+      return { questions: [], totalAvailable: 0 };
+    }
+    const questionQuery = { hierarchy_id: { $in: hierarchyIds }, status: 'active' };
+    if (tagFilters.length > 0) {
+      const allCat = await entities.Question_Bank.find(questionQuery);
+      pool = allCat.filter(q => q.tags && tagFilters.some(t => (q.tags || []).includes(t)));
+    } else {
+      pool = await entities.Question_Bank.find(questionQuery);
+    }
+    const byCategory = {};
+    for (const q of pool) {
+      const h = hierarchies.find(hh => hh.id === q.hierarchy_id || String(hh.id) === String(q.hierarchy_id));
+      const cat = h ? h.category_name : null;
+      if (cat && categories.includes(cat)) {
+        if (!byCategory[cat]) byCategory[cat] = [];
+        byCategory[cat].push(q);
+      }
+    }
+    const selected = [];
+    for (const cat of categories) {
+      const list = (byCategory[cat] || []).sort(() => 0.5 - Math.random());
+      selected.push(...list.slice(0, categoryCounts[cat] || 0));
+    }
+    pool = selected;
+  } else {
+    const hierarchyQuery = topic_name ? { topic_name } : {};
+    const hierarchies = await entities.Content_Hierarchy.find(hierarchyQuery);
+    const hierarchyIds = hierarchies.length ? hierarchies.map(h => h.id) : [];
+    const questionQuery = hierarchyIds.length
+      ? { hierarchy_id: { $in: hierarchyIds }, status: 'active' }
+      : { status: 'active' };
+    pool = await entities.Question_Bank.find(questionQuery);
+    if (tagFilters.length > 0) {
+      pool = pool.filter(q => q.tags && tagFilters.some(t => (q.tags || []).includes(t)));
+    }
+  }
+
+  const normalizeDiff = (q) => {
+    const d = q.difficulty_level;
+    if (d === 'קל' || (typeof d === 'number' && d <= 4)) return 'קל';
+    if (d === 'קשה' || (typeof d === 'number' && d >= 7)) return 'קשה';
+    return 'בינוני';
+  };
+
+  if (hasDifficultySpec && pool.length > 0) {
+    const byDiff = { קל: [], בינוני: [], קשה: [] };
+    for (const q of pool) {
+      const d = normalizeDiff(q);
+      if (byDiff[d]) byDiff[d].push(q);
+    }
+    const out = [];
+    for (const label of ['קל', 'בינוני', 'קשה']) {
+      const list = (byDiff[label] || []).sort(() => 0.5 - Math.random());
+      const cap = difficultyCounts[label] || 0;
+      out.push(...list.slice(0, cap));
+    }
+    pool = out.sort(() => 0.5 - Math.random());
+  } else if (pool.length > 0) {
+    pool = pool.sort(() => 0.5 - Math.random());
+  }
+
+  const totalRequested = maxTotal || (hasDifficultySpec
+    ? (difficultyCounts.קל || 0) + (difficultyCounts.בינוני || 0) + (difficultyCounts.קשה || 0)
+    : pool.length);
+  const questions = pool.slice(0, totalRequested);
+  return { questions, totalAvailable: pool.length };
+}
+
 /**
  * Get filter options for UI
  */

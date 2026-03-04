@@ -42,6 +42,7 @@ const DataImportExport = React.lazy(() => import('./components/DataImportExport'
 const AdminStatistics = React.lazy(() => import('./components/AdminStatistics'));
 const PermissionManagement = React.lazy(() => import('./components/PermissionManagement'));
 const MediaBankManager = React.lazy(() => import('./components/MediaBankManager'));
+const TranscriptUpload = React.lazy(() => import('./components/TranscriptUpload'));
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState('/');
@@ -162,6 +163,8 @@ export default function App() {
         return <InstructorAnalytics instructorId={userId} />;
       case '/instructor/media-bank':
         return <MediaBankManager />;
+      case '/instructor/transcripts':
+        return <TranscriptUpload />;
       case '/manager':
         return <ManagerDashboardPage />;
       case '/admin/data-import-export':

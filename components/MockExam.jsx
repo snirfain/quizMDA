@@ -5,27 +5,38 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getAdaptiveQuestions } from '../workflows/adaptivePracticeEngine';
-import { entities } from '../config/appConfig';
+import { getPracticeSession } from '../workflows/adaptivePracticeEngine';
+import { generateTraineeExam } from '../workflows/testGenerator';
 import { getCurrentUser } from '../utils/auth';
 import ExamResults from './ExamResults';
 import LoadingSpinner from './LoadingSpinner';
 import { showToast } from './Toast';
 import { announce } from '../utils/accessibility';
 
-export default function MockExam({ questionCount = 20, timeLimit = 30 }) {
+function getExamStateFromRouter() {
+  if (typeof window === 'undefined' || !window.history || !window.history.state) return null;
+  return window.history.state;
+}
+
+export default function MockExam({ questionCount: propCount = 20, timeLimit: propTimeLimit = 30 }) {
+  const routeState = getExamStateFromRouter();
+  const questionCount = routeState?.questionCount ?? routeState?.preGeneratedQuestions?.length ?? propCount;
+  const timeLimitMinutes = routeState?.timeLimitMinutes ?? (routeState?.useTimeLimit ? 1.5 * questionCount : 0) ?? propTimeLimit;
+  const timeLimit = timeLimitMinutes > 0 ? timeLimitMinutes : 999;
+
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState({});
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [timeRemaining, setTimeRemaining] = useState(timeLimit * 60); // seconds
+  const [timeRemaining, setTimeRemaining] = useState(timeLimit * 60);
   const [isStarted, setIsStarted] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [results, setResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const timerRef = useRef(null);
 
+  const hasTimeLimit = timeLimit < 999;
   useEffect(() => {
-    if (isStarted && timeRemaining > 0) {
+    if (isStarted && hasTimeLimit && timeRemaining > 0) {
       timerRef.current = setInterval(() => {
         setTimeRemaining(prev => {
           if (prev <= 1) {
@@ -42,14 +53,29 @@ export default function MockExam({ questionCount = 20, timeLimit = 30 }) {
         }
       };
     }
-  }, [isStarted, timeRemaining]);
+  }, [isStarted, timeRemaining, hasTimeLimit]);
 
   const loadQuestions = async () => {
     setIsLoading(true);
     try {
+      if (routeState?.preGeneratedQuestions?.length > 0) {
+        setQuestions(routeState.preGeneratedQuestions);
+        setIsLoading(false);
+        return;
+      }
+      if (routeState?.examSpec) {
+        const { questions: qs } = await generateTraineeExam(routeState.examSpec);
+        setQuestions(qs);
+        return;
+      }
       const user = await getCurrentUser();
-      const result = await getAdaptiveQuestions(user.user_id, {}, questionCount);
-      setQuestions(result.questions);
+      const result = await getPracticeSession(
+        user.user_id,
+        questionCount,
+        routeState?.hierarchyFilters || {},
+        routeState?.tagFilters || []
+      );
+      setQuestions(result.questions.slice(0, questionCount));
     } catch (error) {
       console.error('Error loading questions:', error);
       showToast('שגיאה בטעינת שאלות', 'error');
@@ -187,7 +213,7 @@ export default function MockExam({ questionCount = 20, timeLimit = 30 }) {
               <strong>מספר שאלות:</strong> {questionCount}
             </p>
             <p style={styles.infoItem}>
-              <strong>זמן מוקצב:</strong> {timeLimit} דקות
+              <strong>זמן מוקצב:</strong> {timeLimit >= 999 ? 'ללא הגבלה' : `${timeLimit} דקות`}
             </p>
             <p style={styles.infoItem}>
               <strong>סוג שאלות:</strong> מעורב
@@ -220,15 +246,17 @@ export default function MockExam({ questionCount = 20, timeLimit = 30 }) {
     <div style={styles.examContainer}>
         {/* Header */}
         <div style={styles.header}>
-          <div style={styles.timer}>
-            <span style={styles.timerLabel}>זמן נותר:</span>
-            <span style={{
-              ...styles.timerValue,
-              ...(timeRemaining < 300 ? styles.timerWarning : {})
-            }}>
-              {formatTime(timeRemaining)}
-            </span>
-          </div>
+          {hasTimeLimit && (
+            <div style={styles.timer}>
+              <span style={styles.timerLabel}>זמן נותר:</span>
+              <span style={{
+                ...styles.timerValue,
+                ...(timeRemaining < 300 ? styles.timerWarning : {})
+              }}>
+                {formatTime(timeRemaining)}
+              </span>
+            </div>
+          )}
           <div style={styles.progress}>
             שאלה {currentIndex + 1} מתוך {questions.length}
           </div>

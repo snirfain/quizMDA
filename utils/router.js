@@ -78,6 +78,12 @@ export const routes = {
     public: false,
     roles: ['instructor', 'admin']
   },
+  instructorTranscripts: {
+    path: '/instructor/transcripts',
+    component: 'TranscriptUpload',
+    public: false,
+    roles: ['instructor', 'admin']
+  },
   manager: {
     path: '/manager',
     component: 'ManagerDashboard',
@@ -180,18 +186,20 @@ export function getNavigationItems(userRole) {
       { path: routes.settings.path, label: 'הגדרות', icon: '⚙️' }
     ],
     instructor: [
-      { path: routes.instructor.path,          label: 'מחולל מבחנים',  icon: '📝' },
-      { path: routes.instructorQuestions.path, label: 'ניהול שאלות',   icon: '❓' },
-      { path: routes.mediaBankManager.path,    label: 'מאגר מדיה',     icon: '🗃️' },
-      { path: routes.instructorStudyPlans.path, label: 'תוכניות לימוד', icon: '📋' },
-      { path: routes.instructorAnalytics.path, label: 'אנליטיקה',      icon: '📊' },
-      { path: routes.settings.path,            label: 'הגדרות',         icon: '⚙️' }
+      { path: routes.instructor.path,             label: 'מחולל מבחנים',   icon: '📝' },
+      { path: routes.instructorQuestions.path,    label: 'ניהול שאלות',    icon: '❓' },
+      { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',      icon: '🗃️' },
+      { path: routes.instructorTranscripts.path,  label: 'העלאת תמלילים',  icon: '📄' },
+      { path: routes.instructorStudyPlans.path,   label: 'תוכניות לימוד',  icon: '📋' },
+      { path: routes.instructorAnalytics.path,   label: 'אנליטיקה',       icon: '📊' },
+      { path: routes.settings.path,               label: 'הגדרות',          icon: '⚙️' }
     ],
     admin: [
       { path: routes.manager.path,             label: 'לוח בקרה',             icon: '🎛️' },
       { path: routes.instructor.path,          label: 'מחולל מבחנים',          icon: '📝' },
       { path: routes.instructorQuestions.path, label: 'ניהול שאלות',           icon: '❓' },
       { path: routes.mediaBankManager.path,    label: 'מאגר מדיה',             icon: '🗃️' },
+      { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',      icon: '📄' },
       { path: routes.dataImportExport.path,    label: 'ייבוא/ייצוא נתונים',   icon: '📥' },
       { path: routes.instructorAnalytics.path, label: 'אנליטיקה',              icon: '📊' },
       { path: routes.settings.path,            label: 'הגדרות מערכת',          icon: '⚙️' }
@@ -235,6 +243,7 @@ export function getBreadcrumbs(path, userRole) {
         'admin': 'מנהל',
         'data-import-export': 'ייבוא/ייצוא נתונים',
         'media-bank': 'מאגר מדיה',
+        'transcripts': 'תמלילים',
         'settings': 'הגדרות',
         'profile': 'פרופיל',
         'help': 'עזרה'

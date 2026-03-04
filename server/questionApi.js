@@ -5,6 +5,8 @@
  */
 import mongoose from 'mongoose';
 import Question from '../models/Question.js';
+import Transcript from '../models/Transcript.js';
+import { matchQuestionToTranscripts } from './transcriptApi.js';
 
 function isDbConnected() {
   return mongoose.connection.readyState === 1;
@@ -89,11 +91,21 @@ export async function postQuestions(req, res) {
     const body = req.body;
     const items = Array.isArray(body) ? body : [body];
     console.log('[api/questions] POST: items=', items.length);
+    const transcripts = await Transcript.find({}).lean();
+    const transcriptNames = new Set(transcripts.map(t => t.name));
+    const NO_TRANSCRIPT_TAG = 'לא נמצא בתמלול';
     const created = [];
     for (const q of items) {
       const data = normalizeQuestionForDb(q);
       const doc = await Question.create(data);
-      created.push({ id: doc._id.toString(), ...doc.toObject() });
+      const found = await matchQuestionToTranscripts(doc.question_text, transcripts);
+      const newTag = found || NO_TRANSCRIPT_TAG;
+      const existing = Array.isArray(doc.tags) ? doc.tags : [];
+      const without = existing.filter(t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t));
+      const tags = [...without, newTag];
+      await Question.findByIdAndUpdate(doc._id, { tags });
+      const updated = await Question.findById(doc._id).lean();
+      created.push({ id: updated._id.toString(), ...updated });
     }
     console.log('[api/questions] POST: created=', created.length);
     res.status(201).json(Array.isArray(body) ? created : created[0]);
@@ -171,6 +183,16 @@ export async function syncQuestions(req, res) {
     if (toCreate.length > 0) {
       const result = await Question.insertMany(toCreate, { ordered: false });
       synced = result.length;
+      const transcripts = await Transcript.find({}).lean();
+      const transcriptNames = new Set(transcripts.map(t => t.name));
+      const NO_TRANSCRIPT_TAG = 'לא נמצא בתמלול';
+      for (const doc of result) {
+        const found = await matchQuestionToTranscripts(doc.question_text, transcripts);
+        const newTag = found || NO_TRANSCRIPT_TAG;
+        const existing = Array.isArray(doc.tags) ? doc.tags : [];
+        const without = existing.filter(t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t));
+        await Question.findByIdAndUpdate(doc._id, { tags: [...without, newTag] });
+      }
     }
 
     console.log('[api/questions/sync] synced:', synced, 'skipped:', skipped);
