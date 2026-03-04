@@ -175,6 +175,16 @@ export default function TranscriptUpload() {
   const selectAllForBatch = () => setSelectedForBatch(new Set(list.map((t) => t._id)));
   const clearBatchSelection = () => setSelectedForBatch(new Set());
 
+  const isRenderHost = typeof window !== 'undefined' && window.location?.hostname?.includes('onrender.com');
+
+  const wakeServerIfNeeded = async () => {
+    if (!isRenderHost) return;
+    try {
+      await fetch('/api/health', { method: 'GET' });
+    } catch (_) {}
+    await new Promise((r) => setTimeout(r, 3000));
+  };
+
   const callGenerateQuestions = async (body, retryOn503 = true) => {
     const res = await fetch('/api/transcripts/generate-questions', {
       method: 'POST',
@@ -182,7 +192,8 @@ export default function TranscriptUpload() {
       body: JSON.stringify(body),
     });
     if (res.status === 503 && retryOn503) {
-      await new Promise((r) => setTimeout(r, 3500));
+      showToast('השרת מתעורר, מנסה שוב בעוד כמה שניות...', 'info');
+      await new Promise((r) => setTimeout(r, 6000));
       return callGenerateQuestions(body, false);
     }
     const data = await res.json().catch(() => ({}));
@@ -200,6 +211,7 @@ export default function TranscriptUpload() {
     setGeneratedQuestions([]);
     setGeneratedForName(null);
     try {
+      await wakeServerIfNeeded();
       const { res, data } = await callGenerateQuestions({ transcriptIds: ids, count: n });
       if (res.ok) {
         const questions = data.questions || [];
@@ -230,6 +242,7 @@ export default function TranscriptUpload() {
     setGeneratedQuestions([]);
     setGeneratedForName(null);
     try {
+      await wakeServerIfNeeded();
       const { res, data } = await callGenerateQuestions({ transcriptId: t._id, count });
       if (res.ok) {
         const questions = data.questions || [];

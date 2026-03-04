@@ -34,6 +34,7 @@ async function start() {
     console.warn('MONGODB_URI not set; running without database');
   }
 
+  app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.post('/api/extract-doc', (req, res) => extractDocHandler(req, res));
   app.post('/api/upload-media', uploadMiddleware, uploadMediaHandler);
   app.get('/api/questions', getQuestions);
