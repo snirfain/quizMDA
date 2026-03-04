@@ -43,25 +43,28 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
   const [previewMediaItem, setPreviewMediaItem] = useState(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [options, setOptions] = useState(() => {
-    if (question?.options) {
-      if (typeof question.options === 'string') {
-        try {
-          const parsed = JSON.parse(question.options);
-          return parsed.map(opt => typeof opt === 'string' ? opt : (opt.text || opt.label || ''));
-        } catch (e) {
-          return ['', ''];
-        }
-      }
-      return question.options.map(opt => typeof opt === 'string' ? opt : (opt.text || opt.label || ''));
+    // 1) Use question.options only if present and non-empty (so we don't lose options when entity returns [])
+    const opts = question?.options;
+    if (opts && Array.isArray(opts) && opts.length > 0) {
+      if (typeof opts[0] === 'string') return opts.slice();
+      return opts.map(opt => (opt && (opt.label ?? opt.text ?? '')) || '');
     }
-    // Import from AI stores options inside correct_answer JSON
+    if (typeof opts === 'string') {
+      try {
+        const parsed = JSON.parse(opts);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(opt => typeof opt === 'string' ? opt : (opt.label ?? opt.text ?? ''));
+        }
+      } catch (e) {}
+    }
+    // 2) Fallback: options often stored inside correct_answer as { value, options: [{ value, label }] }
     if (question?.correct_answer) {
       try {
         const ca = typeof question.correct_answer === 'string'
           ? JSON.parse(question.correct_answer)
           : question.correct_answer;
         if (ca && Array.isArray(ca.options) && ca.options.length > 0) {
-          return ca.options.map(o => o.label ?? o.text ?? '');
+          return ca.options.map(o => (o && (o.label ?? o.text ?? '')) || '');
         }
       } catch (_) {}
     }
