@@ -92,8 +92,8 @@ const styles = {
     gap: '20px'
   },
   spinner: {
-    border: '3px solid #f3f3f3',
-    borderTop: '3px solid #CC0000',
+    border: '3px solid var(--color-border)',
+    borderTop: '3px solid var(--mda-red)',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite'
   },
@@ -125,7 +125,7 @@ const styles = {
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#CC0000',
+    backgroundColor: 'var(--mda-red)',
     transition: 'width 0.3s ease',
     borderRadius: '4px'
   },

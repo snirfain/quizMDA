@@ -14,74 +14,45 @@ const styles = {
   container: {
     direction: 'rtl',
     textAlign: 'right',
-    padding: '32px 24px 48px',
+    padding: 'var(--space-8) var(--space-6) 48px',
     maxWidth: 820,
     margin: '0 auto',
-    fontFamily: "'Heebo', 'Assistant', sans-serif",
   },
   title: {
-    margin: '0 0 8px 0',
-    fontSize: 28,
+    margin: '0 0 var(--space-2) 0',
+    fontSize: 'var(--font-size-2xl)',
     fontWeight: 700,
-    color: '#1a1a1a',
+    color: 'var(--color-text)',
   },
   subtitle: {
-    margin: '0 0 28px 0',
-    fontSize: 15,
-    color: '#555',
+    margin: '0 0 var(--space-6) 0',
+    fontSize: 'var(--font-size-base)',
+    color: 'var(--color-text-2)',
     lineHeight: 1.5,
   },
   section: {
-    marginBottom: 28,
-    padding: 24,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-    border: '1px solid #eee',
+    marginBottom: 'var(--space-6)',
+    padding: 'var(--space-6)',
   },
   sectionTitle: {
-    margin: '0 0 16px 0',
-    fontSize: 18,
+    margin: '0 0 var(--space-4) 0',
+    fontSize: 'var(--font-size-xl)',
     fontWeight: 600,
-    color: '#1a1a1a',
+    color: 'var(--color-text)',
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 'var(--space-2)',
   },
   input: {
     display: 'block',
-    marginBottom: 12,
+    marginBottom: 'var(--space-3)',
     padding: '10px 12px',
-    border: '1px solid #ccc',
-    borderRadius: 8,
-    fontSize: 14,
+    border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-md)',
+    fontSize: 'var(--font-size-base)',
     direction: 'rtl',
     width: '100%',
     boxSizing: 'border-box',
-  },
-  button: {
-    padding: '10px 20px',
-    backgroundColor: '#CC0000',
-    color: 'white',
-    border: 'none',
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    marginLeft: 8,
-    transition: 'background-color 0.2s, opacity 0.2s',
-  },
-  buttonSecondary: {
-    padding: '10px 20px',
-    backgroundColor: '#5a5a5a',
-    color: 'white',
-    border: 'none',
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: 'pointer',
-    marginLeft: 8,
-    transition: 'background-color 0.2s, opacity 0.2s',
   },
   list: {
     listStyle: 'none',
@@ -89,41 +60,31 @@ const styles = {
     margin: 0,
   },
   listItem: {
-    padding: '14px 16px',
-    borderBottom: '1px solid #eee',
+    padding: 'var(--space-4)',
+    borderBottom: '1px solid var(--color-border)',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
-    transition: 'background-color 0.15s',
+    gap: 'var(--space-3)',
   },
   note: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 10,
+    fontSize: 'var(--font-size-sm)',
+    color: 'var(--color-text-muted)',
+    marginTop: 'var(--space-2)',
     lineHeight: 1.5,
-  },
-  transcriptCard: {
-    padding: 16,
-    borderRadius: 10,
-    border: '1px solid #e8e8e8',
-    backgroundColor: '#fafafa',
-    marginBottom: 12,
   },
   badge: {
     display: 'inline-block',
-    padding: '2px 8px',
-    borderRadius: 6,
-    fontSize: 12,
+    padding: '2px var(--space-2)',
+    borderRadius: 'var(--radius-md)',
+    fontSize: '12px',
     fontWeight: 500,
-    backgroundColor: '#e8f4fc',
-    color: '#0a5f8c',
+    backgroundColor: 'var(--color-info-bg)',
+    color: 'var(--color-info)',
   },
   addToBankCard: {
-    padding: 24,
-    borderRadius: 12,
-    border: '2px solid #CC0000',
-    backgroundColor: '#fffaf9',
+    border: '2px solid var(--mda-red)',
+    backgroundColor: 'var(--mda-red-bg)',
     boxShadow: '0 2px 8px rgba(204,0,0,0.08)',
   },
 };
@@ -489,7 +450,7 @@ export default function TranscriptUpload() {
         העלה קבצי SRT, צור שאלות מתוך התמליל והוסף אותן למאגר. השאלות משמשות לתרגול חניכי קורסי פראמדיקים וסימולציות בחינה.
       </p>
 
-      <div style={styles.section} role="region" aria-label="העלאת קובץ">
+      <div className="card" style={styles.section} role="region" aria-label="העלאת קובץ">
         <h2 style={styles.sectionTitle}>📤 העלאת קובץ SRT</h2>
         <label style={{ display: 'block', cursor: 'pointer' }}>
           <input
@@ -506,11 +467,11 @@ export default function TranscriptUpload() {
         {uploading && <LoadingSpinner />}
       </div>
 
-      <div style={styles.section} role="region" aria-label="התאמת שאלות לתמלילים">
+      <div className="card" style={styles.section} role="region" aria-label="התאמת שאלות לתמלילים">
         <h2 style={styles.sectionTitle}>🔗 התאמת שאלות לתמלילים</h2>
         <button
           type="button"
-          style={styles.buttonSecondary}
+          className="btn btn-secondary"
           onClick={runMatchAll}
           disabled={matching || list.length === 0}
           aria-label="הרץ התאמה לכל השאלות"
@@ -522,7 +483,7 @@ export default function TranscriptUpload() {
         </p>
       </div>
 
-      <div style={styles.section} role="region" aria-label="רשימת תמלילים">
+      <div className="card" style={styles.section} role="region" aria-label="רשימת תמלילים">
         <h2 style={styles.sectionTitle}>📄 תמלילים שהועלו ({list.length})</h2>
         <input
           type="search"
@@ -546,16 +507,16 @@ export default function TranscriptUpload() {
                 style={{ width: 56, padding: '6px 8px', ...styles.input }}
               />
             </label>
-            <button type="button" style={styles.buttonSecondary} onClick={selectAllForBatch} aria-label="בחר כל התמלילים">
+            <button type="button" className="btn btn-secondary" onClick={selectAllForBatch} aria-label="בחר כל התמלילים">
               בחר הכל
             </button>
-            <button type="button" style={styles.buttonSecondary} onClick={clearBatchSelection} aria-label="נקה בחירה">
+            <button type="button" className="btn btn-secondary" onClick={clearBatchSelection} aria-label="נקה בחירה">
               נקה
             </button>
-            <span style={{ fontSize: 13, color: '#666' }}>נבחרו: {selectedForBatch.size}</span>
+            <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>נבחרו: {selectedForBatch.size}</span>
             <button
               type="button"
-              style={styles.button}
+              className="btn btn-primary"
               onClick={handleGenerateBatch}
               disabled={generatingId !== null || selectedForBatch.size === 0}
               aria-label="צור שאלות מתמלילים נבחרים"
@@ -576,11 +537,11 @@ export default function TranscriptUpload() {
               list.map((t) => (
                 <li
                   key={t._id || t.name}
+                  className="list-card card-interactive"
                   style={{
-                    ...styles.transcriptCard,
-                    marginBottom: 12,
+                    marginBottom: 'var(--space-3)',
                     flexWrap: 'wrap',
-                    gap: 12,
+                    gap: 'var(--space-3)',
                     alignItems: 'center',
                     display: 'flex',
                     listStyle: 'none',
@@ -606,7 +567,7 @@ export default function TranscriptUpload() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <button
                       type="button"
-                      style={styles.buttonSecondary}
+                      className="btn btn-secondary"
                       onClick={() => openEdit(t)}
                       disabled={editingId != null}
                       aria-label={`ערוך תמליל ${t.name}`}
@@ -615,7 +576,7 @@ export default function TranscriptUpload() {
                     </button>
                     <button
                       type="button"
-                      style={{ ...styles.buttonSecondary, color: '#b00' }}
+                      className="btn btn-danger"
                       onClick={() => setTranscriptToDelete(t)}
                       disabled={!!transcriptToDelete}
                       aria-label={`מחק תמליל ${t.name}`}
@@ -636,7 +597,7 @@ export default function TranscriptUpload() {
                     </label>
                     <button
                       type="button"
-                      style={styles.button}
+                      className="btn btn-primary"
                       onClick={() => handleGenerate(t)}
                       disabled={generatingId !== null || getGenerateCount(t) < 1}
                       aria-label={`צור שאלות מתמליל ${t.name}`}
@@ -652,16 +613,16 @@ export default function TranscriptUpload() {
       </div>
 
       {generatedQuestions.length > 0 && (
-        <div style={{ ...styles.section, ...styles.addToBankCard }} role="region" aria-label="אישור והוספת שאלות למאגר">
+        <div className="card" style={{ ...styles.section, ...styles.addToBankCard }} role="region" aria-label="אישור והוספת שאלות למאגר">
           <h2 style={styles.sectionTitle}>
             ✅ נוצרו {generatedQuestions.length} שאלות {generatedForName ? `מתוך &quot;${generatedForName}&quot;` : ''}
           </h2>
           <p style={{ ...styles.note, marginBottom: 12 }}>סמן את השאלות שאיתן ברצונך להוסיף למאגר (אחת אחת או בקבוצה):</p>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-            <button type="button" style={styles.buttonSecondary} onClick={selectAllQuestions} aria-label="בחר הכל">
+            <button type="button" className="btn btn-secondary" onClick={selectAllQuestions} aria-label="בחר הכל">
               בחר הכל
             </button>
-            <button type="button" style={styles.buttonSecondary} onClick={clearSelection} aria-label="נקה בחירה">
+            <button type="button" className="btn btn-secondary" onClick={clearSelection} aria-label="נקה בחירה">
               נקה בחירה
             </button>
             <span style={{ alignSelf: 'center', fontSize: 14, color: '#666' }}>נבחרו: {selectedCount}</span>
@@ -699,7 +660,8 @@ export default function TranscriptUpload() {
                     <span style={{ fontSize: 12, color: '#666', flexShrink: 0 }}>{typeLabel}</span>
                     <button
                       type="button"
-                      style={{ ...styles.buttonSecondary, padding: '4px 10px', fontSize: 13, flexShrink: 0 }}
+                      className="btn btn-secondary btn-sm"
+                      style={{ flexShrink: 0 }}
                       onClick={(e) => { e.preventDefault(); toggleExpanded(i); }}
                       aria-expanded={expanded}
                       aria-label={expanded ? 'כווץ' : 'הרחב להצגה מלאה'}
@@ -762,7 +724,7 @@ export default function TranscriptUpload() {
             </select>
             <button
               type="button"
-              style={styles.button}
+              className="btn btn-primary"
               onClick={handleAddToBank}
               disabled={saving || !selectedHierarchyId || selectedCount === 0}
               aria-label="הוסף למאגר"
@@ -813,11 +775,11 @@ export default function TranscriptUpload() {
                 aria-label="תוכן התמליל"
                 dir="rtl"
               />
-              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-                <button type="button" style={styles.button} onClick={handleSaveEdit} disabled={editSaving}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-4)' }}>
+                <button type="button" className="btn btn-primary" onClick={handleSaveEdit} disabled={editSaving}>
                   {editSaving ? 'שומר...' : 'שמור'}
                 </button>
-                <button type="button" style={styles.buttonSecondary} onClick={() => setEditingId(null)} disabled={editSaving}>
+                <button type="button" className="btn btn-secondary" onClick={() => setEditingId(null)} disabled={editSaving}>
                   ביטול
                 </button>
               </div>

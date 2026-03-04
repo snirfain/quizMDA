@@ -44,12 +44,9 @@ export default function SettingsPage() {
       <div style={styles.container}>
         <h1 style={styles.title}>הגדרות</h1>
 
-        <div style={styles.tabs} role="tablist" aria-label="קטגוריות הגדרות">
+        <div className="tabs" style={styles.tabsWrap} role="tablist" aria-label="קטגוריות הגדרות">
           <button
-            style={{
-              ...styles.tab,
-              ...(activeTab === 'profile' ? styles.tabActive : {})
-            }}
+            className={`tab-btn ${activeTab === 'profile' ? 'active' : ''}`}
             onClick={() => setActiveTab('profile')}
             role="tab"
             aria-selected={activeTab === 'profile'}
@@ -59,10 +56,7 @@ export default function SettingsPage() {
             פרופיל
           </button>
           <button
-            style={{
-              ...styles.tab,
-              ...(activeTab === 'notifications' ? styles.tabActive : {})
-            }}
+            className={`tab-btn ${activeTab === 'notifications' ? 'active' : ''}`}
             onClick={() => setActiveTab('notifications')}
             role="tab"
             aria-selected={activeTab === 'notifications'}
@@ -72,10 +66,7 @@ export default function SettingsPage() {
             התראות
           </button>
           <button
-            style={{
-              ...styles.tab,
-              ...(activeTab === 'accessibility' ? styles.tabActive : {})
-            }}
+            className={`tab-btn ${activeTab === 'accessibility' ? 'active' : ''}`}
             onClick={() => setActiveTab('accessibility')}
             role="tab"
             aria-selected={activeTab === 'accessibility'}
@@ -86,10 +77,7 @@ export default function SettingsPage() {
           </button>
           <PermissionGate permission={permissions.SYSTEM_SETTINGS}>
             <button
-              style={{
-                ...styles.tab,
-                ...(activeTab === 'system' ? styles.tabActive : {})
-              }}
+              className={`tab-btn ${activeTab === 'system' ? 'active' : ''}`}
               onClick={() => setActiveTab('system')}
               role="tab"
               aria-selected={activeTab === 'system'}
@@ -227,14 +215,7 @@ function ProfileSettings({ user }) {
           required
           disabled={isSaving}
         />
-        <button 
-          type="submit" 
-          style={{
-            ...styles.saveButton,
-            ...(isSaving ? styles.saveButtonDisabled : {})
-          }}
-          disabled={isSaving}
-        >
+        <button type="submit" className="btn btn-primary" disabled={isSaving}>
           {isSaving ? 'שומר...' : 'שמור שינויים'}
         </button>
       </form>
@@ -270,7 +251,7 @@ function NotificationSettings({ user }) {
           />
           <span>התראות על הישגים חדשים</span>
         </label>
-        <button type="button" style={styles.saveButton}>
+        <button type="button" className="btn btn-primary">
           שמור שינויים
         </button>
       </div>
@@ -363,15 +344,7 @@ function AccessibilitySettings({ user }) {
           />
           <span>הפחתת תנועה ואנימציות</span>
         </label>
-        <button 
-          type="button" 
-          style={{
-            ...styles.saveButton,
-            ...(isSaving ? styles.saveButtonDisabled : {})
-          }}
-          onClick={handleSave}
-          disabled={isSaving}
-        >
+        <button type="button" className="btn btn-primary" onClick={handleSave} disabled={isSaving}>
           {isSaving ? 'שומר...' : 'שמור שינויים'}
         </button>
       </div>
@@ -391,46 +364,18 @@ function SystemSettings({ user }) {
 const styles = {
   container: {
     direction: 'rtl',
-    maxWidth: '1000px',
+    maxWidth: '900px',
     margin: '0 auto',
-    padding: '20px'
+    padding: 'var(--space-6)',
   },
   title: {
-    fontSize: '32px',
+    fontSize: 'var(--font-size-2xl)',
     fontWeight: 'bold',
-    marginBottom: '30px',
-    color: '#212121'
+    marginBottom: 'var(--space-6)',
+    color: 'var(--color-text)',
   },
-  tabs: {
-    display: 'flex',
-    gap: '8px',
-    borderBottom: '2px solid #e0e0e0',
-    marginBottom: '30px',
-    flexWrap: 'wrap'
-  },
-  tab: {
-    padding: '12px 24px',
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderBottom: '2px solid transparent',
-    cursor: 'pointer',
-    fontSize: '16px',
-    fontWeight: '500',
-    color: '#757575',
-    marginBottom: '-2px',
-    '&:hover': {
-      color: '#CC0000'
-    },
-    '&:focus': {
-      outline: '2px solid #CC0000',
-      outlineOffset: '2px',
-      borderRadius: '4px 4px 0 0'
-    }
-  },
-  tabActive: {
-    color: '#CC0000',
-    borderBottom: '2px solid #CC0000',
-    fontWeight: 'bold'
+  tabsWrap: {
+    marginBottom: 'var(--space-6)',
   },
   content: {
     minHeight: '400px'
@@ -467,29 +412,4 @@ const styles = {
     height: '20px',
     cursor: 'pointer'
   },
-  saveButton: {
-    padding: '12px 24px',
-    backgroundColor: '#CC0000',
-    color: '#FFFFFF',
-    border: 'none',
-    borderRadius: '4px',
-    fontSize: '16px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    alignSelf: 'flex-start',
-    '&:hover': {
-      backgroundColor: '#A50000'
-    },
-    '&:focus': {
-      outline: '2px solid #CC0000',
-      outlineOffset: '2px'
-    }
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-    cursor: 'not-allowed',
-    '&:hover': {
-      backgroundColor: '#CC0000'
-    }
-  }
 };

@@ -98,23 +98,12 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
           >
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {navItems.map((item) => (
-                <li key={item.path} style={{ marginBottom: '8px' }}>
+                <li key={item.path} style={{ marginBottom: 'var(--space-2)' }}>
                   <a
                     href={item.path}
                     onClick={(e) => handleNavClick(e, item.path)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '12px 14px',
-                      color: '#1A1A1A',
-                      textDecoration: 'none',
-                      borderRadius: '8px',
-                      fontWeight: 500,
-                      fontFamily: "'Heebo', 'Assistant', 'Arial Hebrew', Arial, sans-serif",
-                      fontSize: '15px',
-                      transition: 'background 0.15s',
-                    }}
+                    className="nav-mobile-link"
+                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
                   >
                     <span aria-hidden="true">{item.icon}</span>
                     {item.label}
@@ -178,14 +167,13 @@ const styles = {
     minHeight: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: 'var(--panel-bg, #f4f6fb)',
-    fontFamily: "'Heebo', 'Assistant', 'Arial Hebrew', Arial, sans-serif",
+    backgroundColor: 'var(--color-bg)',
   },
   header: {
     position: 'sticky',
     top: 0,
     zIndex: 1000,
-    backgroundColor: '#CC0000',
+    backgroundColor: 'var(--mda-red)',
   },
   mobileOverlay: {
     position: 'fixed',
@@ -202,10 +190,10 @@ const styles = {
     right: 0,
     bottom: 0,
     width: '280px',
-    backgroundColor: '#FFFFFF',
-    boxShadow: '-3px 0 16px rgba(0,0,0,0.12)',
+    backgroundColor: 'var(--color-white)',
+    boxShadow: 'var(--shadow-lg)',
     zIndex: 1001,
-    padding: '24px 16px',
+    padding: 'var(--space-6) var(--space-4)',
     overflowY: 'auto',
   },
   main: {
@@ -216,17 +204,16 @@ const styles = {
   },
   content: {
     flex: 1,
-    padding: '24px 20px',
+    padding: 'var(--space-6) var(--space-5)',
     maxWidth: '1400px',
     width: '100%',
     margin: '0 auto',
   },
   footer: {
-    backgroundColor: '#1A1A1A',
-    color: '#CCCCCC',
-    padding: '22px 24px',
+    backgroundColor: 'var(--color-footer-bg)',
+    color: 'var(--color-footer-text)',
+    padding: '22px var(--space-6)',
     marginTop: 'auto',
-    fontFamily: "'Heebo', 'Assistant', 'Arial Hebrew', Arial, sans-serif",
   },
   footerContent: {
     maxWidth: '1400px',
@@ -235,28 +222,28 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: '12px',
+    gap: 'var(--space-3)',
   },
   footerText: {
     margin: 0,
-    fontSize: '13px',
-    color: '#AAAAAA',
+    fontSize: 'var(--font-size-sm)',
+    color: 'var(--color-text-muted)',
   },
   footerNav: {
     display: 'flex',
-    gap: '16px',
+    gap: 'var(--space-4)',
     alignItems: 'center',
   },
   footerLink: {
-    color: '#CCCCCC',
+    color: 'var(--color-footer-text)',
     textDecoration: 'none',
-    fontSize: '13px',
+    fontSize: 'var(--font-size-sm)',
     background: 'none',
     border: 'none',
     cursor: 'pointer',
-    transition: 'color 0.15s',
+    transition: 'color var(--transition)',
   },
   footerSeparator: {
-    color: '#444444',
-  }
+    color: 'var(--color-text-muted)',
+  },
 };

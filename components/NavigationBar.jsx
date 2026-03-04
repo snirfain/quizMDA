@@ -189,7 +189,7 @@ export default function NavigationBar({ onMenuToggle }) {
                 <a
                   href="/profile"
                   onClick={(e) => handleNavClick(e, '/profile')}
-                  style={styles.menuItem}
+                  className="nav-user-menu-item"
                   role="menuitem"
                 >
                   פרופיל
@@ -197,7 +197,7 @@ export default function NavigationBar({ onMenuToggle }) {
                 <a
                   href="/settings"
                   onClick={(e) => handleNavClick(e, '/settings')}
-                  style={styles.menuItem}
+                  className="nav-user-menu-item"
                   role="menuitem"
                 >
                   הגדרות
@@ -205,7 +205,7 @@ export default function NavigationBar({ onMenuToggle }) {
                 <a
                   href="/help"
                   onClick={(e) => handleNavClick(e, '/help')}
-                  style={styles.menuItem}
+                  className="nav-user-menu-item"
                   role="menuitem"
                 >
                   עזרה
@@ -217,7 +217,7 @@ export default function NavigationBar({ onMenuToggle }) {
                     e.stopPropagation();
                     handleLogout();
                   }}
-                  style={styles.menuItem}
+                  className="nav-user-menu-item"
                   role="menuitem"
                   type="button"
                 >
@@ -261,37 +261,36 @@ export default function NavigationBar({ onMenuToggle }) {
 
 const styles = {
   nav: {
-    backgroundColor: '#CC0000',
-    color: '#FFFFFF',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+    backgroundColor: 'var(--mda-red)',
+    color: 'var(--color-white)',
+    boxShadow: 'var(--shadow-nav)',
     position: 'sticky',
     top: 0,
     zIndex: 1000,
     direction: 'rtl',
-    fontFamily: "'Heebo', 'Assistant', 'Arial Hebrew', Arial, sans-serif",
   },
   container: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '0 24px',
+    padding: `0 var(--space-6)`,
     maxWidth: '1400px',
     margin: '0 auto',
     height: '60px',
-    gap: '20px'
+    gap: 'var(--space-5)',
   },
   brand: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: 'var(--space-2)',
     flexShrink: 0,
   },
   logo: {
-    color: '#FFFFFF',
+    color: 'var(--color-white)',
     textDecoration: 'none',
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: 'var(--space-2)',
   },
   logoStar: {
     fontSize: '28px',
@@ -320,60 +319,60 @@ const styles = {
     padding: 0,
     gap: '2px',
     flex: 1,
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   navLink: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '8px 14px',
+    gap: 'var(--space-2)',
+    padding: 'var(--space-2) var(--space-4)',
     color: 'rgba(255,255,255,0.88)',
     textDecoration: 'none',
-    borderRadius: '6px',
-    transition: 'background 0.15s ease',
-    fontSize: '14px',
+    borderRadius: 'var(--radius-md)',
+    transition: 'background var(--transition), color var(--transition)',
+    fontSize: 'var(--font-size-base)',
     fontWeight: 500,
     whiteSpace: 'nowrap',
   },
   navLinkActive: {
     backgroundColor: 'rgba(0,0,0,0.22)',
-    color: '#FFFFFF',
+    color: 'var(--color-white)',
     fontWeight: 700,
   },
   navIcon: {
-    fontSize: '15px',
+    fontSize: 'var(--font-size-lg)',
     lineHeight: 1,
   },
   actions: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: 'var(--space-2)',
     flexShrink: 0,
   },
   iconButton: {
     position: 'relative',
     backgroundColor: 'transparent',
     border: 'none',
-    color: '#FFFFFF',
-    padding: '8px',
-    borderRadius: '6px',
+    color: 'var(--color-white)',
+    padding: 'var(--space-2)',
+    borderRadius: 'var(--radius-md)',
     cursor: 'pointer',
     fontSize: '18px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'background 0.15s',
+    transition: 'background var(--transition)',
   },
   icon: {
-    display: 'block'
+    display: 'block',
   },
   badge: {
     position: 'absolute',
     top: '3px',
     left: '3px',
     backgroundColor: '#FFCC00',
-    color: '#1A1A1A',
-    borderRadius: '10px',
+    color: 'var(--color-text)',
+    borderRadius: 'var(--radius-full)',
     padding: '1px 5px',
     fontSize: '10px',
     fontWeight: 700,
@@ -382,21 +381,21 @@ const styles = {
     lineHeight: '14px',
   },
   userMenuContainer: {
-    position: 'relative'
+    position: 'relative',
   },
   userButton: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: 'var(--space-2)',
     backgroundColor: 'rgba(0,0,0,0.15)',
     border: '1px solid rgba(255,255,255,0.25)',
-    color: '#FFFFFF',
-    padding: '7px 14px',
-    borderRadius: '6px',
+    color: 'var(--color-white)',
+    padding: '7px var(--space-4)',
+    borderRadius: 'var(--radius-md)',
     cursor: 'pointer',
-    fontSize: '14px',
+    fontSize: 'var(--font-size-base)',
     fontWeight: 500,
-    transition: 'background 0.15s',
+    transition: 'background var(--transition)',
   },
   userName: {
     display: 'block',
@@ -406,43 +405,37 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   userIcon: {
-    fontSize: '17px'
+    fontSize: '17px',
   },
   userMenu: {
     position: 'absolute',
-    top: 'calc(100% + 8px)',
+    top: 'calc(100% + var(--space-2))',
     left: 0,
-    backgroundColor: '#FFFFFF',
-    borderRadius: '10px',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.14)',
+    backgroundColor: 'var(--color-white)',
+    borderRadius: 'var(--radius-lg)',
+    boxShadow: 'var(--shadow-lg)',
     minWidth: '210px',
-    padding: '8px 0',
+    padding: 'var(--space-2) 0',
     zIndex: 1001,
-    border: '1px solid #ECECEC',
+    border: '1px solid var(--color-border)',
   },
   menuItem: {
     display: 'block',
     width: '100%',
-    padding: '11px 18px',
-    color: '#1A1A1A',
+    padding: '11px var(--space-5)',
+    color: 'var(--color-text)',
     textDecoration: 'none',
     textAlign: 'right',
-    fontSize: '14px',
+    fontSize: 'var(--font-size-base)',
     border: 'none',
     backgroundColor: 'transparent',
     cursor: 'pointer',
-    '&:hover': {
-      backgroundColor: '#f5f5f5'
-    },
-    '&:focus': {
-      outline: '2px solid #CC0000',
-      outlineOffset: '-2px'
-    }
+    transition: 'background var(--transition)',
   },
   menuDivider: {
     border: 'none',
-    borderTop: '1px solid #ECECEC',
-    margin: '6px 0'
+    borderTop: '1px solid var(--color-border)',
+    margin: 'var(--space-2) 0',
   },
   menuToggle: {
     display: 'flex',
@@ -450,33 +443,33 @@ const styles = {
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
     border: 'none',
-    color: '#FFFFFF',
-    padding: '8px 10px',
-    borderRadius: '6px',
+    color: 'var(--color-white)',
+    padding: 'var(--space-2) 10px',
+    borderRadius: 'var(--radius-md)',
     fontSize: '22px',
     cursor: 'pointer',
   },
   menuIcon: {
-    display: 'block'
+    display: 'block',
   },
   notificationsPanel: {
     position: 'absolute',
-    top: 'calc(100% + 8px)',
-    left: '16px',
-    right: '16px',
+    top: 'calc(100% + var(--space-2))',
+    left: 'var(--space-4)',
+    right: 'var(--space-4)',
     maxWidth: '400px',
     marginLeft: 'auto',
-    backgroundColor: '#FFFFFF',
-    borderRadius: '12px',
-    boxShadow: '0 8px 28px rgba(0,0,0,0.14)',
-    border: '1px solid #ECECEC',
+    backgroundColor: 'var(--color-white)',
+    borderRadius: 'var(--radius-lg)',
+    boxShadow: 'var(--shadow-lg)',
+    border: '1px solid var(--color-border)',
     maxHeight: '420px',
     overflowY: 'auto',
-    zIndex: 1001
+    zIndex: 1001,
   },
   notificationsPlaceholder: {
-    padding: '20px',
+    padding: 'var(--space-5)',
     textAlign: 'center',
-    color: '#888888'
-  }
+    color: 'var(--color-text-muted)',
+  },
 };

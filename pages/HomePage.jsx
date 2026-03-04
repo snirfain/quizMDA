@@ -62,7 +62,7 @@ export default function HomePage() {
       {/* Hero panel */}
       <div style={{
         flex: isMobile ? 'none' : '1 1 60%',
-        background: 'linear-gradient(145deg, #0a1628 0%, #1b2d55 50%, #1e3a7a 100%)',
+        background: 'var(--hero-bg)',
         padding: isMobile ? '36px 24px 40px' : '56px 52px',
         display: 'flex',
         flexDirection: 'column',
@@ -129,24 +129,24 @@ export default function HomePage() {
       </div>
 
       {/* Login panel — Google only */}
-      <div style={{ flex: isMobile ? 'none' : '0 0 400px', background: '#f4f6fb', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '40px 20px 48px' : '40px 32px' }}>
-        <div style={{ width: '100%', maxWidth: '360px', background: 'white', borderRadius: '24px', padding: isMobile ? '36px 28px' : '44px 40px', boxShadow: '0 8px 48px rgba(0,0,0,0.11)' }}>
+      <div style={{ flex: isMobile ? 'none' : '0 0 400px', background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '40px 20px 48px' : '40px 32px' }}>
+        <div className="card card-elevated" style={{ width: '100%', maxWidth: '360px', borderRadius: 'var(--card-radius)', padding: isMobile ? '36px 28px' : '44px 40px' }}>
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <div style={{ width: '52px', height: '52px', background: 'linear-gradient(135deg, #1565c0, #42a5f5)', borderRadius: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', boxShadow: '0 4px 16px rgba(33,150,243,0.35)', marginBottom: '16px' }}>🔐</div>
-            <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#1a1a2e', margin: '0 0 6px' }}>התחברות למערכת</h2>
-            <p style={{ fontSize: '14px', color: '#9e9e9e', margin: 0 }}>ברוכים הבאים 👋</p>
+            <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: '800', color: 'var(--color-text)', margin: '0 0 6px' }}>התחברות למערכת</h2>
+            <p style={{ fontSize: 'var(--font-size-base)', color: 'var(--color-text-muted)', margin: 0 }}>ברוכים הבאים 👋</p>
           </div>
 
           {error && (
-            <div role="alert" style={{ padding: '12px 16px', background: '#ffebee', color: '#c62828', borderRadius: '10px', fontSize: '14px', textAlign: 'center', borderRight: '4px solid #e53935', marginBottom: '20px' }}>
+            <div role="alert" style={{ padding: 'var(--space-3) var(--space-4)', background: 'var(--color-danger-bg)', color: 'var(--color-danger)', borderRadius: 'var(--radius-lg)', fontSize: 'var(--font-size-base)', textAlign: 'center', borderRight: '4px solid var(--mda-red)', marginBottom: 'var(--space-5)' }}>
               {error}
             </div>
           )}
 
           <GoogleSignIn onSuccess={handleGoogleSuccess} onError={setError} />
 
-          <div style={{ textAlign: 'center', marginTop: '20px' }}>
-            <a href="/help" style={{ color: '#78909c', textDecoration: 'none', fontSize: '13px' }} onMouseOver={e => { e.target.style.color = '#CC0000'; }} onMouseOut={e => { e.target.style.color = '#78909c'; }}>
+          <div style={{ textAlign: 'center', marginTop: 'var(--space-5)' }}>
+            <a href="/help" style={{ color: 'var(--color-text-muted)', textDecoration: 'none', fontSize: 'var(--font-size-sm)' }}>
               צריך עזרה? 💬
             </a>
           </div>

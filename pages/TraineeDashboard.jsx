@@ -180,15 +180,12 @@ export default function TraineeDashboard({ userId }) {
 
   return (
     <div style={styles.container} aria-label="לוח בקרה מתאמן">
-      <div style={styles.pageTop}>
+      <div className="card card-elevated" style={styles.pageTop}>
         <h1 style={styles.pageTitle}>תרגול</h1>
         <div style={styles.headerActions}>
-          <div style={styles.tabs} role="tablist" aria-label="טאבים">
+          <div className="tabs" role="tablist" aria-label="טאבים">
             <button
-              style={{
-                ...styles.tabButton,
-                ...(activeTab === 'practice' ? styles.tabButtonActive : {})
-              }}
+              className={`tab-btn ${activeTab === 'practice' ? 'active' : ''}`}
               onClick={() => { setActiveTab('practice'); setPracticeMode('create'); }}
               role="tab"
               aria-selected={activeTab === 'practice'}
@@ -198,10 +195,7 @@ export default function TraineeDashboard({ userId }) {
               תרגול
             </button>
             <button
-              style={{
-                ...styles.tabButton,
-                ...(activeTab === 'progress' ? styles.tabButtonActive : {})
-              }}
+              className={`tab-btn ${activeTab === 'progress' ? 'active' : ''}`}
               onClick={() => setActiveTab('progress')}
               role="tab"
               aria-selected={activeTab === 'progress'}
@@ -213,7 +207,8 @@ export default function TraineeDashboard({ userId }) {
           </div>
           {activeTab === 'practice' && practiceMode === 'free' && (
             <button
-              style={styles.filterButton}
+              type="button"
+              className="btn btn-ghost"
               onClick={() => setShowFilters(!showFilters)}
               aria-label={showFilters ? 'סגור סינון' : 'פתח סינון קטגוריות'}
               aria-expanded={showFilters}
@@ -227,7 +222,7 @@ export default function TraineeDashboard({ userId }) {
       {activeTab === 'practice' && (
         <div role="tabpanel" aria-labelledby="practice-tab" id="practice-panel">
           {practiceMode === 'create' ? (
-            <div style={styles.createPanel} role="region" aria-labelledby="create-exam-heading">
+            <div className="card card-elevated animate-fade-in" style={styles.createPanel} role="region" aria-labelledby="create-exam-heading">
               <h2 id="create-exam-heading" style={styles.createTitle}>צור מבחן</h2>
               <p style={styles.createSubtitle}>בחר קטגוריות וכמות שאלות לכל אחת, ואפשר גם להתאים לפי רמת קושי.</p>
 
@@ -330,7 +325,7 @@ export default function TraineeDashboard({ userId }) {
               <div style={styles.buttonRow}>
                 <button
                   type="button"
-                  style={styles.primaryButton}
+                  className="btn btn-primary"
                   onClick={handleStartExam}
                   disabled={isStartingExam || !filterOptions}
                   aria-label="התחל מבחן"
@@ -339,7 +334,7 @@ export default function TraineeDashboard({ userId }) {
                 </button>
                 <button
                   type="button"
-                  style={styles.secondaryButton}
+                  className="btn btn-secondary"
                   onClick={switchToFreePractice}
                   aria-label="תרגול חופשי"
                 >
@@ -350,7 +345,7 @@ export default function TraineeDashboard({ userId }) {
           ) : (
             <>
               {showFilters && (
-                <div style={styles.filtersPanel} role="region" aria-label="סינון נושאים">
+                <div className="card" style={styles.filtersPanel} role="region" aria-label="סינון נושאים">
                   {availableTags.length > 0 && (
                     <TagFilter
                       tags={availableTags}
@@ -404,77 +399,36 @@ const styles = {
   container: {
     direction: 'rtl',
     textAlign: 'right',
-    fontFamily: "'Heebo', 'Assistant', Arial, sans-serif",
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'var(--color-bg)',
     minHeight: '100vh',
   },
   pageTop: {
-    padding: '24px 24px 16px',
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #e8e8e8',
+    padding: 'var(--space-6) var(--space-6) var(--space-4)',
+    borderBottom: '1px solid var(--color-border)',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: '16px',
+    gap: 'var(--space-4)',
   },
   pageTitle: {
     margin: 0,
-    fontSize: '26px',
+    fontSize: 'var(--font-size-2xl)',
     fontWeight: 700,
-    color: '#1a1a1a',
+    color: 'var(--color-text)',
   },
   headerActions: {
     display: 'flex',
-    gap: '12px',
+    gap: 'var(--space-3)',
     alignItems: 'center',
-    flexWrap: 'wrap'
-  },
-  tabs: {
-    display: 'flex',
-    gap: '4px',
-    backgroundColor: '#f0f0f0',
-    borderRadius: '10px',
-    padding: '4px'
-  },
-  tabButton: {
-    padding: '10px 20px',
-    backgroundColor: 'transparent',
-    color: '#555',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '15px',
-    fontWeight: 500,
-    transition: 'background-color 0.2s, color 0.2s',
-    minHeight: '44px',
-  },
-  tabButtonActive: {
-    backgroundColor: '#fff',
-    color: '#CC0000',
-    fontWeight: 600,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-  },
-  filterButton: {
-    padding: '10px 18px',
-    backgroundColor: '#f0f0f0',
-    color: '#333',
-    border: '1px solid #ddd',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: 500,
+    flexWrap: 'wrap',
   },
   filtersPanel: {
-    backgroundColor: '#fff',
-    padding: '20px',
+    padding: 'var(--space-5)',
     display: 'flex',
-    gap: '20px',
+    gap: 'var(--space-5)',
     flexWrap: 'wrap',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-    marginBottom: '20px',
-    borderRadius: '12px',
-    border: '1px solid #eee',
+    marginBottom: 'var(--space-5)',
   },
   filterGroup: {
     display: 'flex',
@@ -483,130 +437,102 @@ const styles = {
   },
   hint: {
     margin: '0 0 10px 0',
-    fontSize: '13px',
-    color: '#666',
+    fontSize: 'var(--font-size-sm)',
+    color: 'var(--color-text-muted)',
   },
   label: {
     marginBottom: '5px',
-    fontWeight: 'bold',
-    fontSize: '14px'
+    fontWeight: 'var(--font-weight-bold)',
+    fontSize: 'var(--font-size-base)',
   },
   select: {
-    padding: '8px',
-    border: '1px solid #ddd',
-    borderRadius: '4px',
-    fontSize: '14px',
+    padding: 'var(--space-2)',
+    border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 'var(--font-size-base)',
     direction: 'rtl',
     minHeight: '44px',
-    '&:focus': {
-      outline: '3px solid #CC0000',
-      outlineOffset: '2px'
-    }
   },
   createPanel: {
-    backgroundColor: '#fff',
-    padding: '32px 28px',
-    margin: '24px auto',
-    borderRadius: 12,
-    boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+    padding: 'var(--space-8) var(--space-6)',
+    margin: 'var(--space-6) auto',
     maxWidth: 720,
-    border: '1px solid #eee',
   },
   createTitle: {
-    margin: '0 0 8px 0',
-    fontSize: '22px',
+    margin: '0 0 var(--space-2) 0',
+    fontSize: 'var(--font-size-xl)',
     fontWeight: 700,
-    color: '#1a1a1a',
+    color: 'var(--color-text)',
   },
   createSubtitle: {
-    margin: '0 0 24px 0',
-    fontSize: '14px',
-    color: '#666',
+    margin: '0 0 var(--space-6) 0',
+    fontSize: 'var(--font-size-base)',
+    color: 'var(--color-text-2)',
     lineHeight: 1.5,
   },
   formSection: {
-    marginBottom: 24,
+    marginBottom: 'var(--space-6)',
   },
   sectionTitle: {
-    margin: '0 0 12px 0',
-    fontSize: '16px',
+    margin: '0 0 var(--space-3) 0',
+    fontSize: 'var(--font-size-lg)',
     fontWeight: 600,
-    color: '#333',
+    color: 'var(--color-text-2)',
   },
   checkboxGroup: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-    gap: '10px 24px',
+    gap: '10px var(--space-6)',
   },
   categoryRow: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
-    padding: '10px 12px',
-    backgroundColor: '#fafafa',
-    borderRadius: 8,
-    border: '1px solid #eee',
+    gap: 'var(--space-3)',
+    padding: 'var(--space-2) var(--space-3)',
+    backgroundColor: 'var(--color-bg-hover)',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--color-border)',
   },
   checkboxLabel: {
     display: 'inline-flex',
     alignItems: 'center',
     cursor: 'pointer',
-    fontSize: 14,
+    fontSize: 'var(--font-size-base)',
   },
   numberInput: {
     width: 64,
-    padding: '6px 8px',
-    border: '1px solid #ddd',
-    borderRadius: 4,
-    fontSize: 14,
+    padding: '6px var(--space-2)',
+    border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 'var(--font-size-base)',
     direction: 'rtl',
   },
   difficultyRow: {
     display: 'flex',
-    gap: 24,
+    gap: 'var(--space-6)',
     flexWrap: 'wrap',
   },
   diffLabel: {
     display: 'inline-flex',
     alignItems: 'center',
-    fontSize: 14,
+    fontSize: 'var(--font-size-base)',
   },
   timeNote: {
-    margin: '8px 0 0 0',
-    fontSize: 13,
-    color: '#666',
+    margin: 'var(--space-2) 0 0 0',
+    fontSize: 'var(--font-size-sm)',
+    color: 'var(--color-text-muted)',
   },
   timeCalc: {
-    margin: '4px 0 0 0',
-    fontSize: 14,
+    margin: 'var(--space-1) 0 0 0',
+    fontSize: 'var(--font-size-base)',
     fontWeight: 600,
-    color: '#333',
+    color: 'var(--color-text-2)',
   },
   buttonRow: {
     display: 'flex',
-    gap: 12,
-    marginTop: 24,
+    gap: 'var(--space-3)',
+    marginTop: 'var(--space-6)',
     flexWrap: 'wrap',
-  },
-  primaryButton: {
-    padding: '12px 24px',
-    backgroundColor: '#CC0000',
-    color: 'white',
-    border: 'none',
-    borderRadius: 6,
-    fontSize: 16,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  secondaryButton: {
-    padding: '12px 24px',
-    backgroundColor: 'transparent',
-    color: '#CC0000',
-    border: '2px solid #CC0000',
-    borderRadius: 6,
-    fontSize: 16,
-    fontWeight: 600,
-    cursor: 'pointer',
   },
 };

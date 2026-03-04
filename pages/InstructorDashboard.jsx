@@ -16,12 +16,9 @@ export default function InstructorDashboard({ instructorId }) {
     <div style={styles.container} aria-label="לוח בקרה למדריך">
       <div style={styles.header}>
         <h1 style={styles.title}>לוח בקרה למדריך</h1>
-        <nav style={styles.nav} role="navigation" aria-label="ניווט מדריך">
+        <nav className="tabs" style={styles.nav} role="tablist" aria-label="ניווט מדריך">
           <button
-            style={{
-              ...styles.navButton,
-              ...(activeTab === 'test-generator' ? styles.navButtonActive : {})
-            }}
+            className={`tab-btn ${activeTab === 'test-generator' ? 'active' : ''}`}
             onClick={() => setActiveTab('test-generator')}
             role="tab"
             aria-selected={activeTab === 'test-generator'}
@@ -31,10 +28,7 @@ export default function InstructorDashboard({ instructorId }) {
             מחולל מבחנים
           </button>
           <button
-            style={{
-              ...styles.navButton,
-              ...(activeTab === 'questions' ? styles.navButtonActive : {})
-            }}
+            className={`tab-btn ${activeTab === 'questions' ? 'active' : ''}`}
             onClick={() => setActiveTab('questions')}
             role="tab"
             aria-selected={activeTab === 'questions'}
@@ -44,10 +38,7 @@ export default function InstructorDashboard({ instructorId }) {
             ניהול שאלות
           </button>
           <button
-            style={{
-              ...styles.navButton,
-              ...(activeTab === 'analytics' ? styles.navButtonActive : {})
-            }}
+            className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
             onClick={() => setActiveTab('analytics')}
             role="tab"
             aria-selected={activeTab === 'analytics'}
@@ -84,52 +75,32 @@ const styles = {
   container: {
     direction: 'rtl',
     textAlign: 'right',
-    fontFamily: "'Heebo', 'Assistant', Arial, sans-serif",
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'var(--color-bg)',
   },
   header: {
-    background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
-    padding: '24px 28px',
-    borderBottom: '1px solid #e8e8e8',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    background: 'var(--color-bg-card)',
+    padding: 'var(--space-6) var(--space-6)',
+    borderBottom: '2px solid var(--color-border)',
+    boxShadow: 'var(--shadow-sm)',
   },
   title: {
-    margin: '0 0 16px 0',
-    fontSize: '26px',
+    margin: '0 0 var(--space-4) 0',
+    fontSize: 'var(--font-size-2xl)',
     fontWeight: 700,
-    color: '#1a1a1a',
+    color: 'var(--color-text)',
   },
   nav: {
     display: 'flex',
-    gap: '8px',
+    gap: 'var(--space-2)',
     flexWrap: 'wrap',
   },
-  navButton: {
-    padding: '10px 18px',
-    backgroundColor: '#f0f0f0',
-    color: '#555',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '15px',
-    fontWeight: 500,
-    minHeight: '44px',
-    transition: 'background-color 0.2s, color 0.2s',
-  },
-  navButtonActive: {
-    backgroundColor: '#fff',
-    color: '#CC0000',
-    fontWeight: 600,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-    border: '1px solid #e8e8e8',
-  },
   main: {
-    padding: '0'
+    padding: 0,
   },
   placeholder: {
-    padding: '40px',
+    padding: 'var(--space-10)',
     textAlign: 'center',
-    fontSize: '18px',
-    color: '#666',
-  }
+    fontSize: 'var(--font-size-lg)',
+    color: 'var(--color-text-muted)',
+  },
 };

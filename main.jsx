@@ -15,34 +15,14 @@ import { initializeAccessibilitySettings } from './utils/accessibility';
 // Initialize accessibility settings on page load
 initializeAccessibilitySettings();
 
-// Apply global styles
+// Minimal global reset – body/typography from index.html + global.css
 const globalStyles = `
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-  
-  html, body {
-    direction: rtl;
-    text-align: right;
-    font-family: 'Arial Hebrew', 'Arial', 'Helvetica', sans-serif;
-    font-size: 14px;
-    line-height: 1.5;
-    color: #212121;
-    background-color: #f5f5f5;
-    min-height: 100vh;
-  }
-  
-  #root {
-    min-height: 100vh;
-  }
-  
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  #root { min-height: 100vh; }
   *:focus-visible {
-    outline: 3px solid #CC0000;
+    outline: 2px solid var(--mda-red);
     outline-offset: 2px;
   }
-  
   .sr-only {
     position: absolute;
     width: 1px;

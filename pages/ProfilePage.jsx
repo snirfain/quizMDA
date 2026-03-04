@@ -51,8 +51,8 @@ export default function ProfilePage() {
   }
 
   return (
-      <div style={styles.container}>
-        <div style={styles.header}>
+      <div style={styles.container} className="page-container">
+        <div className="card" style={styles.header}>
           <div style={styles.avatar}>
             <span style={styles.avatarText}>
               {user.full_name.charAt(0)}
@@ -69,23 +69,23 @@ export default function ProfilePage() {
         </div>
 
         <div style={styles.statsGrid}>
-          <div style={styles.statCard}>
+          <div className="card" style={styles.statCard}>
             <div style={styles.statValue}>{user.points || 0}</div>
             <div style={styles.statLabel}>נקודות</div>
           </div>
-          <div style={styles.statCard}>
+          <div className="card" style={styles.statCard}>
             <div style={styles.statValue}>{user.current_streak || 0}</div>
             <div style={styles.statLabel}>רצף ימים</div>
           </div>
           {progress && (
             <>
-              <div style={styles.statCard}>
+              <div className="card" style={styles.statCard}>
                 <div style={styles.statValue}>
                   {progress.overall.successRate.toFixed(1)}%
                 </div>
                 <div style={styles.statLabel}>אחוז הצלחה</div>
               </div>
-              <div style={styles.statCard}>
+              <div className="card" style={styles.statCard}>
                 <div style={styles.statValue}>
                   {progress.overall.questionsAnswered}
                 </div>
@@ -96,7 +96,7 @@ export default function ProfilePage() {
         </div>
 
         <div style={styles.sections}>
-          <div style={styles.section}>
+          <div className="card" style={styles.section}>
             <h2 style={styles.sectionTitle}>הישגים</h2>
             <AchievementsPanel userId={user.user_id} />
           </div>
@@ -110,89 +110,80 @@ const styles = {
     direction: 'rtl',
     maxWidth: '1000px',
     margin: '0 auto',
-    padding: '20px'
+    padding: 'var(--space-5)',
   },
   header: {
     display: 'flex',
-    gap: '24px',
+    gap: 'var(--space-6)',
     alignItems: 'center',
-    marginBottom: '40px',
-    padding: '30px',
-    backgroundColor: '#FFFFFF',
-    borderRadius: '8px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    marginBottom: 'var(--space-10)',
+    padding: 'var(--space-6)',
   },
   avatar: {
     width: '80px',
     height: '80px',
     borderRadius: '50%',
-    backgroundColor: '#CC0000',
+    backgroundColor: 'var(--mda-red)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0
+    flexShrink: 0,
   },
   avatarText: {
     fontSize: '32px',
     fontWeight: 'bold',
-    color: '#FFFFFF'
+    color: 'var(--color-white)',
   },
   info: {
-    flex: 1
+    flex: 1,
   },
   name: {
-    fontSize: '28px',
+    fontSize: 'var(--font-size-2xl)',
     fontWeight: 'bold',
-    marginBottom: '8px',
-    color: '#212121'
+    marginBottom: 'var(--space-2)',
+    color: 'var(--color-text)',
   },
   role: {
-    fontSize: '16px',
-    color: '#757575',
-    marginBottom: '4px'
+    fontSize: 'var(--font-size-lg)',
+    color: 'var(--color-text-muted)',
+    marginBottom: 'var(--space-1)',
   },
   userId: {
-    fontSize: '14px',
-    color: '#9E9E9E'
+    fontSize: 'var(--font-size-base)',
+    color: 'var(--color-text-muted)',
   },
   statsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '20px',
-    marginBottom: '40px'
+    gap: 'var(--space-5)',
+    marginBottom: 'var(--space-10)',
   },
   statCard: {
-    backgroundColor: '#FFFFFF',
-    padding: '24px',
-    borderRadius: '8px',
+    padding: 'var(--space-6)',
     textAlign: 'center',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
   },
   statValue: {
     fontSize: '36px',
     fontWeight: 'bold',
-    color: '#CC0000',
-    marginBottom: '8px'
+    color: 'var(--mda-red)',
+    marginBottom: 'var(--space-2)',
   },
   statLabel: {
-    fontSize: '14px',
-    color: '#757575'
+    fontSize: 'var(--font-size-base)',
+    color: 'var(--color-text-muted)',
   },
   sections: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '30px'
+    gap: 'var(--space-6)',
   },
   section: {
-    backgroundColor: '#FFFFFF',
-    padding: '30px',
-    borderRadius: '8px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    padding: 'var(--space-6)',
   },
   sectionTitle: {
-    fontSize: '24px',
+    fontSize: 'var(--font-size-2xl)',
     fontWeight: 'bold',
-    marginBottom: '20px',
-    color: '#212121'
-  }
+    marginBottom: 'var(--space-5)',
+    color: 'var(--color-text)',
+  },
 };
