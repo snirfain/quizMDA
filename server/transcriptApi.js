@@ -319,7 +319,7 @@ export async function generateQuestionsFromTranscript(req, res) {
     if (!apiKey) {
       return res.status(400).json({ error: 'OPENAI_API_KEY לא מוגדר בסביבת השרת' });
     }
-    const { transcriptId, transcriptName, transcriptIds: transcriptIdsBody, count: requestedCount } = req.body || {};
+    const { transcriptId, transcriptName, transcriptIds: transcriptIdsBody, count: requestedCount, excludeQuestionTexts: excludeFromBody } = req.body || {};
     const count = Math.min(Math.max(1, parseInt(requestedCount, 10) || 10), 100);
     let transcripts = [];
     if (Array.isArray(transcriptIdsBody) && transcriptIdsBody.length > 0) {
@@ -344,7 +344,9 @@ export async function generateQuestionsFromTranscript(req, res) {
     const transcriptNames = [...new Set(transcripts.map((t) => t.name).filter(Boolean))];
     const Question = (await import('../models/Question.js')).default;
     const existing = await Question.find({ tags: { $in: transcriptNames } }).select('question_text').lean();
-    const existingTexts = [...new Set(existing.map((q) => (q.question_text || '').trim()).filter(Boolean))];
+    const fromDb = [...new Set(existing.map((q) => (q.question_text || '').trim()).filter(Boolean))];
+    const excludeList = Array.isArray(excludeFromBody) ? excludeFromBody.map((t) => String(t || '').trim()).filter(Boolean) : [];
+    const existingTexts = [...new Set([...fromDb, ...excludeList])];
     const userPrompt = buildTranscriptQuestionUserPrompt(combinedText, count, existingTexts);
     const OPENAI_TIMEOUT_MS = 90_000;
     const controller = new AbortController();

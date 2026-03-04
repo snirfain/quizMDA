@@ -194,6 +194,8 @@ export default function TranscriptUpload() {
     await new Promise((r) => setTimeout(r, 6000));
   };
 
+  const CHUNK_SIZE = 5;
+
   const callGenerateQuestions = async (body, retriesLeft = 2) => {
     const res = await fetch('/api/transcripts/generate-questions', {
       method: 'POST',
@@ -210,6 +212,34 @@ export default function TranscriptUpload() {
     return { res, data };
   };
 
+  const runChunkedGeneration = async (baseBody, totalWanted, transcriptNameLabel) => {
+    const allQuestions = [];
+    const seenTexts = new Set();
+    let excludeQuestionTexts = [];
+    const numChunks = Math.ceil(totalWanted / CHUNK_SIZE);
+    for (let i = 0; i < numChunks; i++) {
+      const want = i === numChunks - 1 ? totalWanted - i * CHUNK_SIZE : CHUNK_SIZE;
+      if (want < 1) break;
+      showToast(`יוצר שאלות חלק ${i + 1}/${numChunks}...`, 'info');
+      const body = { ...baseBody, count: want, excludeQuestionTexts };
+      const { res, data } = await callGenerateQuestions(body);
+      if (!res.ok) {
+        const msg = data.error || (res.status === 503 ? 'השרת לא זמין.' : 'יצירת שאלות נכשלה');
+        showToast(msg, 'error');
+        return { questions: allQuestions, failed: true };
+      }
+      const chunk = (data.questions || []).filter((q) => {
+        const text = (q.question_text || '').trim();
+        if (!text || seenTexts.has(text)) return false;
+        seenTexts.add(text);
+        return true;
+      });
+      allQuestions.push(...chunk);
+      excludeQuestionTexts = excludeQuestionTexts.concat(chunk.map((q) => (q.question_text || '').trim()).filter(Boolean));
+    }
+    return { questions: allQuestions, failed: false };
+  };
+
   const handleGenerateBatch = async () => {
     const ids = Array.from(selectedForBatch);
     if (ids.length === 0) {
@@ -222,19 +252,17 @@ export default function TranscriptUpload() {
     setGeneratedForName(null);
     try {
       await wakeServerIfNeeded();
-      const { res, data } = await callGenerateQuestions({ transcriptIds: ids, count: n });
-      if (res.ok) {
-        const questions = data.questions || [];
-        setGeneratedQuestions(questions);
-        setGeneratedForName(data.transcriptName || (ids.length === 1 ? list.find((x) => x._id === ids[0])?.name : `${ids.length} תמלילים`));
-        setSelectedForAdd(new Set(questions.map((_, i) => i)));
-        setExpandedQuestions(new Set());
-        showToast(`נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, 'success');
+      const baseBody = { transcriptIds: ids };
+      const transcriptNameLabel = ids.length === 1 ? list.find((x) => x._id === ids[0])?.name : `${ids.length} תמלילים`;
+      const { questions, failed } = await runChunkedGeneration(baseBody, n, transcriptNameLabel);
+      setGeneratedQuestions(questions);
+      setGeneratedForName(transcriptNameLabel);
+      setSelectedForAdd(new Set(questions.map((_, i) => i)));
+      setExpandedQuestions(new Set());
+      if (questions.length > 0) {
+        showToast(failed ? `נוצרו ${questions.length} שאלות (חלק נכשל). אשר נבחרות והוסף למאגר` : `נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, failed ? 'warning' : 'success');
         await loadList(searchQuery);
-      } else {
-        const msg = data.error || (res.status === 503 ? 'השרת לא זמין. חכה כ־30 שניות ונסה שוב (ייתכן שהשרת מתעורר).' : 'יצירת שאלות נכשלה');
-        showToast(msg, 'error');
-      }
+      } else if (!failed) showToast('לא נוצרו שאלות', 'warning');
     } catch (err) {
       showToast('שגיאה: ' + (err?.message || ''), 'error');
     } finally {
@@ -253,19 +281,16 @@ export default function TranscriptUpload() {
     setGeneratedForName(null);
     try {
       await wakeServerIfNeeded();
-      const { res, data } = await callGenerateQuestions({ transcriptId: t._id, count });
-      if (res.ok) {
-        const questions = data.questions || [];
-        setGeneratedQuestions(questions);
-        setGeneratedForName(data.transcriptName || t.name);
-        setSelectedForAdd(new Set(questions.map((_, i) => i)));
-        setExpandedQuestions(new Set());
-        showToast(`נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, 'success');
+      const baseBody = { transcriptId: t._id };
+      const { questions, failed } = await runChunkedGeneration(baseBody, count, t.name);
+      setGeneratedQuestions(questions);
+      setGeneratedForName(t.name);
+      setSelectedForAdd(new Set(questions.map((_, i) => i)));
+      setExpandedQuestions(new Set());
+      if (questions.length > 0) {
+        showToast(failed ? `נוצרו ${questions.length} שאלות (חלק נכשל). אשר נבחרות והוסף למאגר` : `נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, failed ? 'warning' : 'success');
         await loadList(searchQuery);
-      } else {
-        const msg = data.error || (res.status === 503 ? 'השרת לא זמין. חכה כ־30 שניות ונסה שוב (ייתכן שהשרת מתעורר).' : 'יצירת שאלות נכשלה');
-        showToast(msg, 'error');
-      }
+      } else if (!failed) showToast('לא נוצרו שאלות', 'warning');
     } catch (err) {
       showToast('שגיאה: ' + (err?.message || ''), 'error');
     } finally {
