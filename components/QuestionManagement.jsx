@@ -218,10 +218,6 @@ export default function QuestionManagement() {
         if (cancelled) return;
         if (data.cataloged > 0) {
           await loadQuestions();
-          const parts = [];
-          if (data.transcriptMatched) parts.push(`${data.transcriptMatched} שויכו לתמלול`);
-          if (data.hierarchyClassified) parts.push(`${data.hierarchyClassified} סווגו לקטגוריה`);
-          showToast(`קוטלגו ${data.cataloged} שאלות: ${parts.join(', ') || 'עודכנו'}.`, 'success');
         }
       } catch (e) {
         if (!cancelled) showToast('קטלוג אוטומטי נכשל: ' + (e?.message || ''), 'error');
