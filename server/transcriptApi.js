@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import crypto from 'crypto';
 import Transcript from '../models/Transcript.js';
 import { TRANSCRIPT_QUESTION_SYSTEM_PROMPT, buildTranscriptQuestionUserPrompt } from './transcriptQuestionPrompt.js';
+import { isDbConnected, ensureDbConnection } from './db.js';
 
 const memoryStorage = multer.memoryStorage();
 const MAX_FILES = 200;
@@ -60,21 +61,6 @@ function parseSrtToText(buffer) {
   return textLines.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-function isDbConnected() {
-  return mongoose.connection.readyState === 1;
-}
-
-async function ensureDbConnection() {
-  if (isDbConnected()) return true;
-  const uri = process.env.MONGODB_URI;
-  if (!uri) return false;
-  try {
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-    return isDbConnected();
-  } catch (_) {
-    return false;
-  }
-}
 
 function escapeRegex(s) {
   if (typeof s !== 'string') return '';

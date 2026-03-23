@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { getSuspendedQuestions, reactivateQuestion, getSuspensionStats } from '../workflows/managerDashboard';
 import { navigateTo } from '../utils/router';
+import { sanitizeHtml } from '../utils/sanitize';
 
 const cardShadow = '0 2px 12px rgba(0,0,0,0.06)';
 const cardRadius = 16;
@@ -272,7 +273,7 @@ export default function ManagerDashboard({ managerId }) {
                   <div
                     style={s.qText}
                     dangerouslySetInnerHTML={{
-                      __html: question.question_text.substring(0, 200) + (question.question_text.length > 200 ? '...' : ''),
+                      __html: sanitizeHtml(question.question_text.substring(0, 200) + (question.question_text.length > 200 ? '...' : '')),
                     }}
                   />
                 </div>

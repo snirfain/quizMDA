@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { generateRandomTest, getFilterOptions, exportTestToPDF } from '../workflows/testGenerator';
 import { DIFFICULTY_EASY, DIFFICULTY_MEDIUM, DIFFICULTY_HARD, getDifficultyDisplay } from '../workflows/difficultyEngine';
+import { sanitizeHtml } from '../utils/sanitize';
 
 export default function TestGenerator({ instructorId }) {
   const [filters, setFilters] = useState({
@@ -232,7 +233,7 @@ export default function TestGenerator({ instructorId }) {
                   </div>
                   <div 
                     style={styles.questionText}
-                    dangerouslySetInnerHTML={{ __html: question.question_text }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(question.question_text) }}
                   />
                   {question.media_attachment && (
                     <div style={styles.questionMedia}>

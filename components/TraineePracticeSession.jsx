@@ -13,6 +13,7 @@ import { savePracticeSession, loadQuestions, addToSyncQueue } from '../utils/off
 import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { pickRandomMedia, recalcMediaStats } from '../workflows/mediaEngine';
 import LoadingSpinner from './LoadingSpinner';
+import { sanitizeHtml } from '../utils/sanitize';
 // Responsive styles are handled via CSS media queries
 
 export default function TraineePracticeSession({ userId, hierarchyFilters = {}, tagFilters = [] }) {
@@ -364,7 +365,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         <div 
           style={styles.questionText} 
           dangerouslySetInnerHTML={{
-            __html: currentQuestion.question_text
+            __html: sanitizeHtml(currentQuestion.question_text)
           }}
           role="heading"
           aria-level={2}
@@ -458,7 +459,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
                     <h3 style={styles.explanationTitle}>הסבר:</h3>
                     <div 
                       style={styles.explanationText}
-                      dangerouslySetInnerHTML={{ __html: currentQuestion.explanation }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentQuestion.explanation) }}
                     />
                   </div>
                 )}
@@ -475,7 +476,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
                     <h3 style={styles.explanationTitle}>הסבר:</h3>
                     <div 
                       style={styles.explanationText}
-                      dangerouslySetInnerHTML={{ __html: currentQuestion.explanation }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentQuestion.explanation) }}
                     />
                   </div>
                 )}

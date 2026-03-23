@@ -52,5 +52,7 @@ questionSchema.index({ question_type: 1 });
 questionSchema.index({ status: 1 });
 questionSchema.index({ difficulty_level: 1 });
 questionSchema.index({ tags: 1 });
+questionSchema.index({ createdAt: -1 });
+questionSchema.index({ question_text: 'text' });
 
 export default mongoose.model('Question', questionSchema);

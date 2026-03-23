@@ -12,6 +12,7 @@ import {
   getTraineeProgressOverview,
   getProblematicQuestions
 } from '../workflows/instructorAnalytics';
+import { sanitizeHtml } from '../utils/sanitize';
 
 export default function InstructorAnalytics({ instructorId }) {
   const [classPerformance, setClassPerformance] = useState(null);
@@ -344,7 +345,7 @@ export default function InstructorAnalytics({ instructorId }) {
                 </div>
                 <div
                   style={styles.problematicText}
-                  dangerouslySetInnerHTML={{ __html: question.question_text }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(question.question_text) }}
                 />
               </div>
             ))}

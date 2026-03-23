@@ -5,22 +5,7 @@
  */
 import mongoose from 'mongoose';
 import User from '../models/User.js';
-
-function isDbConnected() {
-  return mongoose.connection.readyState === 1;
-}
-
-async function ensureDbConnection() {
-  if (isDbConnected()) return true;
-  const uri = process.env.MONGODB_URI;
-  if (!uri) return false;
-  try {
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-    return isDbConnected();
-  } catch (_) {
-    return false;
-  }
-}
+import { isDbConnected, ensureDbConnection } from './db.js';
 
 const VALID_ROLES = new Set(['trainee', 'instructor', 'admin']);
 const VALID_AUTH = new Set(['local', 'google']);

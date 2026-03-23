@@ -59,6 +59,15 @@ async function start() {
 
   app.listen(PORT, () => {
     console.log(`Server at http://localhost:${PORT} (includes .doc extraction and media upload)`);
+
+    // Keep-alive: ping ourselves every 14 minutes to prevent Render free-tier cold starts
+    if (process.env.RENDER) {
+      const KEEP_ALIVE_MS = 14 * 60 * 1000;
+      setInterval(() => {
+        fetch(`http://localhost:${PORT}/api/health`).catch(() => {});
+      }, KEEP_ALIVE_MS);
+      console.log('Keep-alive enabled (every 14 min)');
+    }
   });
 }
 

@@ -7,92 +7,41 @@ import mongoose from 'mongoose';
 import Question from '../models/Question.js';
 import Transcript from '../models/Transcript.js';
 import { matchQuestionToTranscripts } from './transcriptApi.js';
-
-// ── Server-side hierarchy classification (mirrors workflows/questionClassification.js) ──
-
-const CATEGORY_KEYWORDS = [
-  ['מבוא', 'בסיס', 'כללי', 'הגדרה', 'עקרון'],
-  ['החייאה', 'הנשמה', 'עיסוי', 'עיסויים', 'דום לב', 'CPR', 'BLS', 'ALS', 'חזה', '30:2', 'הנשמות', 'מפוח', 'AMBU', 'בלבד'],
-  ['תרופ', 'מינון', 'אדרנלין', 'אטרופין', 'פרמקולוגיה', 'Adenosine', 'אמפול', 'מתן תרופ'],
-  ['אנמנזה', 'בדיקה רפואית', 'סימנים', 'תסמין', 'GCS', 'הערכה'],
-  ['נתיב אוויר', 'אינטובציה', 'AW ', 'צנרור', 'קוניוטומיה', 'Coniotomy', 'חסימת נתיב'],
-  ['אסטמה', 'COPD', 'חנק', 'נשימה', 'ריאות', 'קוצר נשימה', 'מצפצף', 'סטרידור', 'בצקת ריאות', 'תסחיף ריאתי', 'היפווקסיה', 'חמצן'],
-  ['טראומה', 'PHTLS', 'שבר', 'דימום', 'פגיעות', 'חזה', 'בטן', 'ראש', 'שלד', 'כוויות', 'הלם', 'טביעה', 'תלייה', 'התחשמלות', 'מעיכה', 'הדף'],
-  ['אק"ג', 'אקג', 'קצב לב', 'דופק', 'אוטם', 'MI ', 'CVA', 'שבץ', 'טכיקרדיה', 'ברדיקרדיה', 'פרפור', 'דפיברילציה', 'קרדיווסקולר', 'לבבי', 'תעוקת חזה', 'ACS'],
-  ['סוכרת', 'פרכוס', 'הכרה', 'הרעלה', 'עילפון', 'סינקופה', 'חום', 'היפותרמיה', 'היפוגליקמיה', 'סטטוס'],
-  ['הריון', 'יילוד', 'קשיש', 'מבוגר', 'אוכלוסיות'],
-  ['אג"מ', 'אגמ'],
-  ['אר"ן', 'ארן', 'רב נפגעים', 'מיון'],
-  ['לידה', 'יולדת', 'גניקולוג', 'מיילדות', 'הריון', 'עובר', 'פרינאום'],
-  ['ילד', 'תינוק', 'פדיאטרי', 'ילדים', 'תינוקות', 'יילוד', 'משקל ק"ג'],
-  ['פסיכיאטר', 'אובדנות', 'התנהגות', 'איום'],
-];
-
-function classifyQuestionToHierarchy(questionText) {
-  if (!questionText) return null;
-  const normalized = (questionText || '').replace(/\s+/g, ' ').replace(/[^\u0590-\u05FFa-zA-Z0-9\s]/g, ' ').trim().toLowerCase();
-  if (!normalized) return null;
-  let bestIdx = -1, bestScore = 0;
-  for (let i = 0; i < CATEGORY_KEYWORDS.length; i++) {
-    let score = 0;
-    for (const kw of CATEGORY_KEYWORDS[i]) {
-      if (normalized.includes(kw.toLowerCase())) {
-        score += 1;
-        if (kw.length >= 4) score += 0.5;
-      }
-    }
-    if (score > bestScore) { bestScore = score; bestIdx = i; }
-  }
-  return bestScore > 0 ? `h${bestIdx + 1}` : null;
-}
+import { isDbConnected, ensureDbConnection } from './db.js';
+import { classifyQuestionToHierarchy } from '../shared/categories.js';
 
 const NO_TRANSCRIPT_TAG = 'לא נמצא בתמלול';
 
 /**
- * Full auto-catalog for a single question document:
- * 1. Match to transcript (tag)
- * 2. Classify to hierarchy (category)
- * Applies changes directly to the DB document.
+ * Build catalog updates for a question (transcript tag + hierarchy) without touching DB.
+ * Returns a $set object (may be empty if nothing to update).
  */
-async function autoCatalogQuestion(doc, transcripts, transcriptNames) {
+async function buildCatalogUpdates(doc, transcripts, transcriptNames) {
   const updates = {};
-
-  // ── Transcript tag ──
   const found = await matchQuestionToTranscripts(doc.question_text, transcripts);
   const newTag = found || NO_TRANSCRIPT_TAG;
   const existing = Array.isArray(doc.tags) ? doc.tags : [];
   const withoutTranscript = existing.filter(t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t));
   updates.tags = [...withoutTranscript, newTag];
 
-  // ── Hierarchy classification ──
   const currentHierarchy = doc.hierarchy_id;
   const needsClassification = !currentHierarchy || currentHierarchy === 'unsorted' || currentHierarchy === 'h1';
   if (needsClassification) {
     const classified = classifyQuestionToHierarchy(doc.question_text);
     if (classified) updates.hierarchy_id = classified;
   }
+  return updates;
+}
 
+/**
+ * Auto-catalog a single question and persist to DB.
+ */
+async function autoCatalogQuestion(doc, transcripts, transcriptNames) {
+  const updates = await buildCatalogUpdates(doc, transcripts, transcriptNames);
   if (Object.keys(updates).length > 0) {
     await Question.findByIdAndUpdate(doc._id, { $set: updates });
   }
   return updates;
-}
-
-function isDbConnected() {
-  return mongoose.connection.readyState === 1;
-}
-
-/** Try to connect once if not connected (helps after Render cold start). */
-async function ensureDbConnection() {
-  if (isDbConnected()) return true;
-  const uri = process.env.MONGODB_URI;
-  if (!uri) return false;
-  try {
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-    return isDbConnected();
-  } catch (_) {
-    return false;
-  }
 }
 
 const DIFFICULTY_MAP = { קל: 3, בינוני: 5, קשה: 8 };
@@ -296,9 +245,14 @@ export async function syncQuestions(req, res) {
       synced = result.length;
       const transcripts = await Transcript.find({}).lean();
       const transcriptNames = new Set(transcripts.map(t => t.name));
+      const ops = [];
       for (const doc of result) {
-        await autoCatalogQuestion(doc, transcripts, transcriptNames);
+        const catalogUpdates = buildCatalogUpdates(doc, transcripts, transcriptNames);
+        if (Object.keys(catalogUpdates).length > 0) {
+          ops.push({ updateOne: { filter: { _id: doc._id }, update: { $set: catalogUpdates } } });
+        }
       }
+      if (ops.length > 0) await Question.bulkWrite(ops, { ordered: false });
     }
 
     console.log('[api/questions/sync] synced:', synced, 'skipped:', skipped);
@@ -323,6 +277,7 @@ export async function recatalogAllQuestions(req, res) {
     const transcriptNames = new Set(transcripts.map(t => t.name));
     const allQuestions = await Question.find({}).lean();
     let cataloged = 0, alreadyDone = 0, errors = 0;
+    const ops = [];
 
     for (const doc of allQuestions) {
       try {
@@ -350,7 +305,7 @@ export async function recatalogAllQuestions(req, res) {
         }
 
         if (Object.keys(updates).length > 0) {
-          await Question.findByIdAndUpdate(doc._id, { $set: updates });
+          ops.push({ updateOne: { filter: { _id: doc._id }, update: { $set: updates } } });
           cataloged++;
         } else {
           alreadyDone++;
@@ -358,6 +313,13 @@ export async function recatalogAllQuestions(req, res) {
       } catch (e) {
         console.error('[recatalog] error on question', doc._id, e.message);
         errors++;
+      }
+    }
+
+    if (ops.length > 0) {
+      const BATCH = 500;
+      for (let i = 0; i < ops.length; i += BATCH) {
+        await Question.bulkWrite(ops.slice(i, i + BATCH), { ordered: false });
       }
     }
 
@@ -389,9 +351,9 @@ export async function dedupeQuestions(req, res) {
       }
     }
     let removed = 0;
-    for (const id of toDelete) {
-      await Question.findByIdAndDelete(id);
-      removed++;
+    if (toDelete.length > 0) {
+      const result = await Question.deleteMany({ _id: { $in: toDelete } });
+      removed = result.deletedCount || toDelete.length;
     }
     console.log('[api/questions] dedupe: removed=', removed);
     res.json({ removed, total: list.length });
