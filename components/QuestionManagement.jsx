@@ -24,7 +24,7 @@ import {
   bulkApproveQuestions,
   getReviewStatistics
 } from '../workflows/questionReview';
-import { reclassifyAllQuestionsByContent, reclassifyUnanalyzedQuestionsWithAI } from '../workflows/questionClassification';
+import { reclassifyUnanalyzedQuestionsWithAI } from '../workflows/questionClassification';
 import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { fixQuestionWithAI } from '../workflows/questionEnrich';
 
@@ -204,28 +204,29 @@ export default function QuestionManagement() {
     }
   }, [activeTab]);
 
-  // Once per session: reclassify all questions by content (fix "כולן מבואות")
+  // Once per session: server-side recatalog (transcript + hierarchy) for uncataloged questions
   useEffect(() => {
-    if (hasAutoReclassified.current || !hierarchies.length || !questions.length || activeTab !== 'list') return;
+    if (hasAutoReclassified.current || !questions.length || activeTab !== 'list') return;
     hasAutoReclassified.current = true;
     let cancelled = false;
     (async () => {
       setIsReclassifying(true);
       try {
-        const result = await reclassifyAllQuestionsByContent(entities);
+        const res = await fetch('/api/questions/recatalog', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
         if (cancelled) return;
-        if (result.updated > 0) {
+        if (data.cataloged > 0) {
           await loadQuestions();
-          showToast(`יושרו קטגוריות לפי תוכן: עודכנו ${result.updated} שאלות.`, 'success');
+          showToast(`קוטלגו ${data.cataloged} שאלות (תמלול + קטגוריה).`, 'success');
         }
       } catch (e) {
-        if (!cancelled) showToast('יישור קטגוריות נכשל: ' + (e?.message || ''), 'error');
+        if (!cancelled) showToast('קטלוג אוטומטי נכשל: ' + (e?.message || ''), 'error');
       } finally {
         if (!cancelled) setIsReclassifying(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [hierarchies.length, questions.length, activeTab]);
+  }, [questions.length, activeTab]);
 
   useEffect(() => {
     filterQuestions();
@@ -698,17 +699,17 @@ export default function QuestionManagement() {
     }
     setIsReclassifying(true);
     try {
-      const result = await reclassifyAllQuestionsByContent(entities);
+      const res = await fetch('/api/questions/recatalog', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Server error');
       await loadQuestions();
-      if (result.updated > 0) {
-        showToast(`עודכנו ${result.updated} שאלות לקטגוריה לפי תוכן. דולגו ${result.skipped}.`, 'success');
-      } else if (result.skipped === questions.length) {
-        showToast('כל השאלות כבר מסווגות או ללא התאמה. לא בוצעו שינויים.', 'info');
+      if (data.cataloged > 0) {
+        showToast(`קוטלגו ${data.cataloged} שאלות (תמלול + קטגוריה). כבר מקוטלגות: ${data.alreadyDone}.`, 'success');
       } else {
-        showToast(`דולגו ${result.skipped} שאלות. ${result.errors ? `שגיאות: ${result.errors}` : ''}`, 'info');
+        showToast('כל השאלות כבר מקוטלגות. לא בוצעו שינויים.', 'info');
       }
     } catch (error) {
-      showToast('שגיאה ביישור קטגוריות: ' + (error?.message || 'unknown'), 'error');
+      showToast('שגיאה בקטלוג: ' + (error?.message || 'unknown'), 'error');
     } finally {
       setIsReclassifying(false);
     }

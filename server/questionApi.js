@@ -8,6 +8,76 @@ import Question from '../models/Question.js';
 import Transcript from '../models/Transcript.js';
 import { matchQuestionToTranscripts } from './transcriptApi.js';
 
+// ── Server-side hierarchy classification (mirrors workflows/questionClassification.js) ──
+
+const CATEGORY_KEYWORDS = [
+  ['מבוא', 'בסיס', 'כללי', 'הגדרה', 'עקרון'],
+  ['החייאה', 'הנשמה', 'עיסוי', 'עיסויים', 'דום לב', 'CPR', 'BLS', 'ALS', 'חזה', '30:2', 'הנשמות', 'מפוח', 'AMBU', 'בלבד'],
+  ['תרופ', 'מינון', 'אדרנלין', 'אטרופין', 'פרמקולוגיה', 'Adenosine', 'אמפול', 'מתן תרופ'],
+  ['אנמנזה', 'בדיקה רפואית', 'סימנים', 'תסמין', 'GCS', 'הערכה'],
+  ['נתיב אוויר', 'אינטובציה', 'AW ', 'צנרור', 'קוניוטומיה', 'Coniotomy', 'חסימת נתיב'],
+  ['אסטמה', 'COPD', 'חנק', 'נשימה', 'ריאות', 'קוצר נשימה', 'מצפצף', 'סטרידור', 'בצקת ריאות', 'תסחיף ריאתי', 'היפווקסיה', 'חמצן'],
+  ['טראומה', 'PHTLS', 'שבר', 'דימום', 'פגיעות', 'חזה', 'בטן', 'ראש', 'שלד', 'כוויות', 'הלם', 'טביעה', 'תלייה', 'התחשמלות', 'מעיכה', 'הדף'],
+  ['אק"ג', 'אקג', 'קצב לב', 'דופק', 'אוטם', 'MI ', 'CVA', 'שבץ', 'טכיקרדיה', 'ברדיקרדיה', 'פרפור', 'דפיברילציה', 'קרדיווסקולר', 'לבבי', 'תעוקת חזה', 'ACS'],
+  ['סוכרת', 'פרכוס', 'הכרה', 'הרעלה', 'עילפון', 'סינקופה', 'חום', 'היפותרמיה', 'היפוגליקמיה', 'סטטוס'],
+  ['הריון', 'יילוד', 'קשיש', 'מבוגר', 'אוכלוסיות'],
+  ['אג"מ', 'אגמ'],
+  ['אר"ן', 'ארן', 'רב נפגעים', 'מיון'],
+  ['לידה', 'יולדת', 'גניקולוג', 'מיילדות', 'הריון', 'עובר', 'פרינאום'],
+  ['ילד', 'תינוק', 'פדיאטרי', 'ילדים', 'תינוקות', 'יילוד', 'משקל ק"ג'],
+  ['פסיכיאטר', 'אובדנות', 'התנהגות', 'איום'],
+];
+
+function classifyQuestionToHierarchy(questionText) {
+  if (!questionText) return null;
+  const normalized = (questionText || '').replace(/\s+/g, ' ').replace(/[^\u0590-\u05FFa-zA-Z0-9\s]/g, ' ').trim().toLowerCase();
+  if (!normalized) return null;
+  let bestIdx = -1, bestScore = 0;
+  for (let i = 0; i < CATEGORY_KEYWORDS.length; i++) {
+    let score = 0;
+    for (const kw of CATEGORY_KEYWORDS[i]) {
+      if (normalized.includes(kw.toLowerCase())) {
+        score += 1;
+        if (kw.length >= 4) score += 0.5;
+      }
+    }
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
+  }
+  return bestScore > 0 ? `h${bestIdx + 1}` : null;
+}
+
+const NO_TRANSCRIPT_TAG = 'לא נמצא בתמלול';
+
+/**
+ * Full auto-catalog for a single question document:
+ * 1. Match to transcript (tag)
+ * 2. Classify to hierarchy (category)
+ * Applies changes directly to the DB document.
+ */
+async function autoCatalogQuestion(doc, transcripts, transcriptNames) {
+  const updates = {};
+
+  // ── Transcript tag ──
+  const found = await matchQuestionToTranscripts(doc.question_text, transcripts);
+  const newTag = found || NO_TRANSCRIPT_TAG;
+  const existing = Array.isArray(doc.tags) ? doc.tags : [];
+  const withoutTranscript = existing.filter(t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t));
+  updates.tags = [...withoutTranscript, newTag];
+
+  // ── Hierarchy classification ──
+  const currentHierarchy = doc.hierarchy_id;
+  const needsClassification = !currentHierarchy || currentHierarchy === 'unsorted' || currentHierarchy === 'h1';
+  if (needsClassification) {
+    const classified = classifyQuestionToHierarchy(doc.question_text);
+    if (classified) updates.hierarchy_id = classified;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await Question.findByIdAndUpdate(doc._id, { $set: updates });
+  }
+  return updates;
+}
+
 function isDbConnected() {
   return mongoose.connection.readyState === 1;
 }
@@ -120,17 +190,11 @@ export async function postQuestions(req, res) {
     console.log('[api/questions] POST: items=', items.length);
     const transcripts = await Transcript.find({}).lean();
     const transcriptNames = new Set(transcripts.map(t => t.name));
-    const NO_TRANSCRIPT_TAG = 'לא נמצא בתמלול';
     const created = [];
     for (const q of items) {
       const data = normalizeQuestionForDb(q);
       const doc = await Question.create(data);
-      const found = await matchQuestionToTranscripts(doc.question_text, transcripts);
-      const newTag = found || NO_TRANSCRIPT_TAG;
-      const existing = Array.isArray(doc.tags) ? doc.tags : [];
-      const without = existing.filter(t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t));
-      const tags = [...without, newTag];
-      await Question.findByIdAndUpdate(doc._id, { tags });
+      await autoCatalogQuestion(doc, transcripts, transcriptNames);
       const updated = await Question.findById(doc._id).lean();
       created.push({ id: updated._id.toString(), ...updated });
     }
@@ -157,6 +221,17 @@ export async function updateQuestion(req, res) {
     const data = isPartial ? normalizePartialUpdate(body) : normalizeQuestionForDb(body);
     const doc = await Question.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: false }).lean();
     if (!doc) return res.status(404).json({ error: 'Question not found' });
+
+    // Re-catalog when question_text changes (full update)
+    if (!isPartial) {
+      const transcripts = await Transcript.find({}).lean();
+      const transcriptNames = new Set(transcripts.map(t => t.name));
+      await autoCatalogQuestion(doc, transcripts, transcriptNames);
+      const refreshed = await Question.findById(doc._id).lean();
+      const { _id, ...rest } = refreshed;
+      return res.json({ id: _id.toString(), ...rest });
+    }
+
     const { _id, ...rest } = doc;
     res.json({ id: _id.toString(), ...rest });
   } catch (err) {
@@ -221,13 +296,8 @@ export async function syncQuestions(req, res) {
       synced = result.length;
       const transcripts = await Transcript.find({}).lean();
       const transcriptNames = new Set(transcripts.map(t => t.name));
-      const NO_TRANSCRIPT_TAG = 'לא נמצא בתמלול';
       for (const doc of result) {
-        const found = await matchQuestionToTranscripts(doc.question_text, transcripts);
-        const newTag = found || NO_TRANSCRIPT_TAG;
-        const existing = Array.isArray(doc.tags) ? doc.tags : [];
-        const without = existing.filter(t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t));
-        await Question.findByIdAndUpdate(doc._id, { tags: [...without, newTag] });
+        await autoCatalogQuestion(doc, transcripts, transcriptNames);
       }
     }
 
@@ -235,6 +305,66 @@ export async function syncQuestions(req, res) {
     res.status(201).json({ synced, skipped, total: items.length });
   } catch (err) {
     console.error('POST /api/questions/sync error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * Bulk re-catalog all existing questions that are missing transcript tag or hierarchy.
+ * POST /api/questions/recatalog
+ */
+export async function recatalogAllQuestions(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      return res.status(503).json({ error: 'Database not connected' });
+    }
+    const transcripts = await Transcript.find({}).lean();
+    const transcriptNames = new Set(transcripts.map(t => t.name));
+    const allQuestions = await Question.find({}).lean();
+    let cataloged = 0, alreadyDone = 0, errors = 0;
+
+    for (const doc of allQuestions) {
+      try {
+        const tags = Array.isArray(doc.tags) ? doc.tags : [];
+        const hasTranscriptTag = tags.some(t => transcriptNames.has(t) || t === NO_TRANSCRIPT_TAG);
+        const hasHierarchy = doc.hierarchy_id && doc.hierarchy_id !== 'unsorted' && doc.hierarchy_id !== 'h1';
+
+        if (hasTranscriptTag && hasHierarchy) {
+          alreadyDone++;
+          continue;
+        }
+
+        const updates = {};
+
+        if (!hasTranscriptTag) {
+          const found = await matchQuestionToTranscripts(doc.question_text, transcripts);
+          const newTag = found || NO_TRANSCRIPT_TAG;
+          const withoutTranscript = tags.filter(t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t));
+          updates.tags = [...withoutTranscript, newTag];
+        }
+
+        if (!hasHierarchy) {
+          const classified = classifyQuestionToHierarchy(doc.question_text);
+          if (classified) updates.hierarchy_id = classified;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await Question.findByIdAndUpdate(doc._id, { $set: updates });
+          cataloged++;
+        } else {
+          alreadyDone++;
+        }
+      } catch (e) {
+        console.error('[recatalog] error on question', doc._id, e.message);
+        errors++;
+      }
+    }
+
+    console.log(`[recatalog] total=${allQuestions.length} cataloged=${cataloged} alreadyDone=${alreadyDone} errors=${errors}`);
+    res.json({ total: allQuestions.length, cataloged, alreadyDone, errors });
+  } catch (err) {
+    console.error('POST /api/questions/recatalog error:', err);
     res.status(500).json({ error: err.message });
   }
 }
