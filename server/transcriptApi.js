@@ -5,6 +5,7 @@
 
 import multer from 'multer';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import Transcript from '../models/Transcript.js';
 import { TRANSCRIPT_QUESTION_SYSTEM_PROMPT, buildTranscriptQuestionUserPrompt } from './transcriptQuestionPrompt.js';
 
@@ -256,8 +257,20 @@ export async function matchAllQuestions(req, res) {
   }
 }
 
+// ── Async question generation with in-memory job store ──────────────────────
+
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+const jobs = new Map();
+const JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function cleanupOldJobs() {
+  const now = Date.now();
+  for (const [id, job] of jobs) {
+    if (now - job.createdAt > JOB_TTL_MS) jobs.delete(id);
+  }
+}
 
 function parseQuestionsJsonFromAI(content) {
   if (!content || typeof content !== 'string') return [];
@@ -300,30 +313,32 @@ function normalizeGeneratedQuestion(q, transcriptName) {
 }
 
 /**
- * POST /api/transcripts/generate-questions
- * Body: { transcriptId?, transcriptName?, transcriptIds?: string[], count: number }
- * Single: transcriptId or transcriptName. Multiple: transcriptIds (array).
- * Loads transcript(s), combines text if multiple, builds prompt, returns questions tagged with all source transcript names.
+ * Background worker: runs the actual OpenAI call for a job.
+ * Updates the job object in-place so the status endpoint can return results.
  */
-export async function generateQuestionsFromTranscript(req, res) {
+async function runGenerationJob(job) {
   try {
     await ensureDbConnection();
     if (!isDbConnected()) {
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 5000));
       await ensureDbConnection();
     }
     if (!isDbConnected()) {
-      return res.status(503).json({ error: 'Database not connected' });
+      job.status = 'error';
+      job.error = 'Database not connected';
+      return;
     }
     const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
     if (!apiKey) {
-      return res.status(400).json({ error: 'OPENAI_API_KEY לא מוגדר בסביבת השרת' });
+      job.status = 'error';
+      job.error = 'OPENAI_API_KEY לא מוגדר בסביבת השרת';
+      return;
     }
-    const { transcriptId, transcriptName, transcriptIds: transcriptIdsBody, count: requestedCount, excludeQuestionTexts: excludeFromBody } = req.body || {};
-    const count = Math.min(Math.max(1, parseInt(requestedCount, 10) || 10), 100);
+    const { transcriptId, transcriptName, transcriptIds, count, excludeQuestionTexts: excludeFromBody } = job.params;
+
     let transcripts = [];
-    if (Array.isArray(transcriptIdsBody) && transcriptIdsBody.length > 0) {
-      transcripts = await Transcript.find({ _id: { $in: transcriptIdsBody } }).sort({ createdAt: 1 }).lean();
+    if (Array.isArray(transcriptIds) && transcriptIds.length > 0) {
+      transcripts = await Transcript.find({ _id: { $in: transcriptIds } }).sort({ createdAt: 1 }).lean();
     } else if (transcriptId) {
       const one = await Transcript.findById(transcriptId).lean();
       if (one) transcripts = [one];
@@ -332,62 +347,59 @@ export async function generateQuestionsFromTranscript(req, res) {
       if (one) transcripts = [one];
     }
     if (transcripts.length === 0) {
-      return res.status(404).json({ error: 'לא נמצאו תמלילים' });
+      job.status = 'error';
+      job.error = 'לא נמצאו תמלילים';
+      return;
     }
+
     const combinedText = transcripts
       .map((t) => (t.fullText || '').trim())
       .filter(Boolean)
       .join('\n\n---\n\n');
     if (!combinedText) {
-      return res.status(400).json({ error: 'התמלילים ריקים' });
+      job.status = 'error';
+      job.error = 'התמלילים ריקים';
+      return;
     }
+
+    const MAX_TRANSCRIPT_CHARS = 12000;
+    const truncatedText = combinedText.length > MAX_TRANSCRIPT_CHARS
+      ? combinedText.slice(0, MAX_TRANSCRIPT_CHARS) + '\n\n[...קוצר מסיבות אורך...]'
+      : combinedText;
+
     const transcriptNames = [...new Set(transcripts.map((t) => t.name).filter(Boolean))];
     const Question = (await import('../models/Question.js')).default;
     const existing = await Question.find({ tags: { $in: transcriptNames } }).select('question_text').lean();
     const fromDb = [...new Set(existing.map((q) => (q.question_text || '').trim()).filter(Boolean))];
     const excludeList = Array.isArray(excludeFromBody) ? excludeFromBody.map((t) => String(t || '').trim()).filter(Boolean) : [];
     const existingTexts = [...new Set([...fromDb, ...excludeList])];
-    const userPrompt = buildTranscriptQuestionUserPrompt(combinedText, count, existingTexts);
-    const OPENAI_TIMEOUT_MS = 25_000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-    let response;
-    try {
-      response = await fetch(OPENAI_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: OPENAI_MODEL,
-          messages: [
-            { role: 'system', content: TRANSCRIPT_QUESTION_SYSTEM_PROMPT },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: 0.3,
-          max_tokens: 16000,
-        }),
-        signal: controller.signal,
-      });
-    } catch (fetchErr) {
-      clearTimeout(timeoutId);
-      const isTimeout = fetchErr?.name === 'AbortError';
-      console.error('OpenAI fetch failed:', isTimeout ? 'timeout' : fetchErr?.message || fetchErr);
-      return res.status(503).json({
-        error: isTimeout
-          ? 'בקשה ל־OpenAI ארכה יותר מדי זמן. נסה שוב או הפחת את מספר השאלות.'
-          : 'שגיאת רשת אל OpenAI: ' + (fetchErr?.message || 'לא ניתן להתחבר'),
-      });
-    }
-    clearTimeout(timeoutId);
+    const userPrompt = buildTranscriptQuestionUserPrompt(truncatedText, count, existingTexts);
+
+    const response = await fetch(OPENAI_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        messages: [
+          { role: 'system', content: TRANSCRIPT_QUESTION_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 16000,
+      }),
+    });
+
     if (!response.ok) {
-      const err = await response.text().catch(() => '');
-      console.error('OpenAI error:', response.status, err.slice(0, 300));
-      return res.status(503).json({
-        error: 'שגיאה מקריאת OpenAI: ' + (err.slice(0, 200) || response.statusText),
-      });
+      const errText = await response.text().catch(() => '');
+      console.error('OpenAI error:', response.status, errText.slice(0, 300));
+      job.status = 'error';
+      job.error = 'שגיאה מ-OpenAI: ' + (errText.slice(0, 200) || response.statusText);
+      return;
     }
+
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '[]';
     const raw = parseQuestionsJsonFromAI(content);
@@ -398,13 +410,73 @@ export async function generateQuestionsFromTranscript(req, res) {
         return normalized;
       })
       .filter((q) => q.question_text);
+
     const transcriptNameLabel = transcriptNames.length === 1 ? transcriptNames[0] : transcriptNames.join(', ');
-    console.log('[api/transcripts/generate-questions]', transcriptNameLabel, 'requested', count, 'got', questions.length);
-    res.json({ questions, transcriptName: transcriptNameLabel, transcriptNames });
+    console.log('[generate-questions job]', job.id, transcriptNameLabel, 'requested', count, 'got', questions.length);
+
+    job.status = 'done';
+    job.result = { questions, transcriptName: transcriptNameLabel, transcriptNames };
+  } catch (err) {
+    console.error('[generate-questions job error]', job.id, err);
+    job.status = 'error';
+    job.error = err.message || 'שגיאה בלתי צפויה';
+  }
+}
+
+/**
+ * POST /api/transcripts/generate-questions
+ * Returns { jobId } immediately. The actual generation runs in background.
+ * Client polls GET /api/transcripts/generate-questions/status/:jobId for results.
+ */
+export function generateQuestionsFromTranscript(req, res) {
+  try {
+    cleanupOldJobs();
+
+    const body = req.body || {};
+    const { transcriptId, transcriptName, transcriptIds, count: requestedCount, excludeQuestionTexts } = body;
+    const count = Math.min(Math.max(1, parseInt(requestedCount, 10) || 10), 100);
+
+    const jobId = crypto.randomUUID();
+    const job = {
+      id: jobId,
+      status: 'pending',
+      createdAt: Date.now(),
+      params: { transcriptId, transcriptName, transcriptIds, count, excludeQuestionTexts },
+      result: null,
+      error: null,
+    };
+    jobs.set(jobId, job);
+
+    // Fire and forget — runs in background, not blocking the HTTP response
+    runGenerationJob(job);
+
+    res.json({ jobId });
   } catch (err) {
     console.error('POST /api/transcripts/generate-questions error:', err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: err.message || 'שגיאה בשרת בעת יצירת השאלות' });
-    }
+    res.status(500).json({ error: err.message });
   }
+}
+
+/**
+ * GET /api/transcripts/generate-questions/status/:jobId
+ * Returns the job status: { status: "pending" | "done" | "error", questions?, error? }
+ */
+export function getGenerateQuestionsStatus(req, res) {
+  const { jobId } = req.params;
+  const job = jobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({ status: 'error', error: 'Job not found (may have expired)' });
+  }
+  if (job.status === 'pending') {
+    return res.json({ status: 'pending' });
+  }
+  if (job.status === 'done') {
+    const result = job.result;
+    jobs.delete(jobId);
+    return res.json({ status: 'done', ...result });
+  }
+  // error
+  const error = job.error;
+  jobs.delete(jobId);
+  return res.json({ status: 'error', error });
 }

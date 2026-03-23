@@ -1087,6 +1087,27 @@ export default function QuestionManagement() {
             </div>
           )}
 
+          {/* Transcript Catalog Stats */}
+          {questions.length > 0 && (() => {
+            const NO_T = 'לא נמצא בתמלול';
+            const matched = questions.filter(q => (q.tags || []).some(t => t !== NO_T && t !== 'unsorted')).length;
+            const unmatched = questions.filter(q => (q.tags || []).includes(NO_T)).length;
+            const uncataloged = questions.length - matched - unmatched;
+            const pct = Math.round((matched / questions.length) * 100);
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 16px', marginBottom: '12px', background: '#f5f5f5', borderRadius: '10px', fontSize: '14px', direction: 'rtl' }}>
+                <strong style={{ flexShrink: 0 }}>קטלוג תמלולים:</strong>
+                <div style={{ flex: 1, height: '10px', background: '#e0e0e0', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: '#4caf50', borderRadius: '5px', transition: 'width 0.3s' }} />
+                </div>
+                <span style={{ color: '#4caf50', fontWeight: 600 }}>{matched} שויכו</span>
+                {unmatched > 0 && <span style={{ color: '#e65100' }}>{unmatched} לא שויכו</span>}
+                {uncataloged > 0 && <span style={{ color: '#9e9e9e' }}>{uncataloged} ללא תיוג</span>}
+                <span style={{ color: '#616161', fontWeight: 600 }}>{pct}%</span>
+              </div>
+            );
+          })()}
+
           {/* Questions List */}
           <div style={styles.questionsList}>
             {filteredQuestions.length === 0 ? (
@@ -1114,6 +1135,7 @@ export default function QuestionManagement() {
                       </th>
                       <th style={styles.th}>שאלה</th>
                       <th style={styles.th}>סוג</th>
+                      <th style={styles.th}>תמלול</th>
                       <th style={styles.th}>קושי</th>
                       <th style={styles.th}>סטטוס</th>
                       <th style={styles.th}>קטגוריה</th>
@@ -1140,6 +1162,9 @@ export default function QuestionManagement() {
                       const categoryLabel = hierarchy
                         ? [hierarchy.category_name, hierarchy.topic_name].filter(Boolean).join(' / ') || '-'
                         : '-';
+                      const NO_TRANSCRIPT = 'לא נמצא בתמלול';
+                      const transcriptTag = (question.tags || []).find(t => t !== NO_TRANSCRIPT && availableTags.includes(t) && t !== 'unsorted') || null;
+                      const isUnmatched = (question.tags || []).includes(NO_TRANSCRIPT);
 
                       return (
                         <React.Fragment key={question.id}>
@@ -1182,6 +1207,19 @@ export default function QuestionManagement() {
                               {question.question_type === 'multi_choice' && 'בחירה מרובה'}
                               {question.question_type === 'true_false' && 'נכון/לא נכון'}
                               {question.question_type === 'open_ended' && 'שאלה פתוחה'}
+                            </td>
+                            <td style={{ ...styles.td, maxWidth: '140px' }}>
+                              {transcriptTag ? (
+                                <span style={{ fontSize: '12px', color: '#1565c0', background: '#e3f2fd', padding: '2px 8px', borderRadius: '10px', display: 'inline-block', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={transcriptTag}>
+                                  {transcriptTag}
+                                </span>
+                              ) : isUnmatched ? (
+                                <span style={{ fontSize: '12px', color: '#e65100', background: '#fff3e0', padding: '2px 8px', borderRadius: '10px' }}>
+                                  לא שויך
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '12px', color: '#9e9e9e' }}>—</span>
+                              )}
                             </td>
                             <td style={styles.td}>
                               <DifficultyBadge level={question.difficulty_level} attempts={question.total_attempts} successRate={question.success_rate} />
@@ -1238,7 +1276,7 @@ export default function QuestionManagement() {
                           </tr>
                           {isExpanded && (
                             <tr style={styles.tr}>
-                              <td colSpan={8} style={{ ...styles.td, padding: '12px 16px', background: '#fafafa', borderTop: 'none' }}>
+                              <td colSpan={9} style={{ ...styles.td, padding: '12px 16px', background: '#fafafa', borderTop: 'none' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                   <div>
                                     <strong style={{ marginBottom: '4px' }}>שאלה (מלא):</strong>

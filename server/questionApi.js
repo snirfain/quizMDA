@@ -61,6 +61,32 @@ function normalizeQuestionForDb(q) {
   };
 }
 
+/** Build a $set object from only the fields that were actually sent. */
+function normalizePartialUpdate(body) {
+  const update = {};
+  if (body.hierarchy_id !== undefined) update.hierarchy_id = body.hierarchy_id || 'unsorted';
+  if (body.question_type !== undefined) update.question_type = body.question_type;
+  if (body.question_text !== undefined) update.question_text = body.question_text;
+  if (body.options !== undefined) update.options = (Array.isArray(body.options) ? body.options : []).map((o) => ({ value: o.value != null ? String(o.value) : '0', label: String(o.label ?? o.text ?? '') }));
+  if (body.correct_answer !== undefined) update.correct_answer = body.correct_answer;
+  if (body.explanation !== undefined) update.explanation = body.explanation;
+  if (body.hint !== undefined) update.hint = body.hint;
+  if (body.tags !== undefined) update.tags = Array.isArray(body.tags) ? body.tags : [];
+  if (body.status !== undefined && VALID_STATUS.has(body.status)) update.status = body.status;
+  if (body.difficulty_level !== undefined) {
+    let d = body.difficulty_level;
+    if (typeof d === 'string' && DIFFICULTY_MAP[d] != null) d = DIFFICULTY_MAP[d];
+    else if (typeof d !== 'number' || d < 1 || d > 10) d = null;
+    update.difficulty_level = d;
+  }
+  if (body.media_attachment !== undefined) update.media_attachment = body.media_attachment;
+  if (body.media_bank_tag !== undefined) update.media_bank_tag = body.media_bank_tag;
+  if (body.total_attempts !== undefined) update.total_attempts = body.total_attempts;
+  if (body.total_success !== undefined) update.total_success = body.total_success;
+  if (body.success_rate !== undefined) update.success_rate = body.success_rate;
+  return update;
+}
+
 export async function getQuestions(req, res) {
   try {
     await ensureDbConnection();
@@ -126,8 +152,10 @@ export async function updateQuestion(req, res) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Invalid question id' });
     }
-    const data = normalizeQuestionForDb(req.body);
-    const doc = await Question.findByIdAndUpdate(id, data, { new: true, runValidators: true }).lean();
+    const body = req.body || {};
+    const isPartial = !body.question_text;
+    const data = isPartial ? normalizePartialUpdate(body) : normalizeQuestionForDb(body);
+    const doc = await Question.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: false }).lean();
     if (!doc) return res.status(404).json({ error: 'Question not found' });
     const { _id, ...rest } = doc;
     res.json({ id: _id.toString(), ...rest });

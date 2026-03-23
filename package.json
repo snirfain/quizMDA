@@ -2,6 +2,7 @@
   "name": "quiz-mda",
   "version": "1.0.0",
   "description": "MDA Adaptive Learning & Assessment Platform",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "dev": "vite",

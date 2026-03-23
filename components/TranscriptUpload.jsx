@@ -175,71 +175,35 @@ export default function TranscriptUpload() {
   const selectAllForBatch = () => setSelectedForBatch(new Set(list.map((t) => t._id)));
   const clearBatchSelection = () => setSelectedForBatch(new Set());
 
-  const isRenderHost = typeof window !== 'undefined' && window.location?.hostname?.includes('onrender.com');
-
-  const wakeServerIfNeeded = async () => {
-    if (!isRenderHost) return;
-    const maxAttempts = 25;
-    const delayMs = 4000;
-    for (let i = 0; i < maxAttempts; i++) {
-      try {
-        const r = await fetch('/api/health', { method: 'GET', cache: 'no-store' });
-        if (r.ok) {
-          showToast('השרת מוכן, מתחיל ליצור שאלות...', 'info');
-          await new Promise((r) => setTimeout(r, 8000));
-          return;
-        }
-      } catch (_) {}
-      if (i < maxAttempts - 1) await new Promise((res) => setTimeout(res, delayMs));
-    }
-    await new Promise((r) => setTimeout(r, 8000));
-  };
-
-  const CHUNK_SIZE = 1;
-
-  const callGenerateQuestions = async (body, retriesLeft = 2) => {
-    const res = await fetch('/api/transcripts/generate-questions', {
+  const startJobAndPoll = async (body) => {
+    const startRes = await fetch('/api/transcripts/generate-questions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (res.status === 503 && retriesLeft > 0) {
-      const delay = retriesLeft === 2 ? 10000 : 20000;
-      showToast(`השרת לא זמין. ניסיון חוזר בעוד ${delay / 1000} שניות...`, 'info');
-      await new Promise((r) => setTimeout(r, delay));
-      return callGenerateQuestions(body, retriesLeft - 1);
+    const startData = await startRes.json().catch(() => ({}));
+    if (!startRes.ok || !startData.jobId) {
+      throw new Error(startData.error || 'שגיאה בהתחלת יצירת שאלות');
     }
-    const data = await res.json().catch(() => ({}));
-    return { res, data };
-  };
-
-  const runChunkedGeneration = async (baseBody, totalWanted, transcriptNameLabel) => {
-    const allQuestions = [];
-    const seenTexts = new Set();
-    let excludeQuestionTexts = [];
-    const numChunks = Math.ceil(totalWanted / CHUNK_SIZE);
-    for (let i = 0; i < numChunks; i++) {
-      const want = i === numChunks - 1 ? totalWanted - i * CHUNK_SIZE : CHUNK_SIZE;
-      if (want < 1) break;
-      showToast(`יוצר שאלות חלק ${i + 1}/${numChunks}...`, 'info');
-      const body = { ...baseBody, count: want, excludeQuestionTexts };
-      const { res, data } = await callGenerateQuestions(body);
-      if (!res.ok) {
-        const msg = data.error || (res.status === 503 ? 'השרת לא זמין.' : 'יצירת שאלות נכשלה');
-        showToast(msg, 'error');
-        return { questions: allQuestions, failed: true };
+    const { jobId } = startData;
+    const POLL_INTERVAL = 4000;
+    const MAX_POLLS = 90;
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+      try {
+        const pollRes = await fetch(`/api/transcripts/generate-questions/status/${jobId}`, { cache: 'no-store' });
+        const pollData = await pollRes.json().catch(() => ({}));
+        if (pollData.status === 'done') {
+          return { questions: pollData.questions || [], transcriptName: pollData.transcriptName, transcriptNames: pollData.transcriptNames };
+        }
+        if (pollData.status === 'error') {
+          throw new Error(pollData.error || 'שגיאה ביצירת שאלות');
+        }
+      } catch (pollErr) {
+        if (pollErr.message && !pollErr.message.includes('Failed to fetch')) throw pollErr;
       }
-      const chunk = (data.questions || []).filter((q) => {
-        const text = (q.question_text || '').trim();
-        if (!text || seenTexts.has(text)) return false;
-        seenTexts.add(text);
-        return true;
-      });
-      allQuestions.push(...chunk);
-      excludeQuestionTexts = excludeQuestionTexts.concat(chunk.map((q) => (q.question_text || '').trim()).filter(Boolean));
-      if (isRenderHost && i < numChunks - 1) await new Promise((r) => setTimeout(r, 2000));
     }
-    return { questions: allQuestions, failed: false };
+    throw new Error('יצירת השאלות ארכה יותר מדי זמן. נסה שוב.');
   };
 
   const handleGenerateBatch = async () => {
@@ -253,20 +217,22 @@ export default function TranscriptUpload() {
     setGeneratedQuestions([]);
     setGeneratedForName(null);
     try {
-      await wakeServerIfNeeded();
-      const baseBody = { transcriptIds: ids };
-      const transcriptNameLabel = ids.length === 1 ? list.find((x) => x._id === ids[0])?.name : `${ids.length} תמלילים`;
-      const { questions, failed } = await runChunkedGeneration(baseBody, n, transcriptNameLabel);
+      showToast('מייצר שאלות... זה יכול לקחת עד דקה', 'info');
+      const result = await startJobAndPoll({ transcriptIds: ids, count: n });
+      const questions = result.questions || [];
+      const transcriptNameLabel = result.transcriptName || (ids.length === 1 ? list.find((x) => x._id === ids[0])?.name : `${ids.length} תמלילים`);
       setGeneratedQuestions(questions);
       setGeneratedForName(transcriptNameLabel);
       setSelectedForAdd(new Set(questions.map((_, i) => i)));
       setExpandedQuestions(new Set());
       if (questions.length > 0) {
-        showToast(failed ? `נוצרו ${questions.length} שאלות (חלק נכשל). אשר נבחרות והוסף למאגר` : `נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, failed ? 'warning' : 'success');
+        showToast(`נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, 'success');
         await loadList(searchQuery);
-      } else if (!failed) showToast('לא נוצרו שאלות', 'warning');
+      } else {
+        showToast('לא נוצרו שאלות', 'warning');
+      }
     } catch (err) {
-      showToast('שגיאה: ' + (err?.message || ''), 'error');
+      showToast(err?.message || 'שגיאה ביצירת שאלות', 'error');
     } finally {
       setGeneratingId(null);
     }
@@ -282,19 +248,21 @@ export default function TranscriptUpload() {
     setGeneratedQuestions([]);
     setGeneratedForName(null);
     try {
-      await wakeServerIfNeeded();
-      const baseBody = { transcriptId: t._id };
-      const { questions, failed } = await runChunkedGeneration(baseBody, count, t.name);
+      showToast('מייצר שאלות... זה יכול לקחת עד דקה', 'info');
+      const result = await startJobAndPoll({ transcriptId: t._id, count });
+      const questions = result.questions || [];
       setGeneratedQuestions(questions);
-      setGeneratedForName(t.name);
+      setGeneratedForName(result.transcriptName || t.name);
       setSelectedForAdd(new Set(questions.map((_, i) => i)));
       setExpandedQuestions(new Set());
       if (questions.length > 0) {
-        showToast(failed ? `נוצרו ${questions.length} שאלות (חלק נכשל). אשר נבחרות והוסף למאגר` : `נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, failed ? 'warning' : 'success');
+        showToast(`נוצרו ${questions.length} שאלות – אשר נבחרות והוסף למאגר`, 'success');
         await loadList(searchQuery);
-      } else if (!failed) showToast('לא נוצרו שאלות', 'warning');
+      } else {
+        showToast('לא נוצרו שאלות', 'warning');
+      }
     } catch (err) {
-      showToast('שגיאה: ' + (err?.message || ''), 'error');
+      showToast(err?.message || 'שגיאה ביצירת שאלות', 'error');
     } finally {
       setGeneratingId(null);
     }
