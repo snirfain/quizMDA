@@ -321,10 +321,155 @@ export async function matchAllQuestions(req, res) {
   }
 }
 
-// ── Async question generation with in-memory job store ──────────────────────
+// ── Transcript spelling correction via OpenAI ───────────────────────────────
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+const SPELLING_SYSTEM_PROMPT = `אתה עורך לשוני מקצועי בעברית.
+תפקידך: לתקן שגיאות כתיב, שגיאות הקלדה ושגיאות דקדוק בטקסט שתקבל.
+
+כללים:
+1. תקן רק שגיאות כתיב ודקדוק. אל תשנה את המשמעות, הסגנון או המבנה.
+2. שמור על כל שורות חדשות, רווחים ופורמט מקורי.
+3. אל תוסיף ואל תמחק תוכן.
+4. אם יש מונחים מקצועיים (רפואה, הצלה וכו') - ודא שהם כתובים נכון.
+5. החזר את הטקסט המתוקן בלבד, בלי הסברים.`;
+
+const SPELLING_CHUNK_SIZE = 3000;
+
+async function fixSpellingChunk(text, apiKey) {
+  const res = await fetch(OPENAI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      messages: [
+        { role: 'system', content: SPELLING_SYSTEM_PROMPT },
+        { role: 'user', content: text },
+      ],
+      temperature: 0.1,
+      max_tokens: 4096,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(`OpenAI ${res.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || text;
+}
+
+function splitIntoChunks(text, maxLen) {
+  const chunks = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+    let splitAt = remaining.lastIndexOf('\n', maxLen);
+    if (splitAt < maxLen * 0.3) splitAt = remaining.lastIndexOf(' ', maxLen);
+    if (splitAt < maxLen * 0.3) splitAt = maxLen;
+    chunks.push(remaining.slice(0, splitAt));
+    remaining = remaining.slice(splitAt);
+  }
+  return chunks;
+}
+
+const spellingJobs = new Map();
+
+/**
+ * POST /api/transcripts/fix-spelling
+ * Starts an async job that corrects spelling in all transcripts (or specific IDs).
+ */
+export function startFixSpelling(req, res) {
+  const { transcriptIds } = req.body || {};
+  const jobId = crypto.randomUUID();
+  const job = { id: jobId, status: 'pending', params: { transcriptIds }, progress: { done: 0, total: 0 } };
+  spellingJobs.set(jobId, job);
+  runSpellingJob(job);
+  res.json({ jobId });
+}
+
+async function runSpellingJob(job) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      job.status = 'error'; job.error = 'Database not connected'; return;
+    }
+    const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
+    if (!apiKey) {
+      job.status = 'error'; job.error = 'OPENAI_API_KEY לא מוגדר'; return;
+    }
+
+    const { transcriptIds } = job.params;
+    const query = Array.isArray(transcriptIds) && transcriptIds.length > 0
+      ? { _id: { $in: transcriptIds } } : {};
+    const transcripts = await Transcript.find(query).lean();
+
+    if (transcripts.length === 0) {
+      job.status = 'error'; job.error = 'לא נמצאו תמלולים'; return;
+    }
+
+    job.progress.total = transcripts.length;
+    let fixed = 0;
+
+    for (const t of transcripts) {
+      if (!t.fullText || t.fullText.trim().length < 10) {
+        job.progress.done++;
+        continue;
+      }
+      try {
+        const chunks = splitIntoChunks(t.fullText, SPELLING_CHUNK_SIZE);
+        const correctedChunks = [];
+        for (const chunk of chunks) {
+          const corrected = await fixSpellingChunk(chunk, apiKey);
+          correctedChunks.push(corrected);
+        }
+        const correctedText = correctedChunks.join('');
+        if (correctedText !== t.fullText) {
+          await Transcript.findByIdAndUpdate(t._id, { fullText: correctedText });
+          fixed++;
+        }
+      } catch (e) {
+        console.error(`[fix-spelling] error on transcript ${t.name}:`, e.message);
+      }
+      job.progress.done++;
+    }
+
+    job.status = 'done';
+    job.result = { total: transcripts.length, fixed };
+    console.log(`[fix-spelling] done: ${fixed}/${transcripts.length} transcripts corrected`);
+  } catch (err) {
+    console.error('[fix-spelling] fatal error:', err);
+    job.status = 'error';
+    job.error = err.message;
+  }
+}
+
+/**
+ * GET /api/transcripts/fix-spelling/status/:jobId
+ */
+export function getFixSpellingStatus(req, res) {
+  const { jobId } = req.params;
+  const job = spellingJobs.get(jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  if (job.status === 'pending') {
+    return res.json({ status: 'pending', progress: job.progress });
+  }
+  if (job.status === 'done') {
+    const result = job.result;
+    spellingJobs.delete(jobId);
+    return res.json({ status: 'done', ...result });
+  }
+  const error = job.error;
+  spellingJobs.delete(jobId);
+  return res.json({ status: 'error', error });
+}
+
+// ── Async question generation with in-memory job store ──────────────────────
 
 const jobs = new Map();
 const JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes

@@ -9,7 +9,7 @@ import mongoose from 'mongoose';
 import { extractDocHandler } from './server/docExtract.js';
 import { uploadMiddleware, uploadMediaHandler } from './server/upload.js';
 import { getQuestions, postQuestions, syncQuestions, dedupeQuestions, recatalogAllQuestions, updateQuestion, deleteQuestion } from './server/questionApi.js';
-import { listTranscripts, getTranscript, updateTranscript, deleteTranscript, uploadTranscript, uploadTranscriptMiddleware, matchAllQuestions, generateQuestionsFromTranscript, getGenerateQuestionsStatus } from './server/transcriptApi.js';
+import { listTranscripts, getTranscript, updateTranscript, deleteTranscript, uploadTranscript, uploadTranscriptMiddleware, matchAllQuestions, generateQuestionsFromTranscript, getGenerateQuestionsStatus, startFixSpelling, getFixSpellingStatus } from './server/transcriptApi.js';
 import { getUsers, postUser } from './server/userApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +49,8 @@ async function start() {
   app.get('/api/transcripts', listTranscripts);
   app.post('/api/transcripts/upload', uploadTranscriptMiddleware, uploadTranscript);
   app.post('/api/transcripts/match-all', matchAllQuestions);
+  app.post('/api/transcripts/fix-spelling', startFixSpelling);
+  app.get('/api/transcripts/fix-spelling/status/:jobId', getFixSpellingStatus);
   app.post('/api/transcripts/generate-questions', generateQuestionsFromTranscript);
   app.get('/api/transcripts/generate-questions/status/:jobId', getGenerateQuestionsStatus);
   app.get('/api/transcripts/:id', getTranscript);

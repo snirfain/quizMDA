@@ -398,6 +398,40 @@ export default function TranscriptUpload() {
     }
   };
 
+  const [fixingSpelling, setFixingSpelling] = useState(false);
+  const [spellingProgress, setSpellingProgress] = useState(null);
+
+  const runFixSpelling = async () => {
+    setFixingSpelling(true);
+    setSpellingProgress(null);
+    try {
+      const res = await fetch('/api/transcripts/fix-spelling', { method: 'POST' });
+      const { jobId } = await res.json();
+      if (!jobId) { showToast('לא התקבל jobId', 'error'); setFixingSpelling(false); return; }
+
+      for (let i = 0; i < 180; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const statusRes = await fetch(`/api/transcripts/fix-spelling/status/${jobId}`);
+        const data = await statusRes.json().catch(() => ({}));
+        if (data.progress) setSpellingProgress(data.progress);
+        if (data.status === 'done') {
+          showToast(`תוקנו שגיאות כתיב ב-${data.fixed || 0} תמלולים מתוך ${data.total || 0}`, 'success');
+          await fetchTranscripts();
+          break;
+        }
+        if (data.status === 'error') {
+          showToast('תיקון כתיב נכשל: ' + (data.error || ''), 'error');
+          break;
+        }
+      }
+    } catch (err) {
+      showToast('שגיאה: ' + (err?.message || ''), 'error');
+    } finally {
+      setFixingSpelling(false);
+      setSpellingProgress(null);
+    }
+  };
+
   const handleDeleteTranscript = async () => {
     if (!transcriptToDelete) return;
     const id = transcriptToDelete._id;
@@ -504,6 +538,27 @@ export default function TranscriptUpload() {
         </button>
         <p style={styles.note}>
           עובר על כל השאלות במאגר, מוצא תמליל שמכיל את השאלה ומתייג בשם התמליל. שאלה שלא נמצא לה תמליל מתויגת &quot;לא נמצא בתמלול&quot;.
+        </p>
+      </div>
+
+      <div className="card" style={styles.section} role="region" aria-label="תיקון שגיאות כתיב בתמלולים">
+        <h2 style={styles.sectionTitle}>✏️ תיקון שגיאות כתיב בתמלולים</h2>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={runFixSpelling}
+          disabled={fixingSpelling || list.length === 0}
+          style={{ background: '#7b1fa2', color: '#fff', border: 'none' }}
+          aria-label="תקן שגיאות כתיב בכל התמלולים"
+        >
+          {fixingSpelling
+            ? spellingProgress
+              ? `מתקן... (${spellingProgress.done}/${spellingProgress.total})`
+              : 'מתחיל תיקון...'
+            : '✏️ תקן שגיאות כתיב בכל התמלולים'}
+        </button>
+        <p style={styles.note}>
+          שולח כל תמלול ל-AI לתיקון שגיאות כתיב ודקדוק בעברית, בלי לשנות את התוכן. התהליך יכול לקחת כמה דקות.
         </p>
       </div>
 
