@@ -6,7 +6,7 @@
 import mongoose from 'mongoose';
 import Question from '../models/Question.js';
 import Transcript from '../models/Transcript.js';
-import { matchQuestionToTranscripts } from './transcriptApi.js';
+import { matchQuestionToTranscripts, buildTranscriptTokenSets } from './transcriptApi.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
 import { classifyQuestionToHierarchy } from '../shared/categories.js';
 
@@ -16,9 +16,9 @@ const NO_TRANSCRIPT_TAG = 'לא נמצא בתמלול';
  * Build catalog updates for a question (transcript tag + hierarchy) without touching DB.
  * Returns a $set object (may be empty if nothing to update).
  */
-async function buildCatalogUpdates(doc, transcripts, transcriptNames) {
+function buildCatalogUpdates(doc, transcripts, transcriptNames, tokenSets) {
   const updates = {};
-  const found = await matchQuestionToTranscripts(doc.question_text, transcripts);
+  const found = matchQuestionToTranscripts(doc.question_text, transcripts, tokenSets);
   const newTag = found || NO_TRANSCRIPT_TAG;
   const existing = Array.isArray(doc.tags) ? doc.tags : [];
   const withoutTranscript = existing.filter(t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t));
@@ -36,8 +36,8 @@ async function buildCatalogUpdates(doc, transcripts, transcriptNames) {
 /**
  * Auto-catalog a single question and persist to DB.
  */
-async function autoCatalogQuestion(doc, transcripts, transcriptNames) {
-  const updates = await buildCatalogUpdates(doc, transcripts, transcriptNames);
+async function autoCatalogQuestion(doc, transcripts, transcriptNames, tokenSets) {
+  const updates = buildCatalogUpdates(doc, transcripts, transcriptNames, tokenSets);
   if (Object.keys(updates).length > 0) {
     await Question.findByIdAndUpdate(doc._id, { $set: updates });
   }
@@ -139,11 +139,12 @@ export async function postQuestions(req, res) {
     console.log('[api/questions] POST: items=', items.length);
     const transcripts = await Transcript.find({}).lean();
     const transcriptNames = new Set(transcripts.map(t => t.name));
+    const tokenSets = buildTranscriptTokenSets(transcripts);
     const created = [];
     for (const q of items) {
       const data = normalizeQuestionForDb(q);
       const doc = await Question.create(data);
-      await autoCatalogQuestion(doc, transcripts, transcriptNames);
+      await autoCatalogQuestion(doc, transcripts, transcriptNames, tokenSets);
       const updated = await Question.findById(doc._id).lean();
       created.push({ id: updated._id.toString(), ...updated });
     }
@@ -175,7 +176,8 @@ export async function updateQuestion(req, res) {
     if (!isPartial) {
       const transcripts = await Transcript.find({}).lean();
       const transcriptNames = new Set(transcripts.map(t => t.name));
-      await autoCatalogQuestion(doc, transcripts, transcriptNames);
+      const tokenSets = buildTranscriptTokenSets(transcripts);
+      await autoCatalogQuestion(doc, transcripts, transcriptNames, tokenSets);
       const refreshed = await Question.findById(doc._id).lean();
       const { _id, ...rest } = refreshed;
       return res.json({ id: _id.toString(), ...rest });
@@ -245,9 +247,10 @@ export async function syncQuestions(req, res) {
       synced = result.length;
       const transcripts = await Transcript.find({}).lean();
       const transcriptNames = new Set(transcripts.map(t => t.name));
+      const tokenSets = buildTranscriptTokenSets(transcripts);
       const ops = [];
       for (const doc of result) {
-        const catalogUpdates = buildCatalogUpdates(doc, transcripts, transcriptNames);
+        const catalogUpdates = buildCatalogUpdates(doc, transcripts, transcriptNames, tokenSets);
         if (Object.keys(catalogUpdates).length > 0) {
           ops.push({ updateOne: { filter: { _id: doc._id }, update: { $set: catalogUpdates } } });
         }
@@ -275,8 +278,10 @@ export async function recatalogAllQuestions(req, res) {
     }
     const transcripts = await Transcript.find({}).lean();
     const transcriptNames = new Set(transcripts.map(t => t.name));
+    const tokenSets = buildTranscriptTokenSets(transcripts);
     const allQuestions = await Question.find({}).lean();
     let cataloged = 0, alreadyDone = 0, errors = 0;
+    let transcriptMatched = 0, transcriptNotFound = 0, hierarchyClassified = 0;
     const ops = [];
 
     for (const doc of allQuestions) {
@@ -293,15 +298,20 @@ export async function recatalogAllQuestions(req, res) {
         const updates = {};
 
         if (!hasTranscriptTag) {
-          const found = await matchQuestionToTranscripts(doc.question_text, transcripts);
+          const found = matchQuestionToTranscripts(doc.question_text, transcripts, tokenSets);
           const newTag = found || NO_TRANSCRIPT_TAG;
           const withoutTranscript = tags.filter(t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t));
           updates.tags = [...withoutTranscript, newTag];
+          if (found) transcriptMatched++;
+          else transcriptNotFound++;
         }
 
         if (!hasHierarchy) {
           const classified = classifyQuestionToHierarchy(doc.question_text);
-          if (classified) updates.hierarchy_id = classified;
+          if (classified) {
+            updates.hierarchy_id = classified;
+            hierarchyClassified++;
+          }
         }
 
         if (Object.keys(updates).length > 0) {
@@ -323,8 +333,8 @@ export async function recatalogAllQuestions(req, res) {
       }
     }
 
-    console.log(`[recatalog] total=${allQuestions.length} cataloged=${cataloged} alreadyDone=${alreadyDone} errors=${errors}`);
-    res.json({ total: allQuestions.length, cataloged, alreadyDone, errors });
+    console.log(`[recatalog] total=${allQuestions.length} cataloged=${cataloged} transcriptMatched=${transcriptMatched} hierarchyClassified=${hierarchyClassified} alreadyDone=${alreadyDone} errors=${errors}`);
+    res.json({ total: allQuestions.length, cataloged, transcriptMatched, transcriptNotFound, hierarchyClassified, alreadyDone, errors });
   } catch (err) {
     console.error('POST /api/questions/recatalog error:', err);
     res.status(500).json({ error: err.message });

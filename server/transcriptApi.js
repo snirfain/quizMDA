@@ -186,25 +186,102 @@ export async function uploadTranscript(req, res) {
 
 const NO_TRANSCRIPT_TAG = 'לא נמצא בתמלול';
 
+// Hebrew stop words to skip during token matching
+const STOP_WORDS = new Set([
+  'של', 'את', 'על', 'עם', 'לא', 'או', 'אם', 'גם', 'כל', 'הם', 'היא', 'הוא',
+  'זה', 'זו', 'מה', 'כי', 'אל', 'בו', 'לו', 'עד', 'רק', 'כן', 'אך', 'בין',
+  'כמו', 'לפי', 'אחרי', 'לפני', 'כאשר', 'מתוך', 'ביותר', 'שלו', 'שלה',
+  'מהו', 'מהי', 'מהם', 'מהן', 'כיצד', 'באיזה', 'which',
+  'the', 'and', 'for', 'that', 'this', 'with', 'from', 'are', 'was', 'not',
+]);
+
+// Hebrew prefix letters: ב, כ, ל, מ, ה, ו, ש
+const HE_PREFIX_RE = /^[בכלמהוש]/;
+
 /**
- * Normalize text for matching: trim, collapse spaces, optional lowercase
+ * Strip common Hebrew prefixes to produce a stem.
+ * Returns an array: [original, stem] (or just [original] if no prefix).
  */
-function normalizeForMatch(text) {
-  if (!text || typeof text !== 'string') return '';
-  return text.trim().replace(/\s+/g, ' ').slice(0, 2000);
+function hebrewStems(word) {
+  const stems = [word];
+  if (word.length >= 3 && HE_PREFIX_RE.test(word)) {
+    stems.push(word.slice(1));
+    // Two-letter prefixes: מה, של, בה, לה, וה, שה, כש
+    if (word.length >= 4 && /^(מה|של|בה|לה|וה|שה|כש)/.test(word)) {
+      stems.push(word.slice(2));
+    }
+  }
+  return stems;
 }
 
 /**
- * Find which transcript (if any) contains the question text. Returns transcript name or null.
+ * Extract meaningful tokens from text (words 2+ chars, no stop words).
+ * For each word, also produces Hebrew prefix-stripped stems.
  */
-export async function matchQuestionToTranscripts(questionText, transcripts) {
-  const normalized = normalizeForMatch(questionText);
-  if (!normalized) return null;
-  for (const t of transcripts) {
-    const full = (t.fullText || '').replace(/\s+/g, ' ');
-    if (full.length > 0 && full.includes(normalized)) return t.name;
+function extractTokens(text) {
+  if (!text || typeof text !== 'string') return [];
+  const words = text
+    .replace(/[^\u0590-\u05FFa-zA-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map(w => w.trim().toLowerCase())
+    .filter(w => w.length >= 2 && !STOP_WORDS.has(w));
+  const tokens = new Set();
+  for (const w of words) {
+    for (const stem of hebrewStems(w)) {
+      if (stem.length >= 2) tokens.add(stem);
+    }
   }
-  return null;
+  return [...tokens];
+}
+
+/**
+ * Pre-build a token set from a transcript's fullText for fast lookup.
+ */
+function buildTranscriptTokenSet(fullText) {
+  if (!fullText) return new Set();
+  return new Set(extractTokens(fullText));
+}
+
+const MIN_MATCH_RATIO = 0.35;
+const MIN_MATCHED_TOKENS = 2;
+
+/**
+ * Find which transcript (if any) best matches the question text.
+ * Uses token overlap: extracts significant words from the question and checks
+ * how many appear in each transcript. Returns the best transcript name or null.
+ */
+export function matchQuestionToTranscripts(questionText, transcripts, _tokenSets) {
+  const questionTokens = extractTokens(questionText);
+  if (questionTokens.length < 2) return null;
+
+  let bestName = null;
+  let bestRatio = 0;
+
+  for (let i = 0; i < transcripts.length; i++) {
+    const t = transcripts[i];
+    const tokenSet = _tokenSets ? _tokenSets[i] : buildTranscriptTokenSet(t.fullText);
+    if (tokenSet.size === 0) continue;
+
+    let matched = 0;
+    for (const token of questionTokens) {
+      if (tokenSet.has(token)) matched++;
+    }
+
+    const ratio = matched / questionTokens.length;
+    if (ratio > bestRatio && matched >= MIN_MATCHED_TOKENS) {
+      bestRatio = ratio;
+      bestName = t.name;
+    }
+  }
+
+  return bestRatio >= MIN_MATCH_RATIO ? bestName : null;
+}
+
+/**
+ * Pre-build token sets for all transcripts (call once, reuse for many questions).
+ */
+export function buildTranscriptTokenSets(transcripts) {
+  return transcripts.map(t => buildTranscriptTokenSet(t.fullText));
 }
 
 /**
@@ -219,11 +296,12 @@ export async function matchAllQuestions(req, res) {
     const Question = (await import('../models/Question.js')).default;
     const transcripts = await Transcript.find({}).lean();
     const transcriptNames = new Set(transcripts.map(t => t.name));
+    const tokenSets = buildTranscriptTokenSets(transcripts);
     const questions = await Question.find({}).lean();
     let updated = 0;
     for (const q of questions) {
       const text = q.question_text || '';
-      const found = await matchQuestionToTranscripts(text, transcripts);
+      const found = matchQuestionToTranscripts(text, transcripts, tokenSets);
       const newTag = found || NO_TRANSCRIPT_TAG;
       const existingTags = Array.isArray(q.tags) ? q.tags : [];
       const withoutTranscriptTags = existingTags.filter(

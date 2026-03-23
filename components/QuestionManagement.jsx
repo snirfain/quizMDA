@@ -165,6 +165,7 @@ export default function QuestionManagement() {
   });
   const [selectedTags, setSelectedTags] = useState([]);
   const [availableTags, setAvailableTags] = useState([]);
+  const [transcriptNames, setTranscriptNames] = useState(new Set());
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [fixWithAIState, setFixWithAIState] = useState({
@@ -217,7 +218,10 @@ export default function QuestionManagement() {
         if (cancelled) return;
         if (data.cataloged > 0) {
           await loadQuestions();
-          showToast(`קוטלגו ${data.cataloged} שאלות (תמלול + קטגוריה).`, 'success');
+          const parts = [];
+          if (data.transcriptMatched) parts.push(`${data.transcriptMatched} שויכו לתמלול`);
+          if (data.hierarchyClassified) parts.push(`${data.hierarchyClassified} סווגו לקטגוריה`);
+          showToast(`קוטלגו ${data.cataloged} שאלות: ${parts.join(', ') || 'עודכנו'}.`, 'success');
         }
       } catch (e) {
         if (!cancelled) showToast('קטלוג אוטומטי נכשל: ' + (e?.message || ''), 'error');
@@ -246,6 +250,11 @@ export default function QuestionManagement() {
         if (q.tags && Array.isArray(q.tags)) q.tags.forEach(tag => tagsSet.add(tag));
       });
       setAvailableTags(Array.from(tagsSet).sort());
+      try {
+        const tRes = await fetch('/api/transcripts');
+        const tData = await tRes.json().catch(() => []);
+        setTranscriptNames(new Set((Array.isArray(tData) ? tData : []).map(t => t.name).filter(Boolean)));
+      } catch (_) { /* non-critical */ }
       setFilteredQuestions(allQuestions);
       setLoadSource({ fromApi: true, count: allQuestions.length });
       if (opts?.showToastOnRefresh) {
@@ -704,7 +713,10 @@ export default function QuestionManagement() {
       if (!res.ok) throw new Error(data.error || 'Server error');
       await loadQuestions();
       if (data.cataloged > 0) {
-        showToast(`קוטלגו ${data.cataloged} שאלות (תמלול + קטגוריה). כבר מקוטלגות: ${data.alreadyDone}.`, 'success');
+        const parts = [];
+        if (data.transcriptMatched) parts.push(`${data.transcriptMatched} שויכו לתמלול`);
+        if (data.hierarchyClassified) parts.push(`${data.hierarchyClassified} סווגו לקטגוריה`);
+        showToast(`קוטלגו ${data.cataloged} שאלות: ${parts.join(', ') || 'עודכנו'}. כבר מקוטלגות: ${data.alreadyDone}.`, 'success');
       } else {
         showToast('כל השאלות כבר מקוטלגות. לא בוצעו שינויים.', 'info');
       }
@@ -1091,8 +1103,8 @@ export default function QuestionManagement() {
           {/* Transcript Catalog Stats */}
           {questions.length > 0 && (() => {
             const NO_T = 'לא נמצא בתמלול';
-            const matched = questions.filter(q => (q.tags || []).some(t => t !== NO_T && t !== 'unsorted')).length;
-            const unmatched = questions.filter(q => (q.tags || []).includes(NO_T)).length;
+            const matched = questions.filter(q => (q.tags || []).some(t => transcriptNames.has(t))).length;
+            const unmatched = questions.filter(q => (q.tags || []).includes(NO_T) && !(q.tags || []).some(t => transcriptNames.has(t))).length;
             const uncataloged = questions.length - matched - unmatched;
             const pct = Math.round((matched / questions.length) * 100);
             return (
@@ -1164,7 +1176,7 @@ export default function QuestionManagement() {
                         ? [hierarchy.category_name, hierarchy.topic_name].filter(Boolean).join(' / ') || '-'
                         : '-';
                       const NO_TRANSCRIPT = 'לא נמצא בתמלול';
-                      const transcriptTag = (question.tags || []).find(t => t !== NO_TRANSCRIPT && availableTags.includes(t) && t !== 'unsorted') || null;
+                      const transcriptTag = (question.tags || []).find(t => transcriptNames.has(t)) || null;
                       const isUnmatched = (question.tags || []).includes(NO_TRANSCRIPT);
 
                       return (
