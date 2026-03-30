@@ -1,27 +1,13 @@
-import nodemailer from 'nodemailer';
-import dns from 'dns';
+import { Resend } from 'resend';
 import ContactMessage from '../models/ContactMessage.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
 
-// Force IPv4 DNS resolution — Render blocks outbound IPv6 to Gmail SMTP
-dns.setDefaultResultOrder('ipv4first');
-
 const RECIPIENT = 'snirfain@gmail.com';
 
-function buildTransporter() {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!user || !pass) return null;
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 15_000,
-  });
+function getResend() {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  return new Resend(key);
 }
 
 export async function submitContactForm(req, res) {
@@ -43,21 +29,14 @@ export async function submitContactForm(req, res) {
     }
 
     let emailSent = false;
-    const transporter = buildTransporter();
-    if (transporter) {
+    const resend = getResend();
+    if (resend) {
       try {
-        await transporter.sendMail({
-          from: `"מד״א Quiz — יצירת קשר" <${process.env.SMTP_USER}>`,
+        const { error } = await resend.emails.send({
+          from: 'onboarding@resend.dev',
           to: RECIPIENT,
           replyTo: email.trim(),
           subject: `פנייה חדשה מאתר מד״א Quiz — ${full_name.trim()}`,
-          text: [
-            `שם מלא: ${full_name.trim()}`,
-            `דוא"ל: ${email.trim()}`,
-            '',
-            'תוכן הפנייה:',
-            message.trim(),
-          ].join('\n'),
           html: `
             <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px">
               <h2 style="color:#CC0000">פנייה חדשה מאתר מד״א Quiz</h2>
@@ -70,10 +49,14 @@ export async function submitContactForm(req, res) {
               <div style="margin-top:16px;padding:16px;background:#f9f9f9;border-radius:8px;white-space:pre-wrap">${message.trim()}</div>
             </div>`,
         });
-        emailSent = true;
-        if (saved) {
-          saved.email_sent = true;
-          await saved.save();
+        if (error) {
+          console.error('[contact] Resend error:', error);
+        } else {
+          emailSent = true;
+          if (saved) {
+            saved.email_sent = true;
+            await saved.save();
+          }
         }
       } catch (mailErr) {
         console.error('[contact] email send failed:', mailErr.message);

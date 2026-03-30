@@ -20,10 +20,10 @@
     "mammoth": "^1.11.0",
     "mongoose": "^9.2.2",
     "multer": "^2.0.2",
-    "nodemailer": "^8.0.4",
     "pdfjs-dist": "^5.4.624",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "resend": "^6.9.4",
     "word-extractor": "^1.0.4",
     "xlsx": "^0.18.5"
   },
