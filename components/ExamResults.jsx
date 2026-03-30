@@ -7,10 +7,12 @@
 import React, { useState } from 'react';
 import { navigateTo } from '../utils/router';
 import { showToast } from './Toast';
+import QuestionReportModal from './QuestionReportModal';
 
 export default function ExamResults({ results, questions, answers }) {
   const [showReview, setShowReview] = useState(false);
   const [reviewQuestionId, setReviewQuestionId] = useState(null);
+  const [reportQuestion, setReportQuestion] = useState(null);
 
   const getGradeColor = (score) => {
     if (score >= 80) return '#4CAF50';
@@ -191,9 +193,21 @@ export default function ExamResults({ results, questions, answers }) {
                   <p>{reviewQuestion.explanation}</p>
                 </div>
               )}
+
+              <button
+                type="button"
+                style={{ marginTop: '12px', padding: '6px 14px', fontSize: '13px', color: '#c62828', background: 'transparent', border: '1px solid #c62828', borderRadius: '8px', cursor: 'pointer' }}
+                onClick={() => { setShowReview(false); setReportQuestion(reviewQuestion); }}
+              >
+                דווח על בעיה
+              </button>
             </div>
           </div>
         </div>
+      )}
+
+      {reportQuestion && (
+        <QuestionReportModal question={reportQuestion} onClose={() => setReportQuestion(null)} />
       )}
     </div>
   );

@@ -12,13 +12,20 @@ export default function CourseSetup({ user, onComplete }) {
   const [courseNumber, setCourseNumber] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const handleCourseInput = (e) => {
+    const raw = e.target.value.replace(/\D/g, '');
+    if (raw.length <= 7) setCourseNumber(raw);
+  };
+
+  const isValid = courseNumber.length >= 6 && courseNumber.length <= 7;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const val = courseNumber.trim();
-    if (!val) {
-      showToast('יש להזין מספר קורס', 'error');
+    if (!isValid) {
+      showToast('מספר קורס חייב להכיל 6-7 ספרות', 'error');
       return;
     }
+    const val = courseNumber;
     setSaving(true);
     try {
       const res = await fetch('/api/users/setup', {
@@ -76,27 +83,36 @@ export default function CourseSetup({ user, onComplete }) {
             </label>
             <input
               type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={7}
               value={courseNumber}
-              onChange={(e) => setCourseNumber(e.target.value)}
-              placeholder="לדוגמא: 2024-A-15"
+              onChange={handleCourseInput}
+              placeholder="הזן 6-7 ספרות"
               autoFocus
               style={{
-                width: '100%', padding: '14px 16px', fontSize: '18px', fontWeight: 600,
-                border: '2px solid #e0e0e0', borderRadius: '12px', textAlign: 'center',
+                width: '100%', padding: '14px 16px', fontSize: '22px', fontWeight: 700,
+                border: `2px solid ${courseNumber && !isValid ? '#e53935' : '#e0e0e0'}`,
+                borderRadius: '12px', textAlign: 'center', letterSpacing: '3px',
                 direction: 'ltr', fontFamily: 'inherit', boxSizing: 'border-box',
                 outline: 'none', transition: 'border-color 0.2s',
               }}
               onFocus={(e) => { e.target.style.borderColor = '#1565c0'; }}
-              onBlur={(e) => { e.target.style.borderColor = '#e0e0e0'; }}
+              onBlur={(e) => { e.target.style.borderColor = courseNumber && !isValid ? '#e53935' : '#e0e0e0'; }}
             />
+            {courseNumber && !isValid && (
+              <p style={{ fontSize: '12px', color: '#e53935', margin: '4px 0 0', textAlign: 'right' }}>
+                מספר קורס חייב להכיל 6-7 ספרות ({courseNumber.length} הוזנו)
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
-            disabled={saving || !courseNumber.trim()}
+            disabled={saving || !isValid}
             style={{
               padding: '14px', fontSize: '16px', fontWeight: 700,
-              background: courseNumber.trim() ? 'linear-gradient(135deg, #e53935, #b71c1c)' : '#ccc',
+              background: isValid ? 'linear-gradient(135deg, #e53935, #b71c1c)' : '#ccc',
               color: '#fff', border: 'none', borderRadius: '12px', cursor: saving ? 'wait' : 'pointer',
               fontFamily: 'inherit', transition: 'opacity 0.2s',
               opacity: saving ? 0.7 : 1,

@@ -13,6 +13,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { ToastContainer } from './components/Toast';
 import LoadingSpinner from './components/LoadingSpinner';
 import FloatingAccessibilityButton from './components/FloatingAccessibilityButton';
+import FloatingContactButton from './components/FloatingContactButton';
 import OfflineIndicator from './components/OfflineIndicator';
 import { registerServiceWorker } from './utils/serviceWorker';
 import { syncQuestionsFromServer } from './mockEntities';
@@ -226,6 +227,7 @@ export default function App() {
         </MainLayout>
         <ToastContainer />
         {user && <FloatingAccessibilityButton />}
+        {user && <FloatingContactButton />}
         {user && <OfflineIndicator />}
       </React.Suspense>
     </ErrorBoundary>

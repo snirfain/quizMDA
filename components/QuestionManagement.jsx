@@ -150,7 +150,7 @@ function DifficultyBadge({ level, attempts, successRate }) {
 }
 
 export default function QuestionManagement() {
-  const [activeTab, setActiveTab] = useState('list'); // 'list', 'import', 'review'
+  const [activeTab, setActiveTab] = useState('list'); // 'list', 'import', 'review', 'reports'
   const [questions, setQuestions] = useState([]);
   const [filteredQuestions, setFilteredQuestions] = useState([]);
   const [pendingQuestions, setPendingQuestions] = useState([]);
@@ -188,6 +188,8 @@ export default function QuestionManagement() {
   const [bulkStatusTarget, setBulkStatusTarget] = useState('');
   const [bulkHierarchyTarget, setBulkHierarchyTarget] = useState('');
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [userReports, setUserReports] = useState([]);
+  const [pendingReportCount, setPendingReportCount] = useState(0);
   const [isReclassifying, setIsReclassifying] = useState(false);
   const [aiReclassifyProgress, setAiReclassifyProgress] = useState({ running: false, current: 0, total: 0, updated: 0 });
   const [isSyncingToServer, setIsSyncingToServer] = useState(false);
@@ -199,9 +201,13 @@ export default function QuestionManagement() {
     loadUser();
     loadQuestions();
     loadHierarchies();
+    loadReportCount();
     if (activeTab === 'review') {
       loadPendingQuestions();
       loadReviewStats();
+    }
+    if (activeTab === 'reports') {
+      loadUserReports();
     }
   }, [activeTab]);
 
@@ -303,6 +309,51 @@ export default function QuestionManagement() {
       setReviewStats(stats);
     } catch (error) {
       console.error('Error loading review stats:', error);
+    }
+  };
+
+  const loadUserReports = async () => {
+    try {
+      const res = await fetch('/api/reports?status=pending');
+      if (res.ok) {
+        const data = await res.json();
+        setUserReports(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error('Error loading reports:', e);
+    }
+  };
+
+  const loadReportCount = async () => {
+    try {
+      const res = await fetch('/api/reports/count');
+      if (res.ok) {
+        const data = await res.json();
+        setPendingReportCount(data.pending || 0);
+      }
+    } catch (_) {}
+  };
+
+  const handleReportReview = async (reportId, status, applyChanges, reviewNote) => {
+    try {
+      const res = await fetch(`/api/reports/${reportId}/review`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status,
+          reviewer_id: currentUser?.user_id,
+          reviewer_name: currentUser?.full_name,
+          review_note: reviewNote || '',
+          apply_changes: applyChanges,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'שגיאה');
+      showToast(status === 'approved' ? 'דיווח אושר — השאלה עודכנה' : status === 'rejected' ? 'דיווח נדחה' : 'דיווח עודכן', 'success');
+      await loadUserReports();
+      await loadReportCount();
+      await loadQuestions();
+    } catch (e) {
+      showToast('שגיאה בעדכון דיווח: ' + e.message, 'error');
     }
   };
 
@@ -821,6 +872,24 @@ export default function QuestionManagement() {
                 בקרה על שאלות
                 {reviewStats && reviewStats.pending > 0 && (
                   <span style={styles.badge}>{reviewStats.pending}</span>
+                )}
+              </button>
+            </PermissionGate>
+            <PermissionGate permission={permissions.QUESTION_APPROVE}>
+              <button
+                style={{
+                  ...styles.tab,
+                  ...(activeTab === 'reports' ? styles.tabActive : {})
+                }}
+                onClick={() => setActiveTab('reports')}
+                role="tab"
+                aria-selected={activeTab === 'reports'}
+                aria-controls="reports-panel"
+                id="reports-tab"
+              >
+                דיווחי משתמשים
+                {pendingReportCount > 0 && (
+                  <span style={styles.badge}>{pendingReportCount}</span>
                 )}
               </button>
             </PermissionGate>
@@ -1684,6 +1753,16 @@ export default function QuestionManagement() {
               />
             </div>
           )}
+
+          {activeTab === 'reports' && (
+            <div role="tabpanel" aria-labelledby="reports-tab" id="reports-panel">
+              <UserReportReviewPanel
+                reports={userReports}
+                onReview={handleReportReview}
+                onRefresh={loadUserReports}
+              />
+            </div>
+          )}
       </div>
     </PermissionGate>
   );
@@ -1993,6 +2072,137 @@ const rs = {
   cardActions: { display: 'flex', gap: '10px', flexWrap: 'wrap', paddingTop: '14px', borderTop: '1px solid #f0f0f0' },
   actionBtn: { padding: '8px 18px', border: 'none', borderRadius: '8px', color: 'white', fontWeight: '700', fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' },
 };
+
+/**
+ * Panel for admin/manager to review user-submitted question reports.
+ */
+function UserReportReviewPanel({ reports, onReview, onRefresh }) {
+  const [expandedId, setExpandedId] = useState(null);
+  const [reviewNotes, setReviewNotes] = useState({});
+
+  if (reports.length === 0) {
+    return (
+      <div style={{ direction: 'rtl', textAlign: 'center', padding: '40px', color: '#888' }}>
+        <p style={{ fontSize: '18px' }}>אין דיווחים ממתינים לבדיקה</p>
+        <button onClick={onRefresh} style={{ marginTop: '12px', padding: '8px 20px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+          רענן
+        </button>
+      </div>
+    );
+  }
+
+  const renderDiff = (label, original, suggested) => {
+    if (suggested === undefined || suggested === original) return null;
+    return (
+      <div style={{ marginBottom: '8px' }}>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: '#555' }}>{label}:</span>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+          <span style={{ background: '#ffebee', padding: '4px 10px', borderRadius: '6px', fontSize: '13px', textDecoration: 'line-through', color: '#c62828' }}>
+            {typeof original === 'object' ? JSON.stringify(original) : (original || '(ריק)')}
+          </span>
+          <span style={{ fontSize: '13px', color: '#666' }}>→</span>
+          <span style={{ background: '#e8f5e9', padding: '4px 10px', borderRadius: '6px', fontSize: '13px', color: '#2e7d32' }}>
+            {typeof suggested === 'object' ? JSON.stringify(suggested) : (suggested || '(ריק)')}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ direction: 'rtl' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h3 style={{ margin: 0, fontSize: '18px' }}>דיווחי משתמשים ({reports.length} ממתינים)</h3>
+        <button onClick={onRefresh} style={{ padding: '6px 16px', borderRadius: '8px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '13px', fontFamily: 'inherit' }}>
+          רענן
+        </button>
+      </div>
+
+      {reports.map(report => {
+        const isExpanded = expandedId === report.id;
+        const suggested = report.suggested || {};
+        const original = report.original || {};
+        const hasChanges = !suggested._description_only && Object.keys(suggested).length > 0;
+
+        return (
+          <div key={report.id} style={{ marginBottom: '12px', border: '1px solid #e0e0e0', borderRadius: '10px', overflow: 'hidden', background: '#fff' }}>
+            {/* Header */}
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', cursor: 'pointer', background: isExpanded ? '#fafafa' : '#fff' }}
+              onClick={() => setExpandedId(isExpanded ? null : report.id)}
+            >
+              <span style={{ fontSize: '18px' }}>{isExpanded ? '▾' : '▸'}</span>
+              {report.question_serial && (
+                <span style={{ background: '#f0f0f0', padding: '2px 10px', borderRadius: '10px', fontSize: '12px', fontWeight: 600 }}>#{report.question_serial}</span>
+              )}
+              <span style={{ flex: 1, fontSize: '14px', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {original.question_text?.slice(0, 80) || '(ללא טקסט)'}
+              </span>
+              <span style={{ fontSize: '12px', color: '#888' }}>
+                {report.reporter_name || 'אנונימי'} · {new Date(report.createdAt).toLocaleDateString('he-IL')}
+              </span>
+            </div>
+
+            {/* Expanded content */}
+            {isExpanded && (
+              <div style={{ padding: '0 16px 16px', borderTop: '1px solid #f0f0f0' }}>
+                {/* Description */}
+                {report.description && (
+                  <div style={{ margin: '12px 0', padding: '10px 14px', background: '#fff3e0', borderRadius: '8px', fontSize: '14px', color: '#e65100' }}>
+                    <strong>תיאור הבעיה:</strong> {report.description}
+                  </div>
+                )}
+
+                {/* Diff view */}
+                {hasChanges && (
+                  <div style={{ margin: '12px 0' }}>
+                    <h4 style={{ fontSize: '14px', margin: '0 0 8px', color: '#555' }}>שינויים מוצעים:</h4>
+                    {renderDiff('טקסט השאלה', original.question_text, suggested.question_text)}
+                    {renderDiff('הסבר', original.explanation, suggested.explanation)}
+                    {renderDiff('רמז', original.hint, suggested.hint)}
+                    {suggested.options && renderDiff('אפשרויות', JSON.stringify(original.options), JSON.stringify(suggested.options?.map(o => o.label ?? o)))}
+                    {suggested.correct_answer && renderDiff('תשובה נכונה', original.correct_answer, suggested.correct_answer)}
+                  </div>
+                )}
+
+                {!hasChanges && !report.description && (
+                  <p style={{ color: '#999', fontSize: '13px', margin: '12px 0' }}>לא בוצעו שינויים ולא נכתב תיאור.</p>
+                )}
+
+                {/* Review note */}
+                <textarea
+                  value={reviewNotes[report.id] || ''}
+                  onChange={e => setReviewNotes(prev => ({ ...prev, [report.id]: e.target.value }))}
+                  placeholder="הערת מנהל (לא חובה)..."
+                  rows={2}
+                  style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #ddd', borderRadius: '8px', fontSize: '13px', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', marginTop: '8px', direction: 'rtl' }}
+                />
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
+                  {hasChanges && (
+                    <button
+                      style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#2e7d32', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '13px', fontFamily: 'inherit' }}
+                      onClick={() => onReview(report.id, 'approved', suggested, reviewNotes[report.id])}
+                    >
+                      אשר שינויים
+                    </button>
+                  )}
+                  <button
+                    style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid #c62828', background: '#fff', color: '#c62828', cursor: 'pointer', fontWeight: 600, fontSize: '13px', fontFamily: 'inherit' }}
+                    onClick={() => onReview(report.id, 'rejected', null, reviewNotes[report.id])}
+                  >
+                    דחה
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 const styles = {
   container: {

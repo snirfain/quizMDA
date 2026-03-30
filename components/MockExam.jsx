@@ -12,6 +12,7 @@ import ExamResults from './ExamResults';
 import LoadingSpinner from './LoadingSpinner';
 import { showToast } from './Toast';
 import { announce } from '../utils/accessibility';
+import QuestionReportModal from './QuestionReportModal';
 
 function getExamStateFromRouter() {
   if (typeof window === 'undefined' || !window.history || !window.history.state) return null;
@@ -32,6 +33,7 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [results, setResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [reportQuestion, setReportQuestion] = useState(null);
   const timerRef = useRef(null);
 
   const hasTimeLimit = timeLimit < 999;
@@ -294,6 +296,13 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
             שאלה {currentIndex + 1} מתוך {questions.length}
           </div>
           <h2 style={styles.questionText}>{currentQuestion.question_text}</h2>
+          <button
+            type="button"
+            style={{ padding: '4px 10px', fontSize: '12px', color: '#c62828', background: 'transparent', border: '1px solid #c62828', borderRadius: '6px', cursor: 'pointer', marginBottom: '8px' }}
+            onClick={() => setReportQuestion(currentQuestion)}
+          >
+            דווח על בעיה
+          </button>
 
           {currentQuestion.media_attachment && (
             <div style={styles.media}>
@@ -414,6 +423,10 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
             הבא →
           </button>
         </div>
+
+        {reportQuestion && (
+          <QuestionReportModal question={reportQuestion} onClose={() => setReportQuestion(null)} />
+        )}
       </div>
   );
 }

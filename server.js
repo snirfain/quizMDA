@@ -7,10 +7,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 import { extractDocHandler } from './server/docExtract.js';
+import Question, { allocateSerials } from './models/Question.js';
 import { uploadMiddleware, uploadMediaHandler } from './server/upload.js';
 import { getQuestions, postQuestions, syncQuestions, dedupeQuestions, recatalogAllQuestions, assignSerials, updateQuestion, deleteQuestion } from './server/questionApi.js';
 import { listTranscripts, getTranscript, updateTranscript, deleteTranscript, uploadTranscript, uploadTranscriptMiddleware, matchAllQuestions, generateQuestionsFromTranscript, getGenerateQuestionsStatus, startFixSpelling, getFixSpellingStatus } from './server/transcriptApi.js';
 import { getUsers, postUser, setupUser, changeUserRole, setInstructorCourses, getUsersByCourse } from './server/userApi.js';
+import { createReport, listReports, countPendingReports, reviewReport } from './server/reportApi.js';
+import { submitContactForm } from './server/contactApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -26,6 +29,24 @@ async function start() {
     try {
       await mongoose.connect(MONGODB_URI);
       console.log('MongoDB connected');
+      // Backfill serial numbers for questions that don't have one
+      try {
+        const missing = await Question.find({ $or: [{ serial_number: null }, { serial_number: { $exists: false } }] })
+          .sort({ createdAt: 1 }).select('_id').lean();
+        if (missing.length > 0) {
+          const firstSerial = await allocateSerials(missing.length);
+          const ops = missing.map((doc, i) => ({
+            updateOne: { filter: { _id: doc._id }, update: { $set: { serial_number: firstSerial + i } } }
+          }));
+          const BATCH = 500;
+          for (let i = 0; i < ops.length; i += BATCH) {
+            await Question.bulkWrite(ops.slice(i, i + BATCH), { ordered: false });
+          }
+          console.log(`[startup] Assigned serial numbers to ${missing.length} questions (${firstSerial}–${firstSerial + missing.length - 1})`);
+        }
+      } catch (serialErr) {
+        console.warn('[startup] Serial backfill failed:', serialErr.message);
+      }
     } catch (err) {
       console.error('MongoDB connection error:', err);
       console.warn('Server starting without database; /api/questions will return empty.');
@@ -51,6 +72,11 @@ async function start() {
   app.put('/api/users/:userId/role', changeUserRole);
   app.put('/api/users/:userId/courses', setInstructorCourses);
   app.get('/api/users/by-course/:courseNumber', getUsersByCourse);
+  app.post('/api/contact', submitContactForm);
+  app.get('/api/reports/count', countPendingReports);
+  app.get('/api/reports', listReports);
+  app.post('/api/reports', createReport);
+  app.put('/api/reports/:id/review', reviewReport);
   app.get('/api/transcripts', listTranscripts);
   app.post('/api/transcripts/upload', uploadTranscriptMiddleware, uploadTranscript);
   app.post('/api/transcripts/match-all', matchAllQuestions);
