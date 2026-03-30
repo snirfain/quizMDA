@@ -4,7 +4,7 @@
  * POST /api/questions — create one or more questions (body: object or array)
  */
 import mongoose from 'mongoose';
-import Question from '../models/Question.js';
+import Question, { allocateSerials } from '../models/Question.js';
 import Transcript from '../models/Transcript.js';
 import { matchQuestionToTranscripts, buildTranscriptTokenSets } from './transcriptApi.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
@@ -243,6 +243,8 @@ export async function syncQuestions(req, res) {
 
     let synced = 0;
     if (toCreate.length > 0) {
+      const firstSerial = await allocateSerials(toCreate.length);
+      toCreate.forEach((q, i) => { q.serial_number = firstSerial + i; });
       const result = await Question.insertMany(toCreate, { ordered: false });
       synced = result.length;
       const transcripts = await Transcript.find({}).lean();
@@ -369,6 +371,36 @@ export async function dedupeQuestions(req, res) {
     res.json({ removed, total: list.length });
   } catch (err) {
     console.error('POST /api/questions/dedupe error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * POST /api/questions/assign-serials
+ * Backfill serial_number for all questions that don't have one yet.
+ */
+export async function assignSerials(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+
+    const missing = await Question.find({ $or: [{ serial_number: null }, { serial_number: { $exists: false } }] })
+      .sort({ createdAt: 1 }).select('_id').lean();
+
+    if (missing.length === 0) return res.json({ assigned: 0, message: 'All questions already have serial numbers' });
+
+    const firstSerial = await allocateSerials(missing.length);
+    const ops = missing.map((doc, i) => ({
+      updateOne: { filter: { _id: doc._id }, update: { $set: { serial_number: firstSerial + i } } }
+    }));
+    const BATCH = 500;
+    for (let i = 0; i < ops.length; i += BATCH) {
+      await Question.bulkWrite(ops.slice(i, i + BATCH), { ordered: false });
+    }
+    console.log(`[assign-serials] assigned ${missing.length} serial numbers (${firstSerial}–${firstSerial + missing.length - 1})`);
+    res.json({ assigned: missing.length, firstSerial, lastSerial: firstSerial + missing.length - 1 });
+  } catch (err) {
+    console.error('POST /api/questions/assign-serials error:', err);
     res.status(500).json({ error: err.message });
   }
 }

@@ -329,6 +329,16 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
       ariaLabel={question?.id ? 'עריכת שאלה' : 'יצירת שאלה חדשה'}
     >
       <form onSubmit={handleSubmit} style={styles.form}>
+        {/* Serial number — read-only */}
+        {question?.serial_number != null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#616161' }}>
+            <span style={{ fontWeight: 600 }}>מס׳ סידורי:</span>
+            <span style={{ background: '#f5f5f5', padding: '4px 14px', borderRadius: '8px', fontWeight: 700, fontSize: '16px', color: '#333' }}>
+              {question.serial_number}
+            </span>
+          </div>
+        )}
+
         <FormField
           label="היררכיית תוכן"
           name="hierarchy_id"
@@ -682,9 +692,12 @@ export default function QuestionEditor({ question, hierarchies, onSave, onCancel
           value={formData.status}
           onChange={(e) => handleChange('status', e.target.value)}
         >
+          <option value="active">פעיל</option>
           <option value="draft">טיוטה</option>
           <option value="pending_review">ממתין לבקרה</option>
-          <option value="active">פעיל</option>
+          <option value="suspended">מושעה</option>
+          <option value="rejected">נדחה</option>
+          <option value="needs_revision">דרוש תיקון</option>
         </FormField>
 
         {/* Validation Errors */}

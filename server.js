@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 import { extractDocHandler } from './server/docExtract.js';
 import { uploadMiddleware, uploadMediaHandler } from './server/upload.js';
-import { getQuestions, postQuestions, syncQuestions, dedupeQuestions, recatalogAllQuestions, updateQuestion, deleteQuestion } from './server/questionApi.js';
+import { getQuestions, postQuestions, syncQuestions, dedupeQuestions, recatalogAllQuestions, assignSerials, updateQuestion, deleteQuestion } from './server/questionApi.js';
 import { listTranscripts, getTranscript, updateTranscript, deleteTranscript, uploadTranscript, uploadTranscriptMiddleware, matchAllQuestions, generateQuestionsFromTranscript, getGenerateQuestionsStatus, startFixSpelling, getFixSpellingStatus } from './server/transcriptApi.js';
 import { getUsers, postUser } from './server/userApi.js';
 
@@ -42,6 +42,7 @@ async function start() {
   app.post('/api/questions/sync', syncQuestions);
   app.post('/api/questions/dedupe', dedupeQuestions);
   app.post('/api/questions/recatalog', recatalogAllQuestions);
+  app.post('/api/questions/assign-serials', assignSerials);
   app.put('/api/questions/:id', updateQuestion);
   app.delete('/api/questions/:id', deleteQuestion);
   app.get('/api/users', getUsers);

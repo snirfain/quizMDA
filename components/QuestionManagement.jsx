@@ -205,24 +205,31 @@ export default function QuestionManagement() {
     }
   }, [activeTab]);
 
-  // Once per session: server-side recatalog (transcript + hierarchy) for uncataloged questions
+  // Once per session: assign serial numbers + recatalog uncataloged questions
   useEffect(() => {
     if (hasAutoReclassified.current || !questions.length || activeTab !== 'list') return;
     hasAutoReclassified.current = true;
     let cancelled = false;
     (async () => {
       setIsReclassifying(true);
+      let needsReload = false;
+      try {
+        const serialRes = await fetch('/api/questions/assign-serials', { method: 'POST' });
+        const serialData = await serialRes.json().catch(() => ({}));
+        if (serialData.assigned > 0) needsReload = true;
+      } catch (_) { /* non-critical */ }
       try {
         const res = await fetch('/api/questions/recatalog', { method: 'POST' });
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
-        if (data.cataloged > 0) {
-          await loadQuestions();
-        }
+        if (data.cataloged > 0) needsReload = true;
       } catch (e) {
         if (!cancelled) showToast('קטלוג אוטומטי נכשל: ' + (e?.message || ''), 'error');
       } finally {
-        if (!cancelled) setIsReclassifying(false);
+        if (!cancelled) {
+          if (needsReload) await loadQuestions();
+          setIsReclassifying(false);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -1142,6 +1149,7 @@ export default function QuestionManagement() {
                           style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                         />
                       </th>
+                      <th style={{ ...styles.th, width: '50px', textAlign: 'center' }}>#</th>
                       <th style={styles.th}>שאלה</th>
                       <th style={styles.th}>סוג</th>
                       <th style={styles.th}>תמלול</th>
@@ -1193,6 +1201,10 @@ export default function QuestionManagement() {
                                 aria-label={`בחר שאלה ${question.question_text?.substring(0, 30)}`}
                                 style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                               />
+                            </td>
+
+                            <td style={{ ...styles.td, textAlign: 'center', fontWeight: 600, color: '#616161', fontSize: '13px' }}>
+                              {question.serial_number ?? '—'}
                             </td>
 
                             <td
@@ -1285,7 +1297,7 @@ export default function QuestionManagement() {
                           </tr>
                           {isExpanded && (
                             <tr style={styles.tr}>
-                              <td colSpan={9} style={{ ...styles.td, padding: '12px 16px', background: '#fafafa', borderTop: 'none' }}>
+                              <td colSpan={10} style={{ ...styles.td, padding: '12px 16px', background: '#fafafa', borderTop: 'none' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                   <div>
                                     <strong style={{ marginBottom: '4px' }}>שאלה (מלא):</strong>

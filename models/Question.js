@@ -13,8 +13,15 @@ const optionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const counterSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  seq: { type: Number, default: 0 },
+});
+const Counter = mongoose.models.Counter || mongoose.model('Counter', counterSchema);
+
 const questionSchema = new mongoose.Schema(
   {
+    serial_number: { type: Number, unique: true, sparse: true },
     /** String (e.g. from mock) or ObjectId */
     hierarchy_id: { type: mongoose.Schema.Types.Mixed, required: true },
     question_type: {
@@ -47,6 +54,19 @@ const questionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+questionSchema.pre('save', async function (next) {
+  if (this.serial_number == null) {
+    const counter = await Counter.findByIdAndUpdate(
+      'question_serial',
+      { $inc: { seq: 1 } },
+      { upsert: true, new: true }
+    );
+    this.serial_number = counter.seq;
+  }
+  next();
+});
+
+questionSchema.index({ serial_number: 1 });
 questionSchema.index({ hierarchy_id: 1 });
 questionSchema.index({ question_type: 1 });
 questionSchema.index({ status: 1 });
@@ -55,4 +75,19 @@ questionSchema.index({ tags: 1 });
 questionSchema.index({ createdAt: -1 });
 questionSchema.index({ question_text: 'text' });
 
-export default mongoose.model('Question', questionSchema);
+const Question = mongoose.model('Question', questionSchema);
+
+/**
+ * Allocate `count` sequential serial numbers atomically.
+ * Returns the first serial in the range (inclusive). The range is [first, first+count-1].
+ */
+export async function allocateSerials(count) {
+  const counter = await Counter.findByIdAndUpdate(
+    'question_serial',
+    { $inc: { seq: count } },
+    { upsert: true, new: true }
+  );
+  return counter.seq - count + 1;
+}
+
+export default Question;
