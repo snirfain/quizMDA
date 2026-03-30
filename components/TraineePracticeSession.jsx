@@ -405,7 +405,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
           </div>
         )}
 
-        {/* Answer Input */}
+        {/* Answer Input (interactive) */}
         {!showResult && (
           <div style={styles.answerSection}>
             {renderAnswerInput(
@@ -424,6 +424,13 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
             >
               {isLoading ? 'שולח...' : 'שלח תשובה'}
             </button>
+          </div>
+        )}
+
+        {/* Answer Review (read-only after submit) */}
+        {showResult && currentQuestion.question_type !== 'open_ended' && (
+          <div style={styles.answerSection}>
+            {renderAnswerReview(currentQuestion, userAnswer, selectedOptions)}
           </div>
         )}
 
@@ -541,6 +548,72 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
       {reportModalOpen && currentQuestion && (
         <QuestionReportModal question={currentQuestion} onClose={handleReportClosed} />
       )}
+    </div>
+  );
+}
+
+function renderAnswerReview(question, userAnswer, selectedOptions) {
+  const correctAnswer = safeParse(question.correct_answer);
+  const options = question.options?.length > 0
+    ? question.options
+    : correctAnswer.options || [];
+
+  if (!options.length) return null;
+
+  const isSingle = question.question_type === 'single_choice' || question.question_type === 'true_false';
+  const correctValues = isSingle
+    ? [correctAnswer.value]
+    : (correctAnswer.values || []);
+  const userValues = isSingle
+    ? [userAnswer]
+    : (selectedOptions || []);
+
+  return (
+    <div style={styles.optionsContainer} role="list" aria-label="סקירת תשובות">
+      {options.map((option, index) => {
+        const val = option.value ?? String(index);
+        const label = option.label ?? option.text ?? '';
+        const isCorrectOption = correctValues.includes(val);
+        const isUserPick = userValues.includes(val);
+
+        let bg = 'white';
+        let border = '1px solid #ddd';
+        let icon = '';
+        if (isCorrectOption && isUserPick) {
+          bg = '#e8f5e9'; border = '2px solid #4CAF50'; icon = '✓';
+        } else if (isCorrectOption) {
+          bg = '#e8f5e9'; border = '2px solid #4CAF50'; icon = '✓';
+        } else if (isUserPick) {
+          bg = '#ffebee'; border = '2px solid #f44336'; icon = '✗';
+        }
+
+        return (
+          <div key={index} role="listitem" style={{
+            ...styles.radioLabel,
+            backgroundColor: bg,
+            border,
+            opacity: 1,
+            cursor: 'default',
+            position: 'relative',
+          }}>
+            <input
+              type={isSingle ? 'radio' : 'checkbox'}
+              checked={isUserPick}
+              disabled
+              style={styles.radioInput}
+            />
+            <span style={{ flex: 1 }}>{label}</span>
+            {icon && (
+              <span style={{
+                fontWeight: 700,
+                fontSize: '18px',
+                color: isCorrectOption ? '#2e7d32' : '#c62828',
+                marginInlineStart: '8px',
+              }}>{icon}</span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

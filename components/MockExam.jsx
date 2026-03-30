@@ -333,7 +333,7 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
                       onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
                       style={styles.radio}
                     />
-                    <span>{option.text}</span>
+                    <span>{option.label ?? option.text}</span>
                   </label>
                 ))}
               </div>
@@ -356,7 +356,7 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
                       }}
                       style={styles.checkbox}
                     />
-                    <span>{option.text}</span>
+                    <span>{option.label ?? option.text}</span>
                   </label>
                 ))}
               </div>
