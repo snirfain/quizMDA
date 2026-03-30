@@ -1,6 +1,6 @@
 // Service Worker for MDA Quiz App — /api/questions always from network (no cache)
-const CACHE_NAME = 'mda-quiz-v3';
-const STATIC_CACHE_NAME = 'mda-static-v3';
+const CACHE_NAME = 'mda-quiz-v4';
+const STATIC_CACHE_NAME = 'mda-static-v4';
 
 const STATIC_ASSETS = ['/', '/index.html'];
 
