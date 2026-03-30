@@ -1,6 +1,10 @@
 import nodemailer from 'nodemailer';
+import dns from 'dns';
 import ContactMessage from '../models/ContactMessage.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
+
+// Force IPv4 DNS resolution — Render blocks outbound IPv6 to Gmail SMTP
+dns.setDefaultResultOrder('ipv4first');
 
 const RECIPIENT = 'snirfain@gmail.com';
 
@@ -9,8 +13,14 @@ function buildTransporter() {
   const pass = process.env.SMTP_PASS;
   if (!user || !pass) return null;
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: { user, pass },
+    tls: { rejectUnauthorized: false },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
   });
 }
 
