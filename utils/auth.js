@@ -28,6 +28,9 @@ export async function getCurrentUser() {
           email: 'snir@snir-ai.com',
           role: 'admin',
           auth_provider: 'local-dev',
+          setup_complete: true,
+          course_number: 'DEV-001',
+          instructor_courses: [],
           custom_permissions: [],
         };
         return localDevAdmin;

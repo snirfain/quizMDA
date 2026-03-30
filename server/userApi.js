@@ -2,12 +2,16 @@
  * REST API for users — central store in MongoDB so all devices see the same users.
  * GET /api/users — list all users
  * POST /api/users — create or update one user (upsert by user_id or email)
+ * POST /api/users/setup — first-login: set course_number
+ * PUT /api/users/:userId/role — change user role (manager+ only)
+ * PUT /api/users/:userId/courses — instructor: set course numbers
+ * GET /api/users/by-course/:courseNumber — get trainees for a course
  */
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
 
-const VALID_ROLES = new Set(['trainee', 'instructor', 'admin']);
+const VALID_ROLES = new Set(['admin', 'manager', 'school_staff', 'instructor', 'trainee']);
 const VALID_AUTH = new Set(['local', 'google']);
 
 function normalizeUserForDb(u) {
@@ -20,6 +24,9 @@ function normalizeUserForDb(u) {
     google_id: u.google_id != null ? String(u.google_id) : null,
     profile_picture: u.profile_picture != null ? String(u.profile_picture) : null,
     email_verified: Boolean(u.email_verified),
+    course_number: u.course_number != null ? String(u.course_number).trim() : null,
+    instructor_courses: Array.isArray(u.instructor_courses) ? u.instructor_courses.map(c => String(c).trim()).filter(Boolean) : [],
+    setup_complete: Boolean(u.setup_complete),
     points: Math.max(0, parseInt(u.points, 10) || 0),
     current_streak: Math.max(0, parseInt(u.current_streak, 10) || 0),
     longest_streak: Math.max(0, parseInt(u.longest_streak, 10) || 0),
@@ -69,6 +76,10 @@ export async function postUser(req, res) {
       : await User.findOne({ user_id: data.user_id }).lean();
     let doc;
     if (existing) {
+      // Preserve fields that should not be overwritten by a client sync
+      if (existing.course_number && !data.course_number) data.course_number = existing.course_number;
+      if (existing.instructor_courses?.length && !data.instructor_courses?.length) data.instructor_courses = existing.instructor_courses;
+      if (existing.setup_complete && !data.setup_complete) data.setup_complete = existing.setup_complete;
       doc = await User.findOneAndUpdate(
         { user_id: existing.user_id },
         { $set: data },
@@ -82,6 +93,79 @@ export async function postUser(req, res) {
     res.status(existing ? 200 : 201).json(rest);
   } catch (err) {
     console.error('POST /api/users error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/** POST /api/users/setup — first-login: set course_number + mark setup_complete */
+export async function setupUser(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+    const { user_id, course_number } = req.body || {};
+    if (!user_id) return res.status(400).json({ error: 'user_id required' });
+    if (!course_number || !String(course_number).trim()) return res.status(400).json({ error: 'course_number required' });
+    const doc = await User.findOneAndUpdate(
+      { user_id },
+      { $set: { course_number: String(course_number).trim(), setup_complete: true } },
+      { new: true }
+    ).lean();
+    if (!doc) return res.status(404).json({ error: 'User not found' });
+    const { _id, ...rest } = doc;
+    res.json(rest);
+  } catch (err) {
+    console.error('POST /api/users/setup error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/** PUT /api/users/:userId/role — change user role */
+export async function changeUserRole(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+    const { userId } = req.params;
+    const { role } = req.body || {};
+    if (!VALID_ROLES.has(role)) return res.status(400).json({ error: 'Invalid role' });
+    const doc = await User.findOneAndUpdate({ user_id: userId }, { $set: { role } }, { new: true }).lean();
+    if (!doc) return res.status(404).json({ error: 'User not found' });
+    const { _id, ...rest } = doc;
+    res.json(rest);
+  } catch (err) {
+    console.error('PUT /api/users/:userId/role error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/** PUT /api/users/:userId/courses — set instructor_courses */
+export async function setInstructorCourses(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+    const { userId } = req.params;
+    const { courses } = req.body || {};
+    if (!Array.isArray(courses)) return res.status(400).json({ error: 'courses must be an array' });
+    const cleaned = courses.map(c => String(c).trim()).filter(Boolean);
+    const doc = await User.findOneAndUpdate({ user_id: userId }, { $set: { instructor_courses: cleaned } }, { new: true }).lean();
+    if (!doc) return res.status(404).json({ error: 'User not found' });
+    const { _id, ...rest } = doc;
+    res.json(rest);
+  } catch (err) {
+    console.error('PUT /api/users/:userId/courses error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/** GET /api/users/by-course/:courseNumber — get all trainees in a course */
+export async function getUsersByCourse(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(200).json([]);
+    const { courseNumber } = req.params;
+    const list = await User.find({ course_number: courseNumber }).sort({ full_name: 1 }).lean();
+    res.json(list.map(({ _id, ...rest }) => rest));
+  } catch (err) {
+    console.error('GET /api/users/by-course error:', err);
     res.status(500).json({ error: err.message });
   }
 }

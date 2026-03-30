@@ -22,13 +22,13 @@ export const routes = {
     path: '/practice',
     component: 'TraineeDashboard',
     public: false,
-    roles: ['trainee', 'instructor', 'admin']
+    roles: ['trainee', 'instructor', 'school_staff', 'manager', 'admin']
   },
   progress: {
     path: '/progress',
     component: 'UserProgressDashboard',
     public: false,
-    roles: ['trainee', 'instructor', 'admin']
+    roles: ['trainee', 'instructor', 'school_staff', 'manager', 'admin']
   },
   studyPlans: {
     path: '/study-plans',
@@ -40,7 +40,7 @@ export const routes = {
     path: '/bookmarks',
     component: 'BookmarksList',
     public: false,
-    roles: ['trainee', 'instructor', 'admin']
+    roles: ['trainee', 'instructor', 'school_staff', 'manager', 'admin']
   },
   mockExam: {
     path: '/mock-exam',
@@ -52,61 +52,67 @@ export const routes = {
     path: '/instructor',
     component: 'InstructorDashboard',
     public: false,
-    roles: ['instructor', 'admin']
+    roles: ['instructor', 'school_staff', 'manager', 'admin']
   },
   instructorQuestions: {
     path: '/instructor/questions',
     component: 'QuestionManagement',
     public: false,
-    roles: ['instructor', 'admin']
+    roles: ['instructor', 'school_staff', 'manager', 'admin']
   },
   instructorStudyPlans: {
     path: '/instructor/study-plans',
     component: 'StudyPlanManager',
     public: false,
-    roles: ['instructor', 'admin']
+    roles: ['instructor', 'school_staff', 'manager', 'admin']
   },
   instructorAnalytics: {
     path: '/instructor/analytics',
     component: 'InstructorAnalytics',
     public: false,
-    roles: ['instructor', 'admin']
+    roles: ['instructor', 'school_staff', 'manager', 'admin']
   },
   mediaBankManager: {
     path: '/instructor/media-bank',
     component: 'MediaBankManager',
     public: false,
-    roles: ['instructor', 'admin']
+    roles: ['instructor', 'school_staff', 'manager', 'admin']
   },
   instructorTranscripts: {
     path: '/instructor/transcripts',
     component: 'TranscriptUpload',
     public: false,
-    roles: ['admin']
+    roles: ['school_staff', 'manager', 'admin']
   },
   manager: {
     path: '/manager',
     component: 'ManagerDashboard',
     public: false,
-    roles: ['admin']
+    roles: ['manager', 'admin']
   },
   dataImportExport: {
     path: '/admin/data-import-export',
     component: 'DataImportExport',
     public: false,
-    roles: ['admin']
+    roles: ['manager', 'admin']
   },
   settings: {
     path: '/settings',
     component: 'SettingsPage',
     public: false,
-    roles: ['trainee', 'instructor', 'admin']
+    roles: ['trainee', 'instructor', 'school_staff', 'manager', 'admin']
   },
   profile: {
     path: '/profile',
     component: 'ProfilePage',
     public: false,
-    roles: ['trainee', 'instructor', 'admin']
+    roles: ['trainee', 'instructor', 'school_staff', 'manager', 'admin']
+  },
+  setup: {
+    path: '/setup',
+    component: 'CourseSetupPage',
+    public: false,
+    roles: ['trainee', 'instructor', 'school_staff', 'manager', 'admin']
   },
   help: {
     path: '/help',
@@ -180,26 +186,45 @@ export function getNavigationItems(userRole) {
     trainee: [
       { path: routes.practice.path, label: 'תרגול', icon: '📚' },
       { path: routes.progress.path, label: 'התקדמות', icon: '📊' },
-      { path: routes.settings.path, label: 'הגדרות', icon: '⚙️' }
+      { path: routes.settings.path, label: 'הגדרות', icon: '⚙️' },
     ],
     instructor: [
+      { path: routes.instructor.path,           label: 'מחולל מבחנים',  icon: '📝' },
+      { path: routes.instructorQuestions.path,  label: 'ניהול שאלות',   icon: '❓' },
+      { path: routes.mediaBankManager.path,    label: 'מאגר מדיה',     icon: '🗃️' },
+      { path: routes.instructorStudyPlans.path, label: 'תוכניות לימוד', icon: '📋' },
+      { path: routes.instructorAnalytics.path, label: 'אנליטיקה',      icon: '📊' },
+      { path: routes.settings.path,             label: 'הגדרות',         icon: '⚙️' },
+    ],
+    school_staff: [
       { path: routes.instructor.path,             label: 'מחולל מבחנים',   icon: '📝' },
       { path: routes.instructorQuestions.path,    label: 'ניהול שאלות',    icon: '❓' },
       { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',      icon: '🗃️' },
+      { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',  icon: '📄' },
       { path: routes.instructorStudyPlans.path,   label: 'תוכניות לימוד',  icon: '📋' },
       { path: routes.instructorAnalytics.path,   label: 'אנליטיקה',       icon: '📊' },
-      { path: routes.settings.path,               label: 'הגדרות',          icon: '⚙️' }
+      { path: routes.settings.path,               label: 'הגדרות',          icon: '⚙️' },
+    ],
+    manager: [
+      { path: routes.manager.path,               label: 'לוח בקרה',            icon: '🎛️' },
+      { path: routes.instructor.path,            label: 'מחולל מבחנים',         icon: '📝' },
+      { path: routes.instructorQuestions.path,   label: 'ניהול שאלות',          icon: '❓' },
+      { path: routes.mediaBankManager.path,     label: 'מאגר מדיה',            icon: '🗃️' },
+      { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',       icon: '📄' },
+      { path: routes.dataImportExport.path,     label: 'ייבוא/ייצוא נתונים',  icon: '📥' },
+      { path: routes.instructorAnalytics.path,  label: 'אנליטיקה',             icon: '📊' },
+      { path: routes.settings.path,              label: 'הגדרות',               icon: '⚙️' },
     ],
     admin: [
-      { path: routes.manager.path,             label: 'לוח בקרה',             icon: '🎛️' },
-      { path: routes.instructor.path,          label: 'מחולל מבחנים',          icon: '📝' },
-      { path: routes.instructorQuestions.path, label: 'ניהול שאלות',           icon: '❓' },
-      { path: routes.mediaBankManager.path,    label: 'מאגר מדיה',             icon: '🗃️' },
-      { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',      icon: '📄' },
-      { path: routes.dataImportExport.path,    label: 'ייבוא/ייצוא נתונים',   icon: '📥' },
-      { path: routes.instructorAnalytics.path, label: 'אנליטיקה',              icon: '📊' },
-      { path: routes.settings.path,            label: 'הגדרות מערכת',          icon: '⚙️' }
-    ]
+      { path: routes.manager.path,               label: 'לוח בקרה',            icon: '🎛️' },
+      { path: routes.instructor.path,            label: 'מחולל מבחנים',         icon: '📝' },
+      { path: routes.instructorQuestions.path,   label: 'ניהול שאלות',          icon: '❓' },
+      { path: routes.mediaBankManager.path,     label: 'מאגר מדיה',            icon: '🗃️' },
+      { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',       icon: '📄' },
+      { path: routes.dataImportExport.path,     label: 'ייבוא/ייצוא נתונים',  icon: '📥' },
+      { path: routes.instructorAnalytics.path,  label: 'אנליטיקה',             icon: '📊' },
+      { path: routes.settings.path,              label: 'הגדרות מערכת',         icon: '⚙️' },
+    ],
   };
 
   return navItems[userRole] || [];

@@ -43,6 +43,7 @@ const AdminStatistics = React.lazy(() => import('./components/AdminStatistics'))
 const PermissionManagement = React.lazy(() => import('./components/PermissionManagement'));
 const MediaBankManager = React.lazy(() => import('./components/MediaBankManager'));
 const TranscriptUpload = React.lazy(() => import('./components/TranscriptUpload'));
+const CourseSetup = React.lazy(() => import('./components/CourseSetup'));
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState('/');
@@ -169,6 +170,15 @@ export default function App() {
         return <ManagerDashboardPage />;
       case '/admin/data-import-export':
         return <DataImportExport />;
+      case '/setup':
+        return <CourseSetup user={user} onComplete={(updatedUser) => {
+          setUser(updatedUser);
+          const dest = {
+            trainee: '/practice', instructor: '/instructor',
+            school_staff: '/instructor', manager: '/manager', admin: '/manager',
+          }[updatedUser.role] || '/practice';
+          navigateTo(dest);
+        }} />;
       case '/settings':
         return <SettingsPage />;
       case '/profile':

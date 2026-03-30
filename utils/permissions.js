@@ -96,6 +96,28 @@ export const permissions = {
   REPORT_EXPORT: 'report:export'
 };
 
+// Role hierarchy levels (higher = more privileged)
+export const ROLE_LEVELS = {
+  admin: 5,
+  manager: 4,
+  school_staff: 3,
+  instructor: 2,
+  trainee: 1,
+};
+
+export const ROLE_LABELS = {
+  admin: 'אדמין',
+  manager: 'מנהל',
+  school_staff: 'סגל בית הספר',
+  instructor: 'מדריך / מתרגל',
+  trainee: 'חניך',
+};
+
+/** Returns true if roleA is at least as privileged as roleB. */
+export function isRoleAtLeast(userRole, minimumRole) {
+  return (ROLE_LEVELS[userRole] || 0) >= (ROLE_LEVELS[minimumRole] || 0);
+}
+
 // Role permissions mapping - detailed permissions per role
 const rolePermissions = {
   trainee: [
@@ -112,10 +134,9 @@ const rolePermissions = {
     permissions.PLAN_ENROLL,
     permissions.USER_UPDATE_OWN,
     permissions.USER_VIEW_PROFILE,
-    permissions.TEST_VIEW
+    permissions.TEST_VIEW,
   ],
   instructor: [
-    // All trainee permissions
     permissions.QUESTION_READ,
     permissions.QUESTION_CREATE,
     permissions.QUESTION_UPDATE,
@@ -151,12 +172,66 @@ const rolePermissions = {
     permissions.TEST_ASSIGN,
     permissions.TEST_GRADE,
     permissions.REPORT_VIEW,
-    permissions.REPORT_EXPORT
+    permissions.REPORT_EXPORT,
+  ],
+  school_staff: [
+    // Same as instructor + question management + user read
+    permissions.QUESTION_READ,
+    permissions.QUESTION_CREATE,
+    permissions.QUESTION_UPDATE,
+    permissions.QUESTION_DELETE,
+    permissions.QUESTION_EXPORT,
+    permissions.QUESTION_SUSPEND,
+    permissions.QUESTION_REACTIVATE,
+    permissions.QUESTION_APPROVE,
+    permissions.QUESTION_REVIEW,
+    permissions.CONTENT_READ,
+    permissions.CONTENT_CREATE,
+    permissions.CONTENT_UPDATE,
+    permissions.CONTENT_DELETE,
+    permissions.CONTENT_PUBLISH,
+    permissions.ACTIVITY_READ_ALL,
+    permissions.ACTIVITY_CREATE,
+    permissions.ACTIVITY_UPDATE,
+    permissions.ACTIVITY_EXPORT,
+    permissions.PROGRESS_READ_ALL,
+    permissions.PROGRESS_EXPORT,
+    permissions.NOTE_CREATE,
+    permissions.NOTE_READ_ALL,
+    permissions.NOTE_UPDATE_ALL,
+    permissions.NOTE_DELETE_ALL,
+    permissions.PLAN_READ,
+    permissions.PLAN_CREATE,
+    permissions.PLAN_UPDATE,
+    permissions.PLAN_DELETE,
+    permissions.PLAN_ENROLL,
+    permissions.PLAN_ASSIGN,
+    permissions.PLAN_PUBLISH,
+    permissions.USER_READ,
+    permissions.USER_UPDATE_OWN,
+    permissions.USER_VIEW_PROFILE,
+    permissions.ANALYTICS_VIEW,
+    permissions.ANALYTICS_EXPORT,
+    permissions.TEST_CREATE,
+    permissions.TEST_VIEW,
+    permissions.TEST_EDIT,
+    permissions.TEST_DELETE,
+    permissions.TEST_PUBLISH,
+    permissions.TEST_ASSIGN,
+    permissions.TEST_GRADE,
+    permissions.REPORT_VIEW,
+    permissions.REPORT_CREATE,
+    permissions.REPORT_EXPORT,
+  ],
+  manager: [
+    // All except system-level
+    ...Object.values(permissions).filter(p =>
+      p !== permissions.SYSTEM_BACKUP && p !== permissions.SYSTEM_RESTORE
+    ),
   ],
   admin: [
-    // All permissions
-    ...Object.values(permissions)
-  ]
+    ...Object.values(permissions),
+  ],
 };
 
 // Custom permission assignments (for fine-grained control)

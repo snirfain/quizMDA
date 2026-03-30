@@ -11,7 +11,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String, default: null },
     role: {
       type: String,
-      enum: ['trainee', 'instructor', 'admin'],
+      enum: ['admin', 'manager', 'school_staff', 'instructor', 'trainee'],
       default: 'trainee'
     },
     auth_provider: {
@@ -22,6 +22,12 @@ const userSchema = new mongoose.Schema(
     google_id: { type: String, default: null, sparse: true },
     profile_picture: { type: String, default: null },
     email_verified: { type: Boolean, default: false },
+    /** MDA course number — required on first login */
+    course_number: { type: String, default: null },
+    /** For instructors: list of course numbers they teach */
+    instructor_courses: { type: [String], default: [] },
+    /** True after user has completed first-login setup (course number) */
+    setup_complete: { type: Boolean, default: false },
     points: { type: Number, default: 0, min: 0 },
     current_streak: { type: Number, default: 0, min: 0 },
     longest_streak: { type: Number, default: 0, min: 0 },
@@ -34,5 +40,7 @@ userSchema.index({ user_id: 1 });
 userSchema.index({ email: 1 });
 userSchema.index({ google_id: 1 });
 userSchema.index({ role: 1 });
+userSchema.index({ course_number: 1 });
+userSchema.index({ instructor_courses: 1 });
 
 export default mongoose.model('User', userSchema);

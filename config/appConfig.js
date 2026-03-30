@@ -179,11 +179,31 @@ export const appConfig = {
   // Admin emails — full access to all pages and functions
   adminEmails: ['snir@snir-ai.com'],
 
-  // Roles
+  // Roles — ordered from most privileged to least
   roles: {
-    trainee: 'trainee',
+    admin: 'admin',
+    manager: 'manager',
+    school_staff: 'school_staff',
     instructor: 'instructor',
-    admin: 'admin'
+    trainee: 'trainee'
+  },
+
+  // Role display names in Hebrew
+  roleLabels: {
+    admin: 'אדמין',
+    manager: 'מנהל',
+    school_staff: 'סגל בית הספר',
+    instructor: 'מדריך / מתרגל',
+    trainee: 'חניך'
+  },
+
+  // Role hierarchy level (higher = more privileged)
+  roleLevel: {
+    admin: 5,
+    manager: 4,
+    school_staff: 3,
+    instructor: 2,
+    trainee: 1
   },
   
   // Question Types

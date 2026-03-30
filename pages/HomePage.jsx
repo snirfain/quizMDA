@@ -20,12 +20,22 @@ const FEATURES = [
 const STATS = [
   { value: '500+', label: 'שאלות במאגר' },
   { value: '12+', label: 'נושאי לימוד' },
-  { value: '3', label: 'רמות הרשאה' },
+  { value: '5', label: 'רמות הרשאה' },
   { value: '100%', label: 'בעברית' },
 ];
 
 function redirect(user) {
-  const path = { trainee: '/practice', instructor: '/instructor', admin: '/manager' }[user.role] || '/practice';
+  if (!user.setup_complete && !user.course_number) {
+    navigateTo('/setup');
+    return;
+  }
+  const path = {
+    trainee: '/practice',
+    instructor: '/instructor',
+    school_staff: '/instructor',
+    manager: '/manager',
+    admin: '/manager',
+  }[user.role] || '/practice';
   navigateTo(path);
 }
 

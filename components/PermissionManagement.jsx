@@ -21,9 +21,11 @@ import {
 import LoadingSpinner from './LoadingSpinner';
 
 const ROLES = [
-  { value: 'trainee', label: 'מתאמן' },
-  { value: 'instructor', label: 'מדריך' },
-  { value: 'admin', label: 'מנהל' }
+  { value: 'trainee', label: 'חניך' },
+  { value: 'instructor', label: 'מדריך / מתרגל' },
+  { value: 'school_staff', label: 'סגל בית הספר' },
+  { value: 'manager', label: 'מנהל' },
+  { value: 'admin', label: 'אדמין' }
 ];
 
 export default function PermissionManagement() {
@@ -122,6 +124,11 @@ export default function PermissionManagement() {
       if (!window.confirm('אתה משנה את התפקיד של עצמך. האם להמשיך?')) return;
     }
     try {
+      await fetch(`/api/users/${selectedUser.user_id}/role`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: roleEdit }),
+      });
       if (entities.Users && typeof entities.Users.update === 'function') {
         await entities.Users.update(selectedUser.user_id, { role: roleEdit });
       }

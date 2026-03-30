@@ -9,7 +9,7 @@ import { getCurrentUser, setCurrentUser } from '../utils/auth';
 import { entities } from '../config/appConfig';
 import FormField from '../components/FormField';
 import PermissionGate from '../components/PermissionGate';
-import { permissions } from '../utils/permissions';
+import { permissions, isRoleAtLeast, ROLE_LABELS } from '../utils/permissions';
 import { showToast } from '../components/Toast';
 import { 
   getAccessibilitySettings, 
@@ -75,6 +75,18 @@ export default function SettingsPage() {
           >
             נגישות
           </button>
+          {isRoleAtLeast(user?.role, 'instructor') && (
+            <button
+              className={`tab-btn ${activeTab === 'courses' ? 'active' : ''}`}
+              onClick={() => setActiveTab('courses')}
+              role="tab"
+              aria-selected={activeTab === 'courses'}
+              aria-controls="courses-panel"
+              id="courses-tab"
+            >
+              קורסים
+            </button>
+          )}
           <PermissionGate permission={permissions.SYSTEM_SETTINGS}>
             <button
               className={`tab-btn ${activeTab === 'system' ? 'active' : ''}`}
@@ -120,6 +132,17 @@ export default function SettingsPage() {
               style={styles.panel}
             >
               <AccessibilitySettings user={user} />
+            </div>
+          )}
+
+          {activeTab === 'courses' && isRoleAtLeast(user?.role, 'instructor') && (
+            <div
+              id="courses-panel"
+              role="tabpanel"
+              aria-labelledby="courses-tab"
+              style={styles.panel}
+            >
+              <InstructorCourseSettings user={user} onUserUpdate={(u) => { setUser(u); setCurrentUser(u); }} />
             </div>
           )}
 
@@ -413,3 +436,159 @@ const styles = {
     cursor: 'pointer'
   },
 };
+
+/**
+ * Instructor Course Settings — manage instructor_courses list and view trainees per course.
+ */
+function InstructorCourseSettings({ user, onUserUpdate }) {
+  const [courses, setCourses] = useState(user?.instructor_courses || []);
+  const [newCourse, setNewCourse] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [trainees, setTrainees] = useState([]);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [loadingTrainees, setLoadingTrainees] = useState(false);
+
+  const handleAddCourse = () => {
+    const val = newCourse.trim();
+    if (!val) return;
+    if (courses.includes(val)) { showToast('קורס כבר קיים', 'info'); return; }
+    setCourses([...courses, val]);
+    setNewCourse('');
+  };
+
+  const handleRemoveCourse = (c) => {
+    setCourses(courses.filter(x => x !== c));
+    if (selectedCourse === c) { setSelectedCourse(null); setTrainees([]); }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/users/${user.user_id}/courses`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courses }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'שגיאה');
+      const updated = { ...user, instructor_courses: courses };
+      onUserUpdate(updated);
+      showToast('קורסים נשמרו בהצלחה', 'success');
+    } catch (err) {
+      showToast('שגיאה: ' + (err?.message || ''), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const loadTrainees = async (courseNum) => {
+    setSelectedCourse(courseNum);
+    setLoadingTrainees(true);
+    try {
+      const res = await fetch(`/api/users/by-course/${encodeURIComponent(courseNum)}`);
+      const data = await res.json();
+      setTrainees(Array.isArray(data) ? data : []);
+    } catch (_) {
+      setTrainees([]);
+    } finally {
+      setLoadingTrainees(false);
+    }
+  };
+
+  const roleLabel = ROLE_LABELS[user?.role] || user?.role;
+
+  return (
+    <div>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px' }}>ניהול קורסים</h2>
+      <p style={{ fontSize: '14px', color: '#666', marginBottom: '4px' }}>
+        דרגה: <strong style={{ color: '#1565c0' }}>{roleLabel}</strong>
+      </p>
+      {user?.course_number && (
+        <p style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
+          מספר קורס אישי: <strong>{user.course_number}</strong>
+        </p>
+      )}
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{ fontSize: '14px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+          קורסים שאני מדריך:
+        </label>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+          <input
+            type="text"
+            value={newCourse}
+            onChange={(e) => setNewCourse(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCourse())}
+            placeholder="מספר קורס חדש"
+            style={{ flex: 1, padding: '10px 14px', border: '1.5px solid #e0e0e0', borderRadius: '8px', fontSize: '14px', direction: 'ltr' }}
+          />
+          <button onClick={handleAddCourse} style={{ padding: '10px 20px', background: '#1565c0', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
+            הוסף
+          </button>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+          {courses.map((c) => (
+            <div key={c} style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '6px 12px', background: selectedCourse === c ? '#e3f2fd' : '#f5f5f5',
+              borderRadius: '20px', fontSize: '14px', cursor: 'pointer',
+              border: selectedCourse === c ? '2px solid #1565c0' : '1px solid #e0e0e0',
+            }}>
+              <span onClick={() => loadTrainees(c)} style={{ cursor: 'pointer', fontWeight: 600 }}>{c}</span>
+              <button onClick={() => handleRemoveCourse(c)} style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', fontSize: '16px', padding: 0 }}>
+                ✕
+              </button>
+            </div>
+          ))}
+          {courses.length === 0 && <span style={{ color: '#999', fontSize: '14px' }}>לא הוגדרו קורסים</span>}
+        </div>
+        <button onClick={handleSave} disabled={saving} style={{
+          padding: '10px 28px', background: '#e53935', color: '#fff', border: 'none',
+          borderRadius: '8px', fontWeight: 700, cursor: saving ? 'wait' : 'pointer', fontSize: '14px',
+        }}>
+          {saving ? 'שומר...' : 'שמור קורסים'}
+        </button>
+      </div>
+
+      {selectedCourse && (
+        <div style={{ marginTop: '24px', padding: '16px', background: '#fafafa', borderRadius: '12px', border: '1px solid #e0e0e0' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '12px' }}>
+            חניכים בקורס {selectedCourse}
+          </h3>
+          {loadingTrainees ? (
+            <p style={{ color: '#999' }}>טוען...</p>
+          ) : trainees.length === 0 ? (
+            <p style={{ color: '#999' }}>אין חניכים רשומים בקורס זה</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e0e0e0' }}>
+                  <th style={{ textAlign: 'right', padding: '8px' }}>שם</th>
+                  <th style={{ textAlign: 'right', padding: '8px' }}>אימייל</th>
+                  <th style={{ textAlign: 'center', padding: '8px' }}>נקודות</th>
+                  <th style={{ textAlign: 'center', padding: '8px' }}>רצף</th>
+                  <th style={{ textAlign: 'center', padding: '8px' }}>דרגה</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trainees.map((t) => (
+                  <tr key={t.user_id} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '8px' }}>{t.full_name}</td>
+                    <td style={{ padding: '8px', direction: 'ltr', textAlign: 'right' }}>{t.email || '—'}</td>
+                    <td style={{ padding: '8px', textAlign: 'center' }}>{t.points || 0}</td>
+                    <td style={{ padding: '8px', textAlign: 'center' }}>{t.current_streak || 0}</td>
+                    <td style={{ padding: '8px', textAlign: 'center' }}>
+                      <span style={{ fontSize: '12px', padding: '2px 10px', borderRadius: '10px', background: '#e3f2fd', color: '#1565c0' }}>
+                        {ROLE_LABELS[t.role] || t.role}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
