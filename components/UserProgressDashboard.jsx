@@ -249,11 +249,12 @@ const styles = {
     direction: 'rtl',
     textAlign: 'right',
     fontFamily: 'Arial, Helvetica, sans-serif',
-    padding: '20px',
+    padding: 'clamp(10px, 3vw, 20px)',
     maxWidth: '1200px',
     margin: '0 auto',
     backgroundColor: '#f5f5f5',
     minHeight: '100vh',
+    boxSizing: 'border-box',
   },
   loading: {
     textAlign: 'center',
@@ -317,13 +318,13 @@ const styles = {
   },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '20px',
-    marginBottom: '30px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))',
+    gap: '12px',
+    marginBottom: '24px',
   },
   statCard: {
     backgroundColor: 'white',
-    padding: '25px',
+    padding: 'clamp(14px, 3vw, 25px)',
     borderRadius: '8px',
     textAlign: 'center',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
@@ -369,9 +370,11 @@ const styles = {
   barChart: {
     display: 'flex',
     alignItems: 'flex-end',
-    gap: '10px',
-    height: '200px',
-    padding: '20px 0'
+    gap: '6px',
+    height: '180px',
+    padding: '16px 0',
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
   },
   barWrapper: {
     flex: 1,
@@ -453,9 +456,9 @@ const styles = {
   },
   topicsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '20px',
-    marginBottom: '30px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))',
+    gap: '16px',
+    marginBottom: '24px',
   },
   topicsCard: {
     backgroundColor: 'white',

@@ -880,7 +880,8 @@ const styles = {
   optionRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px'
+    gap: '8px',
+    flexWrap: 'wrap',
   },
   radio: {
     margin: 0,
@@ -915,7 +916,8 @@ const styles = {
   },
   radioGroup: {
     display: 'flex',
-    gap: '20px'
+    gap: '12px',
+    flexWrap: 'wrap',
   },
   radioLabel: {
     display: 'flex',
@@ -931,7 +933,8 @@ const styles = {
   },
   tagsInput: {
     display: 'flex',
-    gap: '8px'
+    gap: '8px',
+    flexWrap: 'wrap',
   },
   tagInput: {
     flex: 1,

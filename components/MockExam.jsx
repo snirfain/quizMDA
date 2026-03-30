@@ -436,13 +436,14 @@ const styles = {
     direction: 'rtl',
     maxWidth: '600px',
     margin: '0 auto',
-    padding: '40px',
-    textAlign: 'center'
+    padding: 'clamp(16px, 5vw, 40px)',
+    textAlign: 'center',
+    boxSizing: 'border-box',
   },
   title: {
-    fontSize: '36px',
+    fontSize: 'clamp(24px, 5vw, 36px)',
     fontWeight: 'bold',
-    marginBottom: '30px',
+    marginBottom: '24px',
     color: '#212121'
   },
   info: {
@@ -578,10 +579,11 @@ const styles = {
   },
   questionSection: {
     flex: 1,
-    padding: '40px',
+    padding: 'clamp(14px, 4vw, 40px)',
     maxWidth: '1000px',
     margin: '0 auto',
-    width: '100%'
+    width: '100%',
+    boxSizing: 'border-box',
   },
   questionNumber: {
     fontSize: '14px',
@@ -589,11 +591,12 @@ const styles = {
     marginBottom: '16px'
   },
   questionText: {
-    fontSize: '24px',
+    fontSize: 'clamp(17px, 3.5vw, 24px)',
     fontWeight: 'bold',
-    marginBottom: '24px',
+    marginBottom: '20px',
     color: '#212121',
-    lineHeight: 1.6
+    lineHeight: 1.6,
+    wordBreak: 'break-word',
   },
   media: {
     marginBottom: '24px'

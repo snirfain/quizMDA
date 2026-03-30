@@ -1,50 +1,141 @@
 /**
- * Responsive CSS Styles
- * Hebrew: עיצוב responsive
+ * Responsive CSS — mobile-first adjustments
+ * Hebrew: עיצוב רספונסיבי
  */
 
-/* Mobile styles */
+/* ═══ Global mobile resets ═══════════════════════════════ */
 @media (max-width: 767px) {
+  :root {
+    --font-size-base: 14px;
+    --space-5: 12px;
+    --space-6: 14px;
+  }
+
+  /* ── Layout ── */
   .responsive-container {
     padding: 12px !important;
   }
-  
   .responsive-header {
     padding: 12px !important;
     flex-direction: column !important;
     align-items: stretch !important;
   }
-  
   .responsive-grid {
     grid-template-columns: 1fr !important;
     gap: 12px !important;
   }
-  
   .responsive-tabs {
-    flex-direction: column !important;
-    gap: 8px !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    gap: 0 !important;
+    white-space: nowrap;
+    scrollbar-width: none;
   }
-  
+  .responsive-tabs::-webkit-scrollbar { display: none; }
   .responsive-button {
     width: 100% !important;
   }
-  
   .responsive-card {
-    padding: 16px !important;
+    padding: 14px !important;
+  }
+  .hide-mobile { display: none !important; }
+
+  /* ── Navigation bar ── */
+  .nav-bar-container {
+    padding: 0 12px !important;
+    height: 52px !important;
+    gap: 8px !important;
+  }
+  .nav-brand-text { display: none !important; }
+  .nav-desktop-links { display: none !important; }
+  .nav-user-name { display: none !important; }
+  .nav-user-btn {
+    padding: 6px 8px !important;
+  }
+
+  /* ── Tables ── */
+  .table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -12px;
+    padding: 0 12px;
+  }
+  table {
+    min-width: 600px;
+  }
+
+  /* ── Tabs (generic) ── */
+  .tabs, [role="tablist"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar, [role="tablist"]::-webkit-scrollbar {
+    display: none;
+  }
+  .tab-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+  }
+
+  /* ── Modals ── */
+  .modal-content, [role="dialog"] > div {
+    max-height: 92vh !important;
+    margin: 8px !important;
+    border-radius: 12px !important;
+  }
+
+  /* ── Buttons — touch-friendly minimum ── */
+  button, [role="button"], input[type="submit"] {
+    min-height: 44px;
+  }
+
+  /* ── Inputs ── */
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="search"],
+  input[type="password"],
+  textarea,
+  select {
+    font-size: 16px !important; /* prevents iOS zoom on focus */
+  }
+
+  /* ── Footer ── */
+  .app-footer {
+    padding: 14px 12px !important;
+    font-size: 12px;
   }
 }
 
-/* Tablet styles */
+/* ═══ Small phones ═══════════════════════════════════════ */
+@media (max-width: 374px) {
+  .nav-bar-container {
+    padding: 0 8px !important;
+  }
+}
+
+/* ═══ Tablet ═════════════════════════════════════════════ */
 @media (min-width: 768px) and (max-width: 1023px) {
   .responsive-container {
     padding: 16px !important;
   }
+  .nav-brand-sub { display: none !important; }
 }
 
-/* Desktop styles */
+/* ═══ Desktop ════════════════════════════════════════════ */
 @media (min-width: 1024px) {
   .responsive-container {
     max-width: 1200px;
     margin: 0 auto;
   }
+}
+
+@media (min-width: 769px) {
+  .hide-desktop { display: none !important; }
+  .show-mobile-only { display: none !important; }
 }

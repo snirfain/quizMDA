@@ -636,10 +636,11 @@ const styles = {
     direction: 'rtl',
     textAlign: 'right',
     fontFamily: 'Arial, Helvetica, sans-serif',
-    padding: '20px',
+    padding: 'clamp(10px, 3vw, 20px)',
     maxWidth: '100%',
     margin: '0 auto',
     backgroundColor: '#f5f5f5',
+    boxSizing: 'border-box',
   },
   loading: {
     textAlign: 'center',

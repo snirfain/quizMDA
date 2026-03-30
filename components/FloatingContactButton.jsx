@@ -124,14 +124,14 @@ export default function FloatingContactButton() {
 const styles = {
   container: {
     position: 'fixed',
-    right: '20px',
-    bottom: '20px',
+    right: '14px',
+    bottom: '14px',
     zIndex: 9998,
     direction: 'rtl',
   },
   fab: {
-    width: '56px',
-    height: '56px',
+    width: '52px',
+    height: '52px',
     borderRadius: '50%',
     backgroundColor: '#1565c0',
     color: '#fff',

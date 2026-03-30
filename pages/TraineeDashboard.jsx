@@ -433,7 +433,8 @@ const styles = {
   filterGroup: {
     display: 'flex',
     flexDirection: 'column',
-    minWidth: '200px',
+    minWidth: 'min(200px, 100%)',
+    flex: '1 1 200px',
   },
   hint: {
     margin: '0 0 10px 0',
@@ -481,7 +482,7 @@ const styles = {
   },
   checkboxGroup: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))',
     gap: '10px var(--space-6)',
   },
   categoryRow: {

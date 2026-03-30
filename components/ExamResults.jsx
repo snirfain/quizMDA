@@ -218,7 +218,8 @@ const styles = {
     direction: 'rtl',
     maxWidth: '1200px',
     margin: '0 auto',
-    padding: '20px'
+    padding: 'clamp(12px, 3vw, 20px)',
+    boxSizing: 'border-box',
   },
   header: {
     display: 'flex',
@@ -253,30 +254,30 @@ const styles = {
   summary: {
     backgroundColor: '#FFFFFF',
     borderRadius: '8px',
-    padding: '40px',
-    marginBottom: '30px',
+    padding: 'clamp(16px, 5vw, 40px)',
+    marginBottom: '24px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '30px'
+    gap: '24px',
   },
   scoreCard: {
     textAlign: 'center'
   },
   scoreCircle: {
-    width: '150px',
-    height: '150px',
+    width: 'min(150px, 35vw)',
+    height: 'min(150px, 35vw)',
     borderRadius: '50%',
-    border: '8px solid',
+    border: '6px solid',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: '0 auto 16px'
+    margin: '0 auto 16px',
   },
   scoreValue: {
-    fontSize: '48px',
-    fontWeight: 'bold'
+    fontSize: 'clamp(28px, 8vw, 48px)',
+    fontWeight: 'bold',
   },
   scoreLabel: {
     fontSize: '24px',
@@ -285,10 +286,10 @@ const styles = {
   },
   stats: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-    gap: '20px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(130px, 100%), 1fr))',
+    gap: '12px',
     width: '100%',
-    maxWidth: '800px'
+    maxWidth: '800px',
   },
   statItem: {
     textAlign: 'center',
@@ -309,8 +310,8 @@ const styles = {
   reviewSection: {
     backgroundColor: '#FFFFFF',
     borderRadius: '8px',
-    padding: '30px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    padding: 'clamp(14px, 4vw, 30px)',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
   },
   sectionTitle: {
     fontSize: '24px',
@@ -320,8 +321,8 @@ const styles = {
   },
   questionsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-    gap: '16px'
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(220px, 100%), 1fr))',
+    gap: '12px',
   },
   questionCard: {
     padding: '16px',

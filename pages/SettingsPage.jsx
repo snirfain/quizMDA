@@ -167,12 +167,19 @@ function ProfileSettings({ user }) {
   const [fullName, setFullName] = useState(user.full_name || '');
   const [isSaving, setIsSaving] = useState(false);
   const [currentUser, setCurrentUserState] = useState(user);
+
+  // Course number state
+  const [courseNumber, setCourseNumber] = useState(user.course_number || '');
+  const [additionalCourses, setAdditionalCourses] = useState(user.additional_courses || []);
+  const [newCourse, setNewCourse] = useState('');
+  const [savingCourses, setSavingCourses] = useState(false);
   
-  // Update local state when user prop changes
   useEffect(() => {
     setFullName(user.full_name || '');
     setCurrentUserState(user);
-  }, [user.full_name]);
+    setCourseNumber(user.course_number || '');
+    setAdditionalCourses(user.additional_courses || []);
+  }, [user.full_name, user.course_number, user.additional_courses]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -189,7 +196,6 @@ function ProfileSettings({ user }) {
 
     setIsSaving(true);
     try {
-      // Update user in database
       let updatedUser;
       if (entities.Users && typeof entities.Users.update === 'function') {
         updatedUser = await entities.Users.update(user.user_id, {
@@ -201,18 +207,13 @@ function ProfileSettings({ user }) {
         });
       }
       
-      // Fallback if update didn't return user
       if (!updatedUser) {
         updatedUser = { ...currentUser, full_name: fullName.trim() };
       }
 
-      // Update localStorage FIRST - this ensures getCurrentUser returns updated value
       setCurrentUser(updatedUser);
-      
-      // Update local state
       setCurrentUserState(updatedUser);
 
-      // Notify App.jsx to update state
       window.dispatchEvent(new CustomEvent('userUpdated', { 
         detail: updatedUser
       }));
@@ -223,6 +224,61 @@ function ProfileSettings({ user }) {
       showToast('שגיאה בעדכון הפרופיל', 'error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // ── Course number handlers ──
+  const handleCourseInput = (val) => {
+    const digits = val.replace(/\D/g, '');
+    if (digits.length <= 7) setCourseNumber(digits);
+  };
+
+  const handleNewCourseInput = (val) => {
+    const digits = val.replace(/\D/g, '');
+    if (digits.length <= 7) setNewCourse(digits);
+  };
+
+  const courseValid = courseNumber.length >= 6 && courseNumber.length <= 7;
+  const newCourseValid = newCourse.length >= 6 && newCourse.length <= 7;
+
+  const handleAddCourse = () => {
+    if (!newCourseValid) return;
+    if (newCourse === courseNumber || additionalCourses.includes(newCourse)) {
+      showToast('מספר קורס כבר קיים', 'info');
+      return;
+    }
+    setAdditionalCourses([...additionalCourses, newCourse]);
+    setNewCourse('');
+  };
+
+  const handleRemoveCourse = (c) => {
+    setAdditionalCourses(additionalCourses.filter(x => x !== c));
+  };
+
+  const handleSaveCourses = async () => {
+    if (!courseValid) {
+      showToast('מספר קורס ראשי חייב להכיל 6-7 ספרות', 'error');
+      return;
+    }
+    setSavingCourses(true);
+    try {
+      const res = await fetch(`/api/users/${user.user_id}/course-numbers`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ course_number: courseNumber, additional_courses: additionalCourses }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'שגיאה');
+
+      const updated = { ...currentUser, course_number: courseNumber, additional_courses: additionalCourses };
+      setCurrentUser(updated);
+      setCurrentUserState(updated);
+      window.dispatchEvent(new CustomEvent('userUpdated', { detail: updated }));
+      showToast('מספרי הקורס נשמרו בהצלחה', 'success');
+    } catch (err) {
+      showToast('שגיאה בשמירה: ' + (err?.message || ''), 'error');
+    } finally {
+      setSavingCourses(false);
     }
   };
 
@@ -242,6 +298,109 @@ function ProfileSettings({ user }) {
           {isSaving ? 'שומר...' : 'שמור שינויים'}
         </button>
       </form>
+
+      {/* ── Course number management ── */}
+      <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #e0e0e0' }}>
+        <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '16px', color: '#212121' }}>מספרי קורס</h3>
+
+        {/* Primary course */}
+        <label style={{ fontSize: '14px', fontWeight: 600, color: '#333', display: 'block', marginBottom: '6px' }}>
+          מספר קורס ראשי
+        </label>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={7}
+          value={courseNumber}
+          onChange={(e) => handleCourseInput(e.target.value)}
+          placeholder="הזן 6-7 ספרות"
+          style={{
+            width: '220px', padding: '10px 14px', fontSize: '18px', fontWeight: 700,
+            border: `1.5px solid ${courseNumber && !courseValid ? '#e53935' : '#e0e0e0'}`,
+            borderRadius: '8px', textAlign: 'center', letterSpacing: '2px',
+            direction: 'ltr', fontFamily: 'inherit', boxSizing: 'border-box',
+          }}
+        />
+        {courseNumber && !courseValid && (
+          <p style={{ fontSize: '12px', color: '#e53935', margin: '4px 0 0' }}>
+            חייב להכיל 6-7 ספרות ({courseNumber.length} הוזנו)
+          </p>
+        )}
+
+        {/* Additional courses */}
+        <label style={{ fontSize: '14px', fontWeight: 600, color: '#333', display: 'block', marginTop: '18px', marginBottom: '6px' }}>
+          קורסים נוספים
+        </label>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', alignItems: 'center' }}>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={7}
+            value={newCourse}
+            onChange={(e) => handleNewCourseInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCourse())}
+            placeholder="6-7 ספרות"
+            style={{
+              width: '180px', padding: '10px 14px', fontSize: '16px', fontWeight: 600,
+              border: '1.5px solid #e0e0e0', borderRadius: '8px', textAlign: 'center',
+              letterSpacing: '2px', direction: 'ltr', fontFamily: 'inherit',
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleAddCourse}
+            disabled={!newCourseValid}
+            style={{
+              padding: '10px 20px', background: newCourseValid ? '#1565c0' : '#ccc', color: '#fff',
+              border: 'none', borderRadius: '8px', fontWeight: 600, cursor: newCourseValid ? 'pointer' : 'default',
+              fontSize: '14px', fontFamily: 'inherit',
+            }}
+          >
+            הוסף
+          </button>
+        </div>
+
+        {/* Course chips */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+          {additionalCourses.map((c) => (
+            <div key={c} style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '6px 14px', background: '#f5f5f5', borderRadius: '20px',
+              fontSize: '15px', fontWeight: 600, border: '1px solid #e0e0e0',
+              direction: 'ltr', letterSpacing: '1px',
+            }}>
+              <span>{c}</span>
+              <button
+                type="button"
+                onClick={() => handleRemoveCourse(c)}
+                style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', fontSize: '16px', padding: 0, lineHeight: 1 }}
+                aria-label={`הסר קורס ${c}`}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          {additionalCourses.length === 0 && (
+            <span style={{ color: '#999', fontSize: '14px' }}>לא הוגדרו קורסים נוספים</span>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSaveCourses}
+          disabled={savingCourses || !courseValid}
+          style={{
+            padding: '10px 28px', background: courseValid ? '#e53935' : '#ccc', color: '#fff',
+            border: 'none', borderRadius: '8px', fontWeight: 700,
+            cursor: savingCourses || !courseValid ? 'default' : 'pointer',
+            fontSize: '14px', fontFamily: 'inherit',
+          }}
+        >
+          {savingCourses ? 'שומר...' : 'שמור מספרי קורס'}
+        </button>
+      </div>
     </div>
   );
 }

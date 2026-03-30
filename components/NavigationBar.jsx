@@ -103,7 +103,7 @@ export default function NavigationBar({ onMenuToggle }) {
       role="navigation"
       aria-label="ניווט ראשי"
     >
-      <div style={styles.container}>
+      <div style={styles.container} className="nav-bar-container">
         {/* Logo/Brand */}
         <div style={styles.brand}>
           <a
@@ -113,16 +113,16 @@ export default function NavigationBar({ onMenuToggle }) {
             aria-label="דף הבית"
           >
             <span style={styles.logoStar} aria-hidden="true">✡</span>
-            <span>
+            <span className="nav-brand-text">
               <span style={styles.logoText}>מד"א</span>
-              <span style={styles.logoSub}>מגן דוד אדום</span>
+              <span style={styles.logoSub} className="nav-brand-sub">מגן דוד אדום</span>
             </span>
           </a>
         </div>
 
         {/* Desktop Navigation */}
         {!isMobile && (
-          <ul style={styles.navList} role="menubar">
+          <ul style={styles.navList} className="nav-desktop-links" role="menubar">
             {navItems.map((item) => {
               const isActive = currentPath === item.path;
               return (
@@ -171,12 +171,13 @@ export default function NavigationBar({ onMenuToggle }) {
           <div style={styles.userMenuContainer}>
             <button
               style={styles.userButton}
+              className="nav-user-btn"
               onClick={() => setShowUserMenu(!showUserMenu)}
               aria-label="תפריט משתמש"
               aria-expanded={showUserMenu}
               aria-haspopup="true"
             >
-              <span style={styles.userName}>{user.full_name}</span>
+              <span style={styles.userName} className="nav-user-name">{user.full_name}</span>
               <span style={styles.userIcon} aria-hidden="true">👤</span>
             </button>
 

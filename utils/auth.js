@@ -29,7 +29,8 @@ export async function getCurrentUser() {
           role: 'admin',
           auth_provider: 'local-dev',
           setup_complete: true,
-          course_number: 'DEV-001',
+          course_number: '123456',
+          additional_courses: [],
           instructor_courses: [],
           custom_permissions: [],
         };

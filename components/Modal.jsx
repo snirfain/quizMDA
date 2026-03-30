@@ -129,25 +129,27 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1050,
-    padding: '20px',
-    direction: 'rtl'
+    padding: 'max(8px, env(safe-area-inset-top, 8px)) 10px max(8px, env(safe-area-inset-bottom, 8px))',
+    direction: 'rtl',
+    boxSizing: 'border-box',
   },
   modal: {
     backgroundColor: '#FFFFFF',
-    borderRadius: '8px',
+    borderRadius: '12px',
     boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
-    maxHeight: '90vh',
+    maxHeight: '92vh',
     display: 'flex',
     flexDirection: 'column',
     width: '100%',
-    overflow: 'hidden'
+    overflow: 'hidden',
   },
   header: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '20px',
-    borderBottom: '1px solid #e0e0e0'
+    padding: '16px 20px',
+    borderBottom: '1px solid #e0e0e0',
+    flexShrink: 0,
   },
   title: {
     margin: 0,

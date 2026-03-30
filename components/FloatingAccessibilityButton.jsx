@@ -105,14 +105,14 @@ export default function FloatingAccessibilityButton() {
 const styles = {
   container: {
     position: 'fixed',
-    left: '20px',
-    bottom: '20px',
+    left: '14px',
+    bottom: '14px',
     zIndex: 9999,
-    direction: 'ltr' // Button is on left side, so LTR for proper positioning
+    direction: 'ltr',
   },
   button: {
-    width: '60px',
-    height: '60px',
+    width: '52px',
+    height: '52px',
     borderRadius: '50%',
     backgroundColor: '#CC0000',
     color: '#FFFFFF',

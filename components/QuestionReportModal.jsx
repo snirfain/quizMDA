@@ -245,11 +245,11 @@ export default function QuestionReportModal({ question, onClose }) {
 const overlay = {
   position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
-  zIndex: 10000, padding: '16px',
+  zIndex: 10000, padding: '10px', boxSizing: 'border-box',
 };
 const modal = {
   background: '#fff', borderRadius: '14px', maxWidth: '560px', width: '100%',
-  maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+  maxHeight: '92vh', display: 'flex', flexDirection: 'column',
   boxShadow: '0 8px 40px rgba(0,0,0,0.25)', direction: 'rtl',
 };
 const header = {

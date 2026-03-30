@@ -36,10 +36,14 @@ export default function PermissionManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleEdit, setRoleEdit] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
     loadUsers();
     getCurrentUser().then(u => setCurrentUserId(u?.user_id || null));
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   useEffect(() => {
@@ -162,7 +166,7 @@ export default function PermissionManagement() {
     <div style={styles.container}>
       <h2 style={styles.pageTitle}>ניהול הרשאות</h2>
       <p style={styles.pageSubtitle}>הגדרת תפקידים והרשאות מותאמות אישית למשתמשים</p>
-      <div style={styles.layout}>
+      <div style={{ ...styles.layout, ...(isMobile ? { gridTemplateColumns: '1fr', minHeight: 'auto' } : {}) }}>
         {/* User List */}
         <div style={styles.userList}>
           <div style={styles.searchBox}>
@@ -309,10 +313,11 @@ const cardRadius = 16;
 const styles = {
   container: {
     direction: 'rtl',
-    padding: '24px',
+    padding: 'clamp(12px, 3vw, 24px)',
     maxWidth: '1400px',
     margin: '0 auto',
-    fontFamily: "'Heebo', 'Assistant', 'Arial Hebrew', Arial, sans-serif"
+    fontFamily: "'Heebo', 'Assistant', 'Arial Hebrew', Arial, sans-serif",
+    boxSizing: 'border-box',
   },
   pageTitle: {
     fontSize: 20,
@@ -327,9 +332,9 @@ const styles = {
   },
   layout: {
     display: 'grid',
-    gridTemplateColumns: '350px 1fr',
-    gap: 24,
-    minHeight: 600
+    gridTemplateColumns: 'minmax(0, 350px) 1fr',
+    gap: 20,
+    minHeight: 400,
   },
   userList: {
     backgroundColor: '#fff',

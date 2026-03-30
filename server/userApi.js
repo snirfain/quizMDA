@@ -25,6 +25,7 @@ function normalizeUserForDb(u) {
     profile_picture: u.profile_picture != null ? String(u.profile_picture) : null,
     email_verified: Boolean(u.email_verified),
     course_number: u.course_number != null ? String(u.course_number).trim() : null,
+    additional_courses: Array.isArray(u.additional_courses) ? u.additional_courses.map(c => String(c).trim()).filter(Boolean) : [],
     instructor_courses: Array.isArray(u.instructor_courses) ? u.instructor_courses.map(c => String(c).trim()).filter(Boolean) : [],
     setup_complete: Boolean(u.setup_complete),
     points: Math.max(0, parseInt(u.points, 10) || 0),
@@ -78,6 +79,7 @@ export async function postUser(req, res) {
     if (existing) {
       // Preserve fields that should not be overwritten by a client sync
       if (existing.course_number && !data.course_number) data.course_number = existing.course_number;
+      if (existing.additional_courses?.length && !data.additional_courses?.length) data.additional_courses = existing.additional_courses;
       if (existing.instructor_courses?.length && !data.instructor_courses?.length) data.instructor_courses = existing.instructor_courses;
       if (existing.setup_complete && !data.setup_complete) data.setup_complete = existing.setup_complete;
       doc = await User.findOneAndUpdate(
@@ -115,6 +117,34 @@ export async function setupUser(req, res) {
     res.json(rest);
   } catch (err) {
     console.error('POST /api/users/setup error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/** PUT /api/users/:userId/course-numbers — update course_number + additional_courses */
+export async function updateCourseNumbers(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+    const { userId } = req.params;
+    const { course_number, additional_courses } = req.body || {};
+    const updates = {};
+    if (course_number !== undefined) {
+      const val = String(course_number).replace(/\D/g, '');
+      if (val.length < 6 || val.length > 7) return res.status(400).json({ error: 'course_number must be 6-7 digits' });
+      updates.course_number = val;
+    }
+    if (additional_courses !== undefined) {
+      if (!Array.isArray(additional_courses)) return res.status(400).json({ error: 'additional_courses must be an array' });
+      updates.additional_courses = additional_courses.map(c => String(c).replace(/\D/g, '')).filter(c => c.length >= 6 && c.length <= 7);
+    }
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'Nothing to update' });
+    const doc = await User.findOneAndUpdate({ user_id: userId }, { $set: updates }, { new: true }).lean();
+    if (!doc) return res.status(404).json({ error: 'User not found' });
+    const { _id, ...rest } = doc;
+    res.json(rest);
+  } catch (err) {
+    console.error('PUT /api/users/:userId/course-numbers error:', err);
     res.status(500).json({ error: err.message });
   }
 }

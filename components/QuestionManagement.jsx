@@ -42,7 +42,7 @@ function FilterDropdown({ value, onChange, options, ariaLabel }) {
   }, [open]);
   const label = options.find(o => o.value === value)?.label ?? value;
   return (
-    <div ref={ref} style={{ position: 'relative', width: '160px', flexShrink: 0 }}>
+    <div ref={ref} style={{ position: 'relative', width: '160px', minWidth: '120px', flexShrink: 1 }}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -2209,7 +2209,9 @@ const styles = {
     direction: 'rtl',
     maxWidth: '1400px',
     margin: '0 auto',
-    padding: '20px'
+    padding: '20px',
+    boxSizing: 'border-box',
+    overflowX: 'hidden',
   },
   header: {
     display: 'flex',
@@ -2220,7 +2222,7 @@ const styles = {
     gap: '16px'
   },
   title: {
-    fontSize: '32px',
+    fontSize: 'clamp(22px, 5vw, 32px)',
     fontWeight: 'bold',
     margin: 0,
     color: '#212121'
@@ -2257,7 +2259,8 @@ const styles = {
     position: 'relative',
     overflow: 'visible',
     width: '160px',
-    flexShrink: 0
+    minWidth: '120px',
+    flexShrink: 1,
   },
   filterSelect: {
     padding: '8px 12px',
@@ -2313,7 +2316,8 @@ const styles = {
     maxWidth: '300px',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
+    whiteSpace: 'nowrap',
+    wordBreak: 'break-word',
   },
   statusBadge: {
     padding: '4px 8px',
@@ -2362,25 +2366,30 @@ const styles = {
   },
   tabs: {
     display: 'flex',
-    gap: '8px',
+    gap: '4px',
     borderBottom: '2px solid #e0e0e0',
-    marginBottom: '30px',
-    flexWrap: 'wrap'
+    marginBottom: '24px',
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    scrollbarWidth: 'none',
+    msOverflowStyle: 'none',
   },
   tab: {
-    padding: '12px 24px',
+    padding: '10px 16px',
     backgroundColor: 'transparent',
     border: 'none',
     borderBottom: '2px solid transparent',
     cursor: 'pointer',
-    fontSize: '16px',
+    fontSize: '14px',
     fontWeight: '500',
     color: '#757575',
     marginBottom: '-2px',
     position: 'relative',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: '6px',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
     '&:hover': {
       color: '#CC0000'
     },
@@ -2407,22 +2416,22 @@ const styles = {
   },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '20px',
-    marginBottom: '30px'
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))',
+    gap: '12px',
+    marginBottom: '24px',
   },
   statCard: {
     backgroundColor: '#FFFFFF',
-    padding: '24px',
+    padding: 'clamp(14px, 3vw, 24px)',
     borderRadius: '8px',
     textAlign: 'center',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
   },
   statValue: {
-    fontSize: '36px',
+    fontSize: 'clamp(24px, 5vw, 36px)',
     fontWeight: 'bold',
     color: '#CC0000',
-    marginBottom: '8px'
+    marginBottom: '6px',
   },
   statLabel: {
     fontSize: '14px',
@@ -2459,16 +2468,18 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 2000
+    zIndex: 2000,
+    padding: '10px',
+    boxSizing: 'border-box',
   },
   dialog: {
     backgroundColor: '#FFFFFF',
-    borderRadius: '8px',
-    padding: '24px',
+    borderRadius: '12px',
+    padding: 'clamp(16px, 4vw, 24px)',
     maxWidth: '500px',
-    width: '90%',
-    maxHeight: '80vh',
-    overflowY: 'auto'
+    width: '100%',
+    maxHeight: '90vh',
+    overflowY: 'auto',
   },
   dialogTitle: {
     fontSize: '20px',
@@ -2557,7 +2568,8 @@ const styles = {
     fontFamily: 'inherit',
     direction: 'rtl',
     cursor: 'pointer',
-    minWidth: '160px',
+    minWidth: 'min(160px, 100%)',
+    flex: '1 1 auto',
   },
   bulkBtn: {
     padding: '8px 16px',

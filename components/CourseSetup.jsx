@@ -54,8 +54,9 @@ export default function CourseSetup({ user, onComplete }) {
       background: 'linear-gradient(135deg, #1a237e 0%, #283593 100%)', direction: 'rtl',
     }}>
       <div style={{
-        background: '#fff', borderRadius: '20px', padding: '48px 40px', maxWidth: '440px',
-        width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', textAlign: 'center',
+        background: '#fff', borderRadius: '20px', padding: 'clamp(24px, 6vw, 48px) clamp(20px, 5vw, 40px)',
+        maxWidth: '440px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', textAlign: 'center',
+        boxSizing: 'border-box',
       }}>
         <div style={{
           width: '72px', height: '72px', borderRadius: '50%',

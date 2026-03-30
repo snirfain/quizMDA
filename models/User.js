@@ -24,6 +24,8 @@ const userSchema = new mongoose.Schema(
     email_verified: { type: Boolean, default: false },
     /** MDA course number — required on first login */
     course_number: { type: String, default: null },
+    /** Additional course numbers the user is enrolled in */
+    additional_courses: { type: [String], default: [] },
     /** For instructors: list of course numbers they teach */
     instructor_courses: { type: [String], default: [] },
     /** True after user has completed first-login setup (course number) */

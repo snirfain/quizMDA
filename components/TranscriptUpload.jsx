@@ -14,9 +14,10 @@ const styles = {
   container: {
     direction: 'rtl',
     textAlign: 'right',
-    padding: 'var(--space-8) var(--space-6) 48px',
+    padding: 'var(--space-6) var(--space-5) 40px',
     maxWidth: 820,
     margin: '0 auto',
+    boxSizing: 'border-box',
   },
   title: {
     margin: '0 0 var(--space-2) 0',
@@ -66,6 +67,7 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 'var(--space-3)',
+    flexWrap: 'wrap',
   },
   note: {
     fontSize: 'var(--font-size-sm)',
@@ -791,7 +793,7 @@ export default function TranscriptUpload() {
             <select
               value={selectedHierarchyId}
               onChange={(e) => setSelectedHierarchyId(e.target.value)}
-              style={{ ...styles.input, width: 'auto', minWidth: 200, margin: 0 }}
+              style={{ ...styles.input, width: '100%', maxWidth: 300, minWidth: 0, margin: 0 }}
               aria-label="בחר יחידה"
             >
               {hierarchies.length === 0 && <option value="">טוען יחידות...</option>}
