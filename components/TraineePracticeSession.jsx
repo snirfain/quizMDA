@@ -15,7 +15,12 @@ import { pickRandomMedia, recalcMediaStats } from '../workflows/mediaEngine';
 import LoadingSpinner from './LoadingSpinner';
 import QuestionReportModal from './QuestionReportModal';
 import { sanitizeHtml } from '../utils/sanitize';
-// Responsive styles are handled via CSS media queries
+
+const safeParse = (v, fallback = {}) => {
+  if (v != null && typeof v === 'object') return v;
+  if (typeof v === 'string') try { return JSON.parse(v); } catch { return fallback; }
+  return fallback;
+};
 
 export default function TraineePracticeSession({ userId, hierarchyFilters = {}, tagFilters = [] }) {
   const [currentQuestion, setCurrentQuestion] = useState(null);
@@ -202,7 +207,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
   };
 
   const checkAnswer = (question, selected, answer) => {
-    const correctAnswer = JSON.parse(question.correct_answer || '{}');
+    const correctAnswer = safeParse(question.correct_answer);
     
     switch (question.question_type) {
       case 'single_choice':
@@ -543,7 +548,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
 function renderAnswerInput(question, userAnswer, setUserAnswer, selectedOptions, setSelectedOptions) {
   let correctAnswer;
   try {
-    correctAnswer = JSON.parse(question.correct_answer || '{}');
+    correctAnswer = safeParse(question.correct_answer);
   } catch (e) {
     correctAnswer = { value: question.correct_answer, options: [] };
   }

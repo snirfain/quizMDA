@@ -14,6 +14,12 @@ import { showToast } from './Toast';
 import { announce } from '../utils/accessibility';
 import QuestionReportModal from './QuestionReportModal';
 
+const safeParse = (v, fallback = []) => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string') try { return JSON.parse(v); } catch { return fallback; }
+  return fallback;
+};
+
 function getExamStateFromRouter() {
   if (typeof window === 'undefined' || !window.history || !window.history.state) return null;
   return window.history.state;
@@ -154,7 +160,7 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
     }
 
     if (question.question_type === 'multi_choice') {
-      const correctAnswers = JSON.parse(question.correct_answer || '[]');
+      const correctAnswers = safeParse(question.correct_answer);
       const userAnswers = Array.isArray(userAnswer) ? userAnswer : [userAnswer];
       return JSON.stringify(correctAnswers.sort()) === JSON.stringify(userAnswers.sort());
     }
@@ -317,7 +323,7 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
           <div style={styles.answers}>
             {currentQuestion.question_type === 'single_choice' && (
               <div style={styles.optionsList}>
-                {JSON.parse(currentQuestion.options || '[]').map((option, index) => (
+                {safeParse(currentQuestion.options).map((option, index) => (
                   <label key={index} style={styles.optionLabel}>
                     <input
                       type="radio"
@@ -335,7 +341,7 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
 
             {currentQuestion.question_type === 'multi_choice' && (
               <div style={styles.optionsList}>
-                {JSON.parse(currentQuestion.options || '[]').map((option, index) => (
+                {safeParse(currentQuestion.options).map((option, index) => (
                   <label key={index} style={styles.optionLabel}>
                     <input
                       type="checkbox"
