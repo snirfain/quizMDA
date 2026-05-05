@@ -33,6 +33,7 @@ import {
   QUESTION_STATUSES,
   PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY,
 } from '../shared/questionBankMetadata.js';
+import { syncQuestionsFromServer } from '../mockEntities.js';
 
 /** Custom dropdown for filters — avoids native select dropdown positioning issues in RTL. */
 function FilterDropdown({ value, onChange, options, ariaLabel }) {
@@ -223,7 +224,9 @@ export default function QuestionManagement() {
   const loadQuestions = async (opts = {}) => {
     setIsLoading(true);
     try {
-      if (typeof window !== 'undefined' && window.__quizMDA_syncPromise) {
+      if (opts?.showToastOnRefresh) {
+        await syncQuestionsFromServer();
+      } else if (typeof window !== 'undefined' && window.__quizMDA_syncPromise) {
         await window.__quizMDA_syncPromise;
       }
       const allQuestions = await entities.Question_Bank.find({}, { sort: { createdAt: -1 } });

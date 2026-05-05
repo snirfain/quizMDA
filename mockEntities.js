@@ -370,23 +370,38 @@ export async function syncQuestionsFromServer() {
     let skip = 0;
     let apiQuestions = [];
     let page;
+    /** First successful JSON page must be from a live DB, or we keep local cache (dev/offline). */
+    let serverDbConnected = true;
+    let gotSuccessfulPage = false;
     do {
       const res = await fetch(`/api/questions?skip=${skip}&limit=${PAGE_SIZE}&_t=${Date.now()}`, { cache: 'no-store' });
       if (!res.ok) break;
+      if (skip === 0) {
+        const h = res.headers.get('X-QuizMDA-Db-Connected');
+        serverDbConnected = h !== '0';
+      }
       page = await res.json();
       if (!Array.isArray(page)) break;
+      gotSuccessfulPage = true;
       apiQuestions = apiQuestions.concat(page);
       skip += PAGE_SIZE;
     } while (page.length === PAGE_SIZE);
 
-    if (apiQuestions.length === 0) {
-      console.log('[syncQuestionsFromServer] API returned 0 questions; keeping local cache');
-      return { fetched: 0, local: mockData.questions.length };
+    if (!gotSuccessfulPage) {
+      console.warn('[syncQuestionsFromServer] No valid API page; keeping local cache');
+      return { fetched: 0, local: mockData.questions.length, skipped: true };
+    }
+
+    if (!serverDbConnected) {
+      console.warn('[syncQuestionsFromServer] MongoDB not connected on server; keeping local cache');
+      return { fetched: 0, local: mockData.questions.length, skipped: true };
     }
 
     mockData.questions = apiQuestions.map(serverToLocal);
     saveToStorage();
-    console.log(`[syncQuestionsFromServer] Replaced local cache with ${mockData.questions.length} server questions`);
+    console.log(
+      `[syncQuestionsFromServer] Replaced local cache with ${mockData.questions.length} server question(s)`,
+    );
     return { fetched: mockData.questions.length };
   } catch (e) {
     console.error('[syncQuestionsFromServer] error:', e);

@@ -116,7 +116,9 @@ function normalizePartialUpdate(body) {
 export async function getQuestions(req, res) {
   try {
     await ensureDbConnection();
-    if (!isDbConnected()) {
+    const connected = isDbConnected();
+    res.set('X-QuizMDA-Db-Connected', connected ? '1' : '0');
+    if (!connected) {
       return res.status(200).json([]);
     }
     const skip = Math.max(0, parseInt(req.query.skip, 10) || 0);
