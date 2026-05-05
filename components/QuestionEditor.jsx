@@ -318,47 +318,89 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
       ariaLabel={question?.id ? 'עריכת שאלה' : 'יצירת שאלה חדשה'}
     >
       <form onSubmit={handleSubmit} style={styles.form}>
-        <FormField label="פרק (קטגוריה)" name="category" type="select" value={formData.category} onChange={(e) => handleChange('category', e.target.value)} required>
-          {QUESTION_CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </FormField>
+        <div style={styles.gridRow2} role="group" aria-label="פרק ותת־קטגוריה">
+          <FormField
+            compact
+            label="פרק"
+            name="category"
+            type="select"
+            value={formData.category}
+            onChange={(e) => handleChange('category', e.target.value)}
+            required
+          >
+            {QUESTION_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </FormField>
+          <FormField
+            compact
+            label="תת־קטגוריה"
+            name="sub_category"
+            type="select"
+            value={formData.sub_category}
+            onChange={(e) => handleChange('sub_category', e.target.value)}
+            required
+          >
+            {subOptions.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </FormField>
+        </div>
 
-        <FormField label="תת־קטגוריה" name="sub_category" type="select" value={formData.sub_category} onChange={(e) => handleChange('sub_category', e.target.value)} required>
-          {subOptions.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </FormField>
-
-        <FormField label="רמת חשיבה" name="thinking_level" type="select" value={formData.thinking_level} onChange={(e) => handleChange('thinking_level', e.target.value)} required>
-          {THINKING_LEVELS.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </FormField>
-
-        <FormField label="רמת הכשרה" name="training_level" type="select" value={formData.training_level} onChange={(e) => handleChange('training_level', e.target.value)} required>
-          {TRAINING_LEVELS.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </FormField>
-
-        <FormField label="סוג שאלה" name="question_type" type="select" value={formData.question_type} onChange={(e) => handleChange('question_type', e.target.value)} required>
-          {QUESTION_TYPES_UI.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </FormField>
+        <div style={styles.gridRow3} role="group" aria-label="רמת חשיבה, הכשרה וסוג שאלה">
+          <FormField
+            compact
+            label="רמת חשיבה"
+            name="thinking_level"
+            type="select"
+            value={formData.thinking_level}
+            onChange={(e) => handleChange('thinking_level', e.target.value)}
+            required
+          >
+            {THINKING_LEVELS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </FormField>
+          <FormField
+            compact
+            label="רמת הכשרה"
+            name="training_level"
+            type="select"
+            value={formData.training_level}
+            onChange={(e) => handleChange('training_level', e.target.value)}
+            required
+          >
+            {TRAINING_LEVELS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </FormField>
+          <FormField
+            compact
+            label="סוג שאלה"
+            name="question_type"
+            type="select"
+            value={formData.question_type}
+            onChange={(e) => handleChange('question_type', e.target.value)}
+            required
+          >
+            {QUESTION_TYPES_UI.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </FormField>
+        </div>
 
         <FormField
+          marginBottom={10}
           label="טקסט השאלה"
           name="question_text"
           type="textarea"
@@ -433,11 +475,11 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
         )}
 
         {formData.question_type === 'open_ended' && (
-          <FormField label="תשובה נכונה (אופציונלי)" name="correct_answer" type="textarea" value={formData.correct_answer} onChange={(e) => handleChange('correct_answer', e.target.value)} helpText="תשובה מומלצת או מילות מפתח" rows={3} />
+          <FormField marginBottom={10} label="תשובה נכונה (אופציונלי)" name="correct_answer" type="textarea" value={formData.correct_answer} onChange={(e) => handleChange('correct_answer', e.target.value)} helpText="תשובה מומלצת או מילות מפתח" rows={3} />
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={{ fontSize: '14px', fontWeight: 600, color: '#1A1A1A' }}>סטטיסטיקה (קריאה בלבד)</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={styles.sectionLabel}>סטטיסטיקה (קריאה בלבד)</label>
           {(() => {
             const attempts = question?.total_attempts ?? 0;
             const rate = question?.success_rate;
@@ -447,7 +489,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '4px',
-                  padding: '10px 14px',
+                  padding: '8px 12px',
                   background: '#F8F8F8',
                   borderRadius: '8px',
                   border: '1px solid #E0E0E0',
@@ -467,8 +509,8 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
           })()}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <label style={{ fontSize: '14px', fontWeight: 600, color: '#1A1A1A' }}>מדיה לשאלה (קבוע)</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={styles.sectionLabel}>מדיה לשאלה (קבוע)</label>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {[
               { id: 'none', label: '✗ ללא מדיה' },
@@ -537,11 +579,11 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
           </div>
         </div>
 
-        <FormField label="רמז (אופציונלי)" name="hint" type="text" value={formData.hint} onChange={(e) => handleChange('hint', e.target.value)} />
+        <FormField marginBottom={10} label="רמז (אופציונלי)" name="hint" type="text" value={formData.hint} onChange={(e) => handleChange('hint', e.target.value)} />
 
-        <FormField label="הסבר (אופציונלי)" name="explanation" type="textarea" value={formData.explanation} onChange={(e) => handleChange('explanation', e.target.value)} rows={3} helpText="הסבר למה התשובה נכונה" />
+        <FormField marginBottom={10} label="הסבר (אופציונלי)" name="explanation" type="textarea" value={formData.explanation} onChange={(e) => handleChange('explanation', e.target.value)} rows={3} helpText="הסבר למה התשובה נכונה" />
 
-        <FormField label="סטטוס" name="status" type="select" value={formData.status} onChange={(e) => handleChange('status', e.target.value)}>
+        <FormField marginBottom={10} label="סטטוס" name="status" type="select" value={formData.status} onChange={(e) => handleChange('status', e.target.value)}>
           {QUESTION_STATUSES.map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}
@@ -669,18 +711,39 @@ const styles = {
     direction: 'rtl',
     display: 'flex',
     flexDirection: 'column',
-    gap: '20px',
+    gap: '11px',
+  },
+  gridRow2: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: '8px 12px',
+    alignItems: 'start',
+    width: '100%',
+  },
+  gridRow3: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: '8px 12px',
+    alignItems: 'start',
+    width: '100%',
+  },
+  sectionLabel: {
+    display: 'block',
+    fontSize: '13px',
+    fontWeight: 600,
+    color: '#1a1a1a',
+    marginBottom: '2px',
   },
   optionsSection: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '12px',
+    gap: '8px',
   },
   label: {
     fontSize: '14px',
-    fontWeight: '500',
+    fontWeight: 600,
     color: '#212121',
-    marginBottom: '8px',
+    marginBottom: '6px',
   },
   optionRow: {
     display: 'flex',
@@ -734,9 +797,10 @@ const styles = {
   actions: {
     display: 'flex',
     justifyContent: 'flex-end',
-    gap: '12px',
-    marginTop: '20px',
+    gap: '10px',
+    marginTop: '12px',
     flexWrap: 'wrap',
+    paddingTop: '4px',
   },
   historyButton: {
     padding: '10px 20px',
@@ -773,15 +837,15 @@ const styles = {
   },
   errorsSection: {
     backgroundColor: '#ffebee',
-    padding: '16px',
-    borderRadius: '4px',
+    padding: '10px 12px',
+    borderRadius: '6px',
     border: '1px solid #ef5350',
   },
   errorsTitle: {
-    fontSize: '16px',
+    fontSize: '14px',
     fontWeight: 'bold',
     color: '#c62828',
-    marginBottom: '12px',
+    marginBottom: '8px',
   },
   errorsList: {
     marginRight: '20px',
@@ -793,7 +857,7 @@ const styles = {
     marginBottom: '8px',
   },
   previewSection: {
-    marginTop: '20px',
+    marginTop: '8px',
   },
   previewButton: {
     padding: '8px 16px',
@@ -806,15 +870,15 @@ const styles = {
   },
   previewContainer: {
     backgroundColor: '#f9f9f9',
-    padding: '20px',
+    padding: '12px 14px',
     borderRadius: '8px',
-    marginTop: '16px',
+    marginTop: '10px',
     border: '1px solid #e0e0e0',
   },
   previewTitle: {
-    fontSize: '18px',
+    fontSize: '15px',
     fontWeight: 'bold',
-    marginBottom: '16px',
+    marginBottom: '10px',
     color: '#212121',
   },
   previewContent: {

@@ -20,6 +20,10 @@ export default function FormField({
   placeholder = '',
   ariaDescribedBy = null,
   children = null,
+  /** Smaller vertical spacing (e.g. grid rows of selects) */
+  compact = false,
+  /** Optional bottom spacing override (number = px); default from container.style */
+  marginBottom = undefined,
   ...props
 }) {
   const fieldId = React.useMemo(() => generateAccessibleId(`field-${name}`), [name]);
@@ -36,12 +40,22 @@ export default function FormField({
   const isTextarea = type === 'textarea';
   const InputComponent = isTextarea ? 'textarea' : isSelect ? 'select' : 'input';
 
+  let containerSx = compact ? styles.containerCompact : styles.container;
+  if (marginBottom !== undefined) {
+    containerSx = {
+      ...containerSx,
+      marginBottom: typeof marginBottom === 'number' ? `${marginBottom}px` : marginBottom,
+    };
+  }
+  const labelSx = compact ? styles.labelCompact : styles.label;
+  const inputSx = compact ? { ...styles.input, ...styles.inputCompact } : styles.input;
+
   return (
-    <div style={styles.container}>
+    <div style={containerSx}>
       {label && (
         <label
           htmlFor={fieldId}
-          style={styles.label}
+          style={labelSx}
         >
           {label}
           {required && (
@@ -66,10 +80,10 @@ export default function FormField({
         aria-describedby={describedBy}
         aria-label={!label ? placeholder : undefined}
         style={{
-          ...styles.input,
+          ...inputSx,
           ...(isTextarea ? styles.textarea : {}),
           ...(error ? styles.inputError : {}),
-          ...(disabled ? styles.inputDisabled : {})
+          ...(disabled ? styles.inputDisabled : {}),
         }}
         {...props}
       >
@@ -99,21 +113,41 @@ export default function FormField({
 const styles = {
   container: {
     marginBottom: '20px',
-    direction: 'rtl'
+    direction: 'rtl',
+    width: '100%',
+  },
+  containerCompact: {
+    marginBottom: '0',
+    direction: 'rtl',
+    width: '100%',
+    minWidth: 0,
   },
   label: {
     display: 'block',
     marginBottom: '8px',
     fontSize: '14px',
     fontWeight: '500',
-    color: '#212121'
+    color: '#212121',
+  },
+  labelCompact: {
+    display: 'block',
+    marginBottom: '4px',
+    fontSize: '13px',
+    fontWeight: 600,
+    color: '#212121',
   },
   required: {
     color: '#f44336',
     marginRight: '4px'
   },
+  inputCompact: {
+    padding: '7px 10px',
+    fontSize: '13px',
+    minHeight: '38px',
+  },
   input: {
     width: '100%',
+    boxSizing: 'border-box',
     padding: '10px 12px',
     fontSize: '14px',
     border: '1px solid #e0e0e0',
