@@ -125,6 +125,9 @@ function normalizePartialUpdate(body) {
 
 export async function getQuestions(req, res) {
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H1',location:'server/questionApi.js:getQuestions:start',message:'GET /api/questions start',data:{query:req.query||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     await ensureDbConnection();
     const connected = isDbConnected();
     res.set('X-QuizMDA-Db-Connected', connected ? '1' : '0');
@@ -141,6 +144,9 @@ export async function getQuestions(req, res) {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json(withId);
   } catch (err) {
+    // #region agent log
+    fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H1',location:'server/questionApi.js:getQuestions:catch',message:'GET /api/questions failed',data:{name:err?.name,message:err?.message,stack:String(err?.stack||'').slice(0,600)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     console.error('GET /api/questions error:', err);
     res.status(500).json({ error: err.message });
   }
@@ -176,6 +182,9 @@ export async function updateQuestion(req, res) {
     }
     const { id } = req.params;
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H2',location:'server/questionApi.js:updateQuestion:invalidId',message:'PUT invalid question id',data:{id:id||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return res.status(400).json({ error: 'Invalid question id' });
     }
     const body = req.body || {};
@@ -210,6 +219,9 @@ export async function deleteQuestion(req, res) {
     }
     const { id } = req.params;
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H2',location:'server/questionApi.js:deleteQuestion:invalidId',message:'DELETE invalid question id',data:{id:id||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return res.status(400).json({ error: 'Invalid question id' });
     }
     const doc = await Question.findByIdAndDelete(id);

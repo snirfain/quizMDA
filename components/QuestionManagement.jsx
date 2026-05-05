@@ -224,6 +224,9 @@ export default function QuestionManagement() {
   const loadQuestions = async (opts = {}) => {
     setIsLoading(true);
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H5',location:'components/QuestionManagement.jsx:loadQuestions:start',message:'QuestionManagement loadQuestions invoked',data:{showToastOnRefresh:Boolean(opts?.showToastOnRefresh)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (opts?.showToastOnRefresh) {
         await syncQuestionsFromServer();
       } else if (typeof window !== 'undefined' && window.__quizMDA_syncPromise) {

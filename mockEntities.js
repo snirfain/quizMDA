@@ -387,6 +387,9 @@ export async function syncQuestionsFromServer() {
     let gotSuccessfulPage = false;
     do {
       const res = await fetch(`/api/questions?skip=${skip}&limit=${PAGE_SIZE}&_t=${Date.now()}`, { cache: 'no-store' });
+      // #region agent log
+      fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H3',location:'mockEntities.js:syncQuestionsFromServer:pageFetch',message:'Fetched /api/questions page',data:{skip,status:res.status,ok:res.ok},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (!res.ok) break;
       if (skip === 0) {
         const h = res.headers.get('X-QuizMDA-Db-Connected');
@@ -416,6 +419,9 @@ export async function syncQuestionsFromServer() {
     );
     return { fetched: mockData.questions.length };
   } catch (e) {
+    // #region agent log
+    fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H3',location:'mockEntities.js:syncQuestionsFromServer:catch',message:'syncQuestionsFromServer threw',data:{message:e?.message||String(e)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     console.error('[syncQuestionsFromServer] error:', e);
     return { fetched: 0, local: mockData.questions.length, error: e.message };
   }
@@ -457,6 +463,9 @@ export const mockEntities = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
+        // #region agent log
+        fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H4',location:'mockEntities.js:Question_Bank.create:serverResponse',message:'POST /api/questions result',data:{status:res.status,ok:res.ok,localId:local.id},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (res.ok) {
           const created = await res.json();
           const q = serverToLocal(Array.isArray(created) ? created[0] : created);
@@ -476,6 +485,9 @@ export const mockEntities = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
+        // #region agent log
+        fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H2',location:'mockEntities.js:Question_Bank.update:serverResponse',message:'PUT /api/questions/:id result',data:{id,status:res.status,ok:res.ok,isLocalId:String(id||'').startsWith('q')},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (res.ok) {
           const updated = serverToLocal(await res.json());
           const idx = mockData.questions.findIndex(q => q.id === id);
@@ -501,7 +513,10 @@ export const mockEntities = {
     },
     delete: async (id) => {
       try {
-        await fetch(`/api/questions/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/questions/${id}`, { method: 'DELETE' });
+        // #region agent log
+        fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H2',location:'mockEntities.js:Question_Bank.delete:serverResponse',message:'DELETE /api/questions/:id result',data:{id,status:res.status,ok:res.ok,isLocalId:String(id||'').startsWith('q')},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
       } catch (_) { /* best-effort */ }
       const index = mockData.questions.findIndex(q => q.id === id);
       if (index !== -1) {
