@@ -224,9 +224,6 @@ export default function QuestionManagement() {
   const loadQuestions = async (opts = {}) => {
     setIsLoading(true);
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H5',location:'components/QuestionManagement.jsx:loadQuestions:start',message:'QuestionManagement loadQuestions invoked',data:{showToastOnRefresh:Boolean(opts?.showToastOnRefresh)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (opts?.showToastOnRefresh) {
         await syncQuestionsFromServer();
       } else if (typeof window !== 'undefined' && window.__quizMDA_syncPromise) {
@@ -1924,15 +1921,6 @@ function QuestionReviewPanel({
                     />
                     {(q.category || q.sub_category) && (
                       <span style={rs.hierBadge}>
-                        {/* #region agent log */}
-                        {typeof window !== 'undefined' && !window.__dbgH7Sent
-                          ? (() => {
-                              window.__dbgH7Sent = true;
-                              fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'post-fix',hypothesisId:'H7',location:'components/QuestionManagement.jsx:hierBadge:render',message:'Rendered category/sub_category badge with raw values',data:{category:q.category||null,sub_category:q.sub_category||null},timestamp:Date.now()})}).catch(()=>{});
-                              return null;
-                            })()
-                          : null}
-                        {/* #endregion */}
                         {q.category && <span style={rs.hierBadgeLine}><strong>נושא:</strong> {q.category}</span>}
                         {q.sub_category && <span style={rs.hierBadgeLine}><strong>תת־נושא:</strong> {q.sub_category}</span>}
                       </span>

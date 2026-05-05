@@ -29,14 +29,12 @@ export function applyQuestionImportDefaults(question, opts = {}) {
   delete q.adaptive_difficulty;
   delete q.serial_number;
   delete q.tags;
-  const category = opts.defaultCategory || (q.category && String(q.category).trim()) || firstCat;
+  // Keep explicit category from payload; use defaultCategory only when missing.
+  const category = (q.category && String(q.category).trim()) || opts.defaultCategory || firstCat;
   const subCat =
     (q.sub_category && String(q.sub_category).trim()) ||
     PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY[category]?.[0] ||
     fallbackSub;
-  // #region agent log
-  fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'post-fix',hypothesisId:'H8',location:'workflows/questionImport.js:applyQuestionImportDefaults',message:'Import defaults applied for category/sub_category',data:{inputCategory:question?.category??null,inputSubCategory:question?.sub_category??null,normalizedCategory:category,normalizedSubCategory:subCat,forcedByDefaultCategory:Boolean(opts.defaultCategory)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   q.category = category;
   q.sub_category = subCat;
   if (!q.thinking_level) q.thinking_level = 'Knowledge';
@@ -961,9 +959,6 @@ export async function bulkCreateQuestions(questions, options = {}) {
       results.successful++;
       results.created.push(created);
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H6',location:'workflows/questionImport.js:bulkCreateQuestions:createCatch',message:'bulk create failed for single question',data:{index:i+1,error:error?.message||String(error),category:clean?.category||null,sub_category:clean?.sub_category||null,question_type:clean?.question_type||null,textPreview:String(clean?.question_text||'').slice(0,120)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       console.error(`Error creating question ${i + 1}:`, error);
       results.failed++;
       results.errors.push({ index: i, question, error: error.message });
