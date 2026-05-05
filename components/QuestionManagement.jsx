@@ -1390,6 +1390,31 @@ export default function QuestionManagement() {
                                       💡 <strong>הסבר:</strong> {parsed.explanation}
                                     </div>
                                   )}
+                                  {question.hint && (
+                                    <div style={{ marginTop: '8px', padding: '8px 12px', background: '#e3f2fd', borderRadius: '8px', border: '1px solid #90caf9', fontSize: '13px', color: '#0d47a1' }}>
+                                      🧭 <strong>רמז:</strong> {question.hint}
+                                    </div>
+                                  )}
+                                  <div style={{ marginTop: '8px', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '10px', padding: '12px' }}>
+                                    <strong style={{ display: 'block', marginBottom: '8px' }}>כל פרטי השאלה</strong>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '8px 12px', fontSize: '13px' }}>
+                                      <div><strong>מזהה מלא:</strong> {question.id || '—'}</div>
+                                      <div><strong>סוג שאלה:</strong> {question.question_type || '—'}</div>
+                                      <div><strong>סטטוס:</strong> {statusDisplayLabel(question.status)}</div>
+                                      <div><strong>קטגוריה:</strong> {question.category || '—'}</div>
+                                      <div><strong>תת-קטגוריה:</strong> {question.sub_category || '—'}</div>
+                                      <div><strong>רמת חשיבה:</strong> {question.thinking_level || '—'}</div>
+                                      <div><strong>רמת הכשרה:</strong> {question.training_level || '—'}</div>
+                                      <div><strong>יש מדיה:</strong> {question.has_media ? 'כן' : 'לא'}</div>
+                                      <div><strong>קובץ מדיה:</strong> {typeof question.media_attachment === 'string' ? question.media_attachment : (question.media_attachment?.url || '—')}</div>
+                                      <div><strong>תג מאגר מדיה:</strong> {question.media_bank_tag || '—'}</div>
+                                      <div><strong>ניסיונות:</strong> {Number(question.total_attempts || 0)}</div>
+                                      <div><strong>הצלחות:</strong> {Number(question.total_success || 0)}</div>
+                                      <div><strong>אחוז הצלחה:</strong> {question.total_attempts > 0 ? `${Number(question.success_rate || 0).toFixed(1)}%` : '—'}</div>
+                                      <div><strong>נוצר:</strong> {question.createdAt ? new Date(question.createdAt).toLocaleString('he-IL') : '—'}</div>
+                                      <div><strong>עודכן:</strong> {question.updatedAt ? new Date(question.updatedAt).toLocaleString('he-IL') : '—'}</div>
+                                    </div>
+                                  </div>
                                 </div>
                               </td>
                             </tr>
