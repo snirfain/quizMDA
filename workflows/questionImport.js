@@ -34,6 +34,9 @@ export function applyQuestionImportDefaults(question, opts = {}) {
     (q.sub_category && String(q.sub_category).trim()) ||
     PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY[category]?.[0] ||
     fallbackSub;
+  // #region agent log
+  fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'post-fix',hypothesisId:'H8',location:'workflows/questionImport.js:applyQuestionImportDefaults',message:'Import defaults applied for category/sub_category',data:{inputCategory:question?.category??null,inputSubCategory:question?.sub_category??null,normalizedCategory:category,normalizedSubCategory:subCat,forcedByDefaultCategory:Boolean(opts.defaultCategory)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   q.category = category;
   q.sub_category = subCat;
   if (!q.thinking_level) q.thinking_level = 'Knowledge';

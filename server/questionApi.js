@@ -52,6 +52,9 @@ export function normalizeQuestionForDb(q) {
     typeof q.sub_category === 'string' && q.sub_category.trim()
       ? q.sub_category.trim()
       : subs[0];
+  // #region agent log
+  fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'post-fix',hypothesisId:'H9',location:'server/questionApi.js:normalizeQuestionForDb',message:'Server normalized category/sub_category',data:{inputCategory:q?.category??null,inputSubCategory:q?.sub_category??null,normalizedCategory:category,normalizedSubCategory:sub_category,inputSubType:typeof q?.sub_category},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const thinking_level = isValidThinkingLevel(q.thinking_level) ? q.thinking_level : 'Knowledge';
   const training_level = isValidTrainingLevel(q.training_level) ? q.training_level : 'A';
   const statusRaw = normalizeLegacyStatus(q.status);
