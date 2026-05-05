@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 import { extractDocHandler } from './server/docExtract.js';
 import { uploadMiddleware, uploadMediaHandler } from './server/upload.js';
-import { getQuestions, postQuestions, syncQuestions, dedupeQuestions, recatalogAllQuestions, updateQuestion, deleteQuestion } from './server/questionApi.js';
+import { getQuestions, postQuestions, syncQuestions, dedupeQuestions, recatalogAllQuestions, updateQuestion, deleteQuestion, classifyThinkingLevel } from './server/questionApi.js';
 import { listTranscripts, getTranscript, updateTranscript, deleteTranscript, uploadTranscript, uploadTranscriptMiddleware, matchAllQuestions, generateQuestionsFromTranscript, getGenerateQuestionsStatus, startFixSpelling, getFixSpellingStatus } from './server/transcriptApi.js';
 import { getUsers, postUser, setupUser, updateCourseNumbers, changeUserRole, setInstructorCourses, getUsersByCourse } from './server/userApi.js';
 import { createReport, listReports, countPendingReports, reviewReport } from './server/reportApi.js';
@@ -46,6 +46,7 @@ async function start() {
   app.post('/api/questions/recatalog', recatalogAllQuestions);
   app.put('/api/questions/:id', updateQuestion);
   app.delete('/api/questions/:id', deleteQuestion);
+  app.post('/api/questions/:id/classify-thinking-level', classifyThinkingLevel);
   app.get('/api/users', getUsers);
   app.post('/api/users', postUser);
   app.post('/api/users/setup', setupUser);

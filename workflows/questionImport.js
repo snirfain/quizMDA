@@ -27,7 +27,6 @@ export function applyQuestionImportDefaults(question, opts = {}) {
   delete q.hierarchy_id;
   delete q.difficulty_level;
   delete q.adaptive_difficulty;
-  delete q.media_bank_tag;
   delete q.serial_number;
   delete q.tags;
   const category = opts.defaultCategory || (q.category && String(q.category).trim()) || firstCat;

@@ -14,6 +14,7 @@ import { announce } from '../utils/accessibility';
 import { validateQuestion } from '../utils/questionValidation';
 import { MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { getMediaTypeLabel } from '../workflows/mediaEngine';
+import QuestionResolvedMedia from './QuestionResolvedMedia';
 import {
   QUESTION_CATEGORIES,
   THINKING_LEVELS,
@@ -21,38 +22,41 @@ import {
   QUESTION_STATUSES,
   QUESTION_TYPES_UI,
   getSubcategoriesForCategory,
-  computeHasMedia,
+  normalizeQuestionMediaPayload,
 } from '../shared/questionBankMetadata.js';
 
 export default function QuestionEditor({ question, hierarchies: _hierarchies, onSave, onCancel }) {
+  const isNewQuestion = !question?.id;
   const initialCategory =
     question?.category && QUESTION_CATEGORIES.some((c) => c.value === question.category)
       ? question.category
-      : QUESTION_CATEGORIES[0].value;
-
-  const initialSubs = useMemo(() => getSubcategoriesForCategory(initialCategory), [initialCategory]);
+      : '';
 
   const [formData, setFormData] = useState({
     category: initialCategory,
     sub_category:
       question?.sub_category && question.sub_category.trim()
         ? question.sub_category.trim()
-        : initialSubs[0],
+        : '',
     thinking_level: question?.thinking_level || 'Knowledge',
-    training_level: question?.training_level || 'A',
-    question_type: question?.question_type || 'single_choice',
+    training_level: question?.training_level || '',
+    question_type: question?.question_type || '',
     question_text: question?.question_text || '',
     media_attachment: question?.media_attachment ?? null,
+    media_bank_tag: typeof question?.media_bank_tag === 'string' ? question.media_bank_tag.trim() : question?.media_bank_tag || '',
     correct_answer: question?.correct_answer || '',
     explanation: question?.explanation || '',
     hint: question?.hint || '',
-    status: question?.status === 'pending_review' || question?.status === 'suspended' ? 'under_review' : (question?.status || 'draft'),
+    status: question?.status === 'pending_review' || question?.status === 'suspended' ? 'under_review' : (question?.status || ''),
   });
 
   const [mediaMode, setMediaMode] = useState(() => {
+    if (question?.media_bank_tag && String(question.media_bank_tag).trim()) return 'bank';
     if (question?.media_attachment?.url || question?.media_attachment) return 'static';
     return 'none';
   });
+
+  const [bankTags, setBankTags] = useState([]);
 
   const [isSaving, setIsSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
@@ -62,10 +66,29 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
   const subOptions = useMemo(() => getSubcategoriesForCategory(formData.category), [formData.category]);
 
   useEffect(() => {
-    if (!subOptions.includes(formData.sub_category)) {
+    if (!formData.category) {
+      setFormData((prev) => (prev.sub_category ? { ...prev, sub_category: '' } : prev));
+      return;
+    }
+    if (formData.sub_category && !subOptions.includes(formData.sub_category)) {
       setFormData((prev) => ({ ...prev, sub_category: subOptions[0] || '' }));
     }
   }, [formData.category, subOptions, formData.sub_category]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const tags = await entities.Media_Bank.distinctTags();
+        if (!cancelled) setBankTags(Array.isArray(tags) ? tags : []);
+      } catch {
+        if (!cancelled) setBankTags([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [options, setOptions] = useState(() => {
     const opts = question?.options;
@@ -192,10 +215,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
   const validateForm = () => {
     const questionToValidate = {
       ...formData,
-      status:
-        formData.status === 'under_review' || formData.status === 'active' || formData.status === 'draft'
-          ? formData.status
-          : 'draft',
+      status: formData.status,
       options:
         formData.question_type !== 'open_ended'
           ? options.map((opt, idx) => {
@@ -210,8 +230,15 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
     };
 
     const validation = validateQuestion(questionToValidate);
-    setValidationErrors(validation.errors);
-    return validation.isValid;
+    const extraErrors = [];
+    if (!formData.category) extraErrors.push('יש לבחור פרק');
+    if (!formData.sub_category) extraErrors.push('יש לבחור תת־קטגוריה');
+    if (!formData.training_level) extraErrors.push('יש לבחור רמת הכשרה');
+    if (!formData.question_type) extraErrors.push('יש לבחור סוג שאלה');
+    if (!formData.status) extraErrors.push('יש לבחור סטטוס');
+    const errors = [...validation.errors, ...extraErrors];
+    setValidationErrors(errors);
+    return errors.length === 0;
   };
 
   const handleSubmit = async (e) => {
@@ -261,7 +288,10 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
 
       let mediaFields = {};
       if (mediaMode === 'none') {
-        mediaFields = { media_attachment: null };
+        mediaFields = { media_attachment: null, media_bank_tag: null };
+      } else if (mediaMode === 'bank') {
+        const tm = (formData.media_bank_tag || '').trim();
+        mediaFields = { media_attachment: null, media_bank_tag: tm || null };
       } else {
         let att = formData.media_attachment;
         if (att?.url?.startsWith?.('blob:') && att.file) {
@@ -277,14 +307,14 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
         }
         mediaFields = {
           media_attachment: att ? { url: att.url, type: att.type, name: att.name } : question?.media_attachment || null,
+          media_bank_tag: null,
         };
       }
 
-      const mergedMedia = mediaFields.media_attachment ?? formData.media_attachment;
+      const m = normalizeQuestionMediaPayload({ ...formData, ...mediaFields });
       const questionData = {
         ...formData,
-        ...mediaFields,
-        has_media: computeHasMedia(mergedMedia ?? mediaFields.media_attachment),
+        ...m,
         options: preparedOptions ? JSON.stringify(preparedOptions) : undefined,
         correct_answer: correctAnswerPayload,
       };
@@ -294,7 +324,22 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
         showToast('שאלה עודכנה בהצלחה', 'success');
         announce('שאלה עודכנה בהצלחה');
       } else {
-        await entities.Question_Bank.create(questionData);
+        const created = await entities.Question_Bank.create({
+          ...questionData,
+          thinking_level: 'Knowledge',
+        });
+        const createdId = created?.id;
+        if (createdId) {
+          try {
+            const r = await fetch(`/api/questions/${createdId}/classify-thinking-level`, {
+              method: 'POST',
+            });
+            if (r.ok) {
+              const cls = await r.json();
+              showToast(`רמת החשיבה נקבעה אוטומטית: ${cls.thinking_level}`, 'success');
+            }
+          } catch (_) {}
+        }
         showToast('שאלה נוצרה בהצלחה', 'success');
         announce('שאלה נוצרה בהצלחה');
       }
@@ -328,6 +373,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
             onChange={(e) => handleChange('category', e.target.value)}
             required
           >
+            <option value="">בחר פרק...</option>
             {QUESTION_CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
@@ -342,7 +388,9 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
             value={formData.sub_category}
             onChange={(e) => handleChange('sub_category', e.target.value)}
             required
+            disabled={!formData.category}
           >
+            <option value="">בחר תת־קטגוריה...</option>
             {subOptions.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -360,6 +408,8 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
             value={formData.thinking_level}
             onChange={(e) => handleChange('thinking_level', e.target.value)}
             required
+            disabled={isNewQuestion}
+            helpText={isNewQuestion ? 'נקבע אוטומטית אחרי שמירה (אפשר לערוך בעריכה חוזרת)' : undefined}
           >
             {THINKING_LEVELS.map((t) => (
               <option key={t.value} value={t.value}>
@@ -376,6 +426,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
             onChange={(e) => handleChange('training_level', e.target.value)}
             required
           >
+            <option value="">בחר רמת הכשרה...</option>
             {TRAINING_LEVELS.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
@@ -391,6 +442,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
             onChange={(e) => handleChange('question_type', e.target.value)}
             required
           >
+            <option value="">בחר סוג שאלה...</option>
             {QUESTION_TYPES_UI.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
@@ -510,18 +562,24 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label style={styles.sectionLabel}>מדיה לשאלה (קבוע)</label>
+          <label style={styles.sectionLabel}>מדיה לשאלה</label>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {[
               { id: 'none', label: '✗ ללא מדיה' },
               { id: 'static', label: '📎 קובץ סטטי' },
+              { id: 'bank', label: '🗃️ מהמאגר (תג)' },
             ].map((opt) => (
               <button
                 key={opt.id}
                 type="button"
                 onClick={() => {
                   setMediaMode(opt.id);
-                  if (opt.id === 'none') handleChange('media_attachment', null);
+                  if (opt.id === 'none') {
+                    handleChange('media_attachment', null);
+                    handleChange('media_bank_tag', '');
+                  }
+                  if (opt.id === 'static') handleChange('media_bank_tag', '');
+                  if (opt.id === 'bank') handleChange('media_attachment', null);
                 }}
                 style={{
                   padding: '6px 16px',
@@ -542,6 +600,33 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {mediaMode === 'bank' && (
+              <>
+                <label htmlFor="q-bank-media-tag" style={{ fontSize: '13px', color: '#555' }}>
+                  תג מאגר מדיה (יוצג פריט פעיל אקראי עם אותו תג)
+                </label>
+                <input
+                  id="q-bank-media-tag"
+                  type="text"
+                  list="question-editor-bank-tags"
+                  value={formData.media_bank_tag}
+                  onChange={(e) => handleChange('media_bank_tag', e.target.value)}
+                  placeholder="לדוגמה: ECG / פציעות"
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #ccc',
+                    fontSize: '14px',
+                    fontFamily: 'inherit',
+                  }}
+                />
+                <datalist id="question-editor-bank-tags">
+                  {bankTags.map((t) => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
+              </>
+            )}
             {mediaMode === 'static' && (
             <input
               type="file"
@@ -584,6 +669,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
         <FormField marginBottom={10} label="הסבר (אופציונלי)" name="explanation" type="textarea" value={formData.explanation} onChange={(e) => handleChange('explanation', e.target.value)} rows={3} helpText="הסבר למה התשובה נכונה" />
 
         <FormField marginBottom={10} label="סטטוס" name="status" type="select" value={formData.status} onChange={(e) => handleChange('status', e.target.value)}>
+          <option value="">בחר סטטוס...</option>
           {QUESTION_STATUSES.map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}
@@ -615,17 +701,14 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
             <h4 style={styles.previewTitle}>תצוגה מקדימה:</h4>
             <div style={styles.previewContent}>
               <p style={styles.previewQuestion}>{formData.question_text || '(לא הוזן טקסט)'}</p>
-              {formData.media_attachment?.url && (
-                <div style={{ marginBottom: '12px' }}>
-                  {formData.media_attachment.type === 'video' ? (
-                    <video src={formData.media_attachment.url} controls style={{ maxWidth: '100%', borderRadius: '8px', maxHeight: '220px' }} />
-                  ) : formData.media_attachment.type === 'audio' ? (
-                    <audio src={formData.media_attachment.url} controls style={{ width: '100%' }} />
-                  ) : (
-                    <img src={formData.media_attachment.url} alt="תצוגה מקדימה" style={{ maxWidth: '100%', borderRadius: '8px', maxHeight: '220px', objectFit: 'contain' }} />
-                  )}
-                </div>
-              )}
+              <QuestionResolvedMedia
+                question={{
+                  id: `preview-editor-${question?.id ?? 'new'}-${mediaMode}`,
+                  media_attachment: mediaMode === 'static' ? formData.media_attachment : null,
+                  media_bank_tag: mediaMode === 'bank' ? formData.media_bank_tag : null,
+                }}
+                containerStyle={{ marginBottom: '12px' }}
+              />
               {(formData.question_type === 'single_choice' || formData.question_type === 'multi_choice') && (
                 <div style={styles.previewOptions}>
                   {options.map((opt, idx) => {

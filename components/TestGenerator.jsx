@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { generateRandomTest, getFilterOptions, exportTestToPDF } from '../workflows/testGenerator';
+import QuestionResolvedMedia from './QuestionResolvedMedia';
 import { TRAINING_LEVELS } from '../shared/questionBankMetadata.js';
 import { sanitizeHtml } from '../utils/sanitize';
 
@@ -229,15 +230,11 @@ export default function TestGenerator({ instructorId }) {
                     style={styles.questionText}
                     dangerouslySetInnerHTML={{ __html: sanitizeHtml(question.question_text) }}
                   />
-                  {question.media_attachment && (
-                    <div style={styles.questionMedia}>
-                      <img 
-                        src={question.media_attachment.url} 
-                        alt="תמונה מצורפת"
-                        style={styles.mediaThumbnail}
-                      />
-                    </div>
-                  )}
+                  <QuestionResolvedMedia
+                    question={question}
+                    containerStyle={styles.questionMedia}
+                    imageStyle={styles.mediaThumbnail}
+                  />
                 </div>
               </div>
             ))}

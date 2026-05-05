@@ -1,10 +1,11 @@
 /**
  * Question model – aligns with entities/Question_Bank.js
- * Supports media via Cloudinary URL or { url } in media_attachment.
+ * Supports media via Cloudinary URL or { url } in media_attachment,
+ * or random item from Media_Bank via media_bank_tag.
  * Hebrew: בנק שאלות
  */
 import mongoose from 'mongoose';
-import { computeHasMedia } from '../shared/questionBankMetadata.js';
+import { computeQuestionHasMedia } from '../shared/questionBankMetadata.js';
 
 const optionSchema = new mongoose.Schema(
   {
@@ -25,6 +26,8 @@ const questionSchema = new mongoose.Schema(
     options: { type: [optionSchema], default: [] },
     /** URL string or { url, type?, name? } from upload flow */
     media_attachment: { type: mongoose.Schema.Types.Mixed, default: null },
+    /** תג מאגר מדיה — בשימוש עם pickRandomMedia; לא בשילוב עם media_attachment מלא */
+    media_bank_tag: { type: String, default: null },
     /** JSON: { value: "0" } | { values: ["0","1"] } | { value: "true"|"false" } | string for open_ended */
     correct_answer: { type: mongoose.Schema.Types.Mixed, default: null },
     explanation: { type: String, default: null },
@@ -55,7 +58,10 @@ const questionSchema = new mongoose.Schema(
 );
 
 questionSchema.pre('save', function (next) {
-  this.has_media = computeHasMedia(this.media_attachment);
+  this.has_media = computeQuestionHasMedia({
+    media_attachment: this.media_attachment,
+    media_bank_tag: this.media_bank_tag,
+  });
   next();
 });
 
@@ -66,6 +72,7 @@ questionSchema.index({ training_level: 1 });
 questionSchema.index({ question_type: 1 });
 questionSchema.index({ status: 1 });
 questionSchema.index({ has_media: 1 });
+questionSchema.index({ media_bank_tag: 1 });
 questionSchema.index({ createdAt: -1 });
 questionSchema.index({ question_text: 'text' });
 

@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import QuestionReport from '../models/QuestionReport.js';
 import Question from '../models/Question.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
+import { normalizeQuestionMediaPayload } from '../shared/questionBankMetadata.js';
 
 /** POST /api/reports — create a new report */
 export async function createReport(req, res) {
@@ -98,11 +99,23 @@ export async function reviewReport(req, res) {
         'thinking_level',
         'training_level',
         'media_attachment',
+        'media_bank_tag',
       ];
       for (const key of ALLOWED) {
         if (changes[key] !== undefined) safeFields[key] = changes[key];
       }
       if (Object.keys(safeFields).length > 0) {
+        const qPrev = await Question.findById(report.question_id).lean();
+        if (
+          qPrev &&
+          (safeFields.media_attachment !== undefined || safeFields.media_bank_tag !== undefined)
+        ) {
+          const mergedForMedia = { ...qPrev, ...safeFields };
+          const m = normalizeQuestionMediaPayload(mergedForMedia);
+          safeFields.media_attachment = m.media_attachment;
+          safeFields.media_bank_tag = m.media_bank_tag;
+          safeFields.has_media = m.has_media;
+        }
         await Question.findByIdAndUpdate(report.question_id, { $set: safeFields });
       }
     }

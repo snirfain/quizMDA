@@ -6,6 +6,17 @@
 
 import { entities } from '../config/appConfig';
 import { QUESTION_TYPES_UI } from '../shared/questionBankMetadata.js';
+import { pickRandomMedia } from './mediaEngine.js';
+
+async function resolvedQuestionMediaUrlForExport(q) {
+  const att = q.media_attachment;
+  if (att && typeof att === 'object' && att.url) return att.url;
+  if (typeof att === 'string' && att.trim()) return att.trim();
+  const tag = typeof q.media_bank_tag === 'string' ? q.media_bank_tag.trim() : '';
+  if (!tag) return null;
+  const item = await pickRandomMedia(tag);
+  return item?.url ?? null;
+}
 
 /**
  * Generate random test based on filters
@@ -67,13 +78,16 @@ export async function exportTestToPDF(testQuestions, testMetadata = {}) {
     instructor_name,
     date,
     time_limit,
-    questions: testQuestions.map((q, index) => ({
-      number: index + 1,
-      type: q.question_type,
-      text: q.question_text,
-      category: q.category,
-      media: q.media_attachment && typeof q.media_attachment === 'object' ? q.media_attachment.url : q.media_attachment,
-    })),
+    questions: await Promise.all(
+      testQuestions.map(async (q, index) => ({
+        number: index + 1,
+        type: q.question_type,
+        text: q.question_text,
+        category: q.category,
+        media_bank_tag: q.media_bank_tag || null,
+        media: await resolvedQuestionMediaUrlForExport(q),
+      })),
+    ),
   };
 
   return {

@@ -54,7 +54,7 @@ export const Question_Bank = {
       displayName: 'יש מדיה',
       readOnly: true,
       defaultValue: false,
-      description: 'מחושב אוטומטית לפי קיום media_attachment',
+      description: 'מחושב אוטומטית לפי צרוף סטטי או תג מאגר מדיה',
     },
     question_type: {
       type: 'select',
@@ -73,8 +73,14 @@ export const Question_Bank = {
       type: 'file',
       required: false,
       displayName: 'מדיה מצורפת',
-      description: 'תמונה / וידאו / אודיו / PDF',
+      description: 'תמונה / וידאו / אודיו / PDF (לא בשילוב עם תג מאגר)',
       accept: 'image/*,video/*,audio/*,application/pdf',
+    },
+    media_bank_tag: {
+      type: 'text',
+      required: false,
+      displayName: 'תג מאגר מדיה',
+      description: 'תג לבחירת מדיה אקראית מהמאגר (לא יחד עם קובץ סטטי)',
     },
     correct_answer: {
       type: 'text',
@@ -140,6 +146,7 @@ export const Question_Bank = {
     { fields: ['question_type'] },
     { fields: ['status'] },
     { fields: ['has_media'] },
+    { fields: ['media_bank_tag'] },
     { fields: ['status', 'question_type'] },
   ],
   permissions: {

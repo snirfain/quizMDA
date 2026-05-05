@@ -402,6 +402,7 @@ export default function QuestionManagement() {
         hint: q.hint,
         status: q.status ?? 'draft',
         media_attachment: q.media_attachment ?? null,
+        media_bank_tag: q.media_bank_tag ?? null,
         total_attempts: q.total_attempts,
         total_success: q.total_success,
         success_rate: q.success_rate,

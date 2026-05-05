@@ -62,6 +62,7 @@ export default function DataImportExport() {
       'תשובה נכונה',
       'סטטוס',
       'מדיה',
+      'תג מאגר',
     ];
 
     const rows = data.map((q) => [
@@ -75,6 +76,7 @@ export default function DataImportExport() {
       q.correct_answer,
       q.status,
       q.has_media ? 'כן' : 'לא',
+      q.media_bank_tag ?? '',
     ]);
 
     const csvContent = [
@@ -119,6 +121,7 @@ export default function DataImportExport() {
       'סטטוס',
       'מדיה',
       'צרוף מדיה',
+      'תג מאגר מדיה',
       'ניסיונות',
       'הצלחות',
       'אחוז הצלחה',
@@ -140,6 +143,7 @@ export default function DataImportExport() {
       safe(q.status),
       q.has_media ? 'כן' : 'לא',
       safe(q.media_attachment),
+      safe(q.media_bank_tag),
       typeof q.total_attempts === 'number' ? q.total_attempts : '',
       typeof q.total_success === 'number' ? q.total_success : '',
       typeof q.success_rate === 'number' ? q.success_rate : '',
@@ -162,6 +166,7 @@ export default function DataImportExport() {
       { wch: 12 },
       { wch: 6 },
       { wch: 24 },
+      { wch: 18 },
       { wch: 10 },
       { wch: 10 },
       { wch: 10 },
@@ -255,6 +260,7 @@ export default function DataImportExport() {
           hint: pick('רמז', 'Hint', 'hint'),
           status: pick('סטטוס', 'Status', 'status') || undefined,
           media_attachment: pick('צרוף מדיה', 'מדיה מצורפת', 'media_attachment') || undefined,
+          media_bank_tag: pick('תג מאגר', 'תג מאגר מדיה', 'media_bank_tag') || undefined,
         };
 
         const questionData = applyQuestionImportDefaults(raw, {});

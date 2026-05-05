@@ -7,6 +7,8 @@ import {
   QUESTION_CATEGORIES,
   normalizeLegacyStatus,
   getSubcategoriesForCategory,
+  computeQuestionHasMedia,
+  normalizeQuestionMediaPayload,
 } from './shared/questionBankMetadata.js';
 
 const STORAGE_KEY = 'quizMDA_mockData';
@@ -286,7 +288,10 @@ function loadFromStorage() {
           sub_category,
           thinking_level: q.thinking_level || 'Knowledge',
           training_level: q.training_level || 'A',
-          has_media: Boolean(q.media_attachment && (typeof q.media_attachment === 'string' ? q.media_attachment.trim() : q.media_attachment?.url)),
+          has_media: computeQuestionHasMedia({
+            media_attachment: q.media_attachment,
+            media_bank_tag: q.media_bank_tag,
+          }),
           status,
           total_attempts: q.total_attempts ?? 0,
           total_success: q.total_success ?? 0,
@@ -342,7 +347,13 @@ function serverToLocal(sq) {
     sub_category: sq.sub_category || getSubcategoriesForCategory(cat)[0],
     thinking_level: sq.thinking_level || 'Knowledge',
     training_level: sq.training_level || 'A',
-    has_media: Boolean(sq.has_media ?? sq.media_attachment),
+    has_media:
+      typeof sq.has_media === 'boolean'
+        ? sq.has_media
+        : computeQuestionHasMedia({
+            media_attachment: sq.media_attachment,
+            media_bank_tag: sq.media_bank_tag,
+          }),
     question_type: sq.question_type || 'single_choice',
     question_text: sq.question_text,
     options: sq.options ?? [],
@@ -351,6 +362,7 @@ function serverToLocal(sq) {
     hint: sq.hint ?? null,
     status: normalizeLegacyStatus(sq.status) || 'draft',
     media_attachment: sq.media_attachment ?? null,
+    media_bank_tag: sq.media_bank_tag ?? null,
     total_attempts: sq.total_attempts ?? 0,
     total_success: sq.total_success ?? 0,
     success_rate: sq.success_rate ?? 0,
@@ -428,9 +440,11 @@ export const mockEntities = {
       return null;
     },
     create: async (data) => {
+      const mediaPayload = normalizeQuestionMediaPayload(data);
       const local = {
         id: uid('q'),
         ...data,
+        ...mediaPayload,
         total_attempts: 0,
         total_success: 0,
         success_rate: 0,
@@ -473,7 +487,13 @@ export const mockEntities = {
       } catch (_) { /* fallback to local */ }
       const index = mockData.questions.findIndex(q => q.id === id);
       if (index !== -1) {
-        mockData.questions[index] = { ...mockData.questions[index], ...data, updatedAt: new Date() };
+        const mergedLocal = { ...mockData.questions[index], ...data };
+        const mediaPayload = normalizeQuestionMediaPayload(mergedLocal);
+        mockData.questions[index] = {
+          ...mergedLocal,
+          ...mediaPayload,
+          updatedAt: new Date(),
+        };
         saveToStorage();
         return mockData.questions[index];
       }

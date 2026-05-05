@@ -13,6 +13,7 @@ import { savePracticeSession, loadQuestions, addToSyncQueue } from '../utils/off
 import { MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import LoadingSpinner from './LoadingSpinner';
 import QuestionReportModal from './QuestionReportModal';
+import QuestionResolvedMedia from './QuestionResolvedMedia';
 import { sanitizeHtml } from '../utils/sanitize';
 
 const safeParse = (v, fallback = {}) => {
@@ -300,51 +301,12 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
           </span>
         </div>
 
-        {/* ── Media display — static attachment ── */}
-        {currentQuestion.media_attachment && (() => {
-          const att = currentQuestion.media_attachment;
-          const isStr = typeof att === 'string';
-          const media = {
-            url: isStr ? att : (att.url || ''),
-            type: isStr ? 'image' : (att.type || 'image'),
-            desc: isStr ? '' : (att.desc || ''),
-          };
-          if (!media.url) return null;
-
-          return (
-            <div style={styles.mediaContainer} role="region" aria-label="מדיה לשאלה">
-              {(!media.type || media.type === 'image') && (
-                <img
-                  src={media.url}
-                  alt={media.desc || 'מדיה לשאלה'}
-                  style={styles.media}
-                  loading="lazy"
-                />
-              )}
-              {media.type === 'video' && (
-                <video
-                  src={media.url}
-                  controls
-                  style={{ ...styles.media, maxHeight: '360px' }}
-                  aria-label={media.desc || 'וידאו לשאלה'}
-                />
-              )}
-              {media.type === 'audio' && (
-                <audio
-                  src={media.url}
-                  controls
-                  style={{ width: '100%', marginTop: '8px' }}
-                  aria-label={media.desc || 'אודיו לשאלה'}
-                />
-              )}
-              {media.desc && (
-                <p style={{ fontSize: '12px', color: '#78909c', textAlign: 'center', margin: '4px 0 0' }}>
-                  {media.desc}
-                </p>
-              )}
-            </div>
-          );
-        })()}
+        <QuestionResolvedMedia
+          question={currentQuestion}
+          containerStyle={styles.mediaContainer}
+          imageStyle={styles.media}
+          videoStyle={{ ...styles.media, maxHeight: '360px' }}
+        />
 
         {/* Question Text */}
         <div 

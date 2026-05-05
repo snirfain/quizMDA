@@ -8,6 +8,8 @@ import Question from '../models/Question.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
 import {
   QUESTION_CATEGORIES,
+  normalizeQuestionMediaPayload,
+  computeQuestionHasMedia,
   computeHasMedia,
   normalizeLegacyStatus,
   isValidCategory,
@@ -17,6 +19,9 @@ import {
 } from '../shared/questionBankMetadata.js';
 
 const VALID_STATUS = new Set(['active', 'under_review', 'draft']);
+const VALID_THINKING_LEVELS = ['Knowledge', 'Understanding', 'Application', 'Synthesis'];
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 const FIRST_CAT = QUESTION_CATEGORIES[0].value;
 
@@ -52,21 +57,21 @@ export function normalizeQuestionForDb(q) {
   const statusRaw = normalizeLegacyStatus(q.status);
   const status = VALID_STATUS.has(statusRaw) ? statusRaw : 'draft';
 
-  const media_attachment = q.media_attachment ?? null;
-  const has_media = computeHasMedia(media_attachment);
+  const mediaNorm = normalizeQuestionMediaPayload(q);
 
   return {
     category,
     sub_category,
     thinking_level,
     training_level,
-    has_media,
+    has_media: mediaNorm.has_media,
     question_type: ['single_choice', 'multi_choice', 'true_false', 'open_ended'].includes(q.question_type)
       ? q.question_type
       : 'single_choice',
     question_text: q.question_text ?? '',
     options,
-    media_attachment,
+    media_attachment: mediaNorm.media_attachment,
+    media_bank_tag: mediaNorm.media_bank_tag,
     correct_answer: q.correct_answer ?? null,
     explanation: q.explanation ?? null,
     hint: q.hint ?? null,
@@ -105,7 +110,12 @@ function normalizePartialUpdate(body) {
   }
   if (body.media_attachment !== undefined) {
     update.media_attachment = body.media_attachment;
-    update.has_media = computeHasMedia(body.media_attachment);
+    if (computeHasMedia(body.media_attachment)) update.media_bank_tag = null;
+  }
+  if (body.media_bank_tag !== undefined) {
+    const tm = typeof body.media_bank_tag === 'string' ? body.media_bank_tag.trim() : '';
+    update.media_bank_tag = tm || null;
+    if (tm) update.media_attachment = null;
   }
   if (body.total_attempts !== undefined) update.total_attempts = body.total_attempts;
   if (body.total_success !== undefined) update.total_success = body.total_success;
@@ -170,7 +180,16 @@ export async function updateQuestion(req, res) {
     }
     const body = req.body || {};
     const isPartial = !body.question_text;
-    const data = isPartial ? normalizePartialUpdate(body) : normalizeQuestionForDb(body);
+    let data = isPartial ? normalizePartialUpdate(body) : normalizeQuestionForDb(body);
+    if (isPartial) {
+      const current = await Question.findById(id).lean();
+      if (!current) return res.status(404).json({ error: 'Question not found' });
+      const merged = { ...current, ...data };
+      data.has_media = computeQuestionHasMedia({
+        media_attachment: merged.media_attachment,
+        media_bank_tag: merged.media_bank_tag,
+      });
+    }
     const doc = await Question.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: false }).lean();
     if (!doc) return res.status(404).json({ error: 'Question not found' });
 
@@ -288,5 +307,88 @@ export async function dedupeQuestions(req, res) {
   } catch (err) {
     console.error('POST /api/questions/dedupe error:', err);
     res.status(500).json({ error: err.message });
+  }
+}
+
+function classifyThinkingLevelHeuristic(text = '') {
+  const t = String(text || '').trim();
+  if (!t) return 'Knowledge';
+  if (/(הסבר|מדוע|למה|מנגנון|משמעות)/.test(t)) return 'Understanding';
+  if (/(מה תעשה|טיפול|בחירה|ניהול|שלב הבא|החלטה)/.test(t)) return 'Application';
+  if (/(השווה|ניתוח|תכנית|בנה|סדר עדיפויות|אינטגרציה)/.test(t)) return 'Synthesis';
+  return 'Knowledge';
+}
+
+async function classifyThinkingLevelWithAi(questionText, apiKey) {
+  const systemPrompt =
+    'אתה מסווג שאלה רפואית לרמת חשיבה אחת בלבד: Knowledge, Understanding, Application, Synthesis. החזר JSON בלבד: {"thinking_level":"..."}';
+  const userPrompt = `סווג את השאלה לרמת החשיבה המתאימה ביותר:\n\n${questionText}`;
+
+  const res = await fetch(OPENAI_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0,
+      max_tokens: 120,
+      response_format: { type: 'json_object' },
+    }),
+  });
+  if (!res.ok) throw new Error(`OpenAI ${res.status}`);
+  const data = await res.json();
+  const raw = data?.choices?.[0]?.message?.content || '{}';
+  const parsed = JSON.parse(raw);
+  const level = parsed?.thinking_level;
+  return VALID_THINKING_LEVELS.includes(level) ? level : null;
+}
+
+/** POST /api/questions/:id/classify-thinking-level */
+export async function classifyThinkingLevel(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid question id' });
+    }
+    const doc = await Question.findById(id).lean();
+    if (!doc) return res.status(404).json({ error: 'Question not found' });
+
+    const text = String(doc.question_text || '').trim();
+    if (!text) return res.status(400).json({ error: 'Question text is empty' });
+
+    const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
+    let thinking_level = null;
+    let source = 'heuristic';
+    if (apiKey) {
+      try {
+        thinking_level = await classifyThinkingLevelWithAi(text, apiKey);
+        if (thinking_level) source = 'ai';
+      } catch (err) {
+        console.warn('AI thinking-level classification failed, fallback heuristic:', err?.message);
+      }
+    }
+    if (!thinking_level) thinking_level = classifyThinkingLevelHeuristic(text);
+
+    const updated = await Question.findByIdAndUpdate(
+      id,
+      { $set: { thinking_level } },
+      { new: true }
+    ).lean();
+    return res.json({
+      id: updated._id.toString(),
+      thinking_level: updated.thinking_level,
+      source,
+    });
+  } catch (err) {
+    console.error('POST /api/questions/:id/classify-thinking-level error:', err);
+    return res.status(500).json({ error: err.message });
   }
 }

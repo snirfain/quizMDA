@@ -13,6 +13,7 @@ import LoadingSpinner from './LoadingSpinner';
 import { showToast } from './Toast';
 import { announce } from '../utils/accessibility';
 import QuestionReportModal from './QuestionReportModal';
+import QuestionResolvedMedia from './QuestionResolvedMedia';
 
 const safeParse = (v, fallback = []) => {
   if (Array.isArray(v)) return v;
@@ -310,15 +311,11 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
             דווח על בעיה
           </button>
 
-          {currentQuestion.media_attachment && (
-            <div style={styles.media}>
-              <img
-                src={currentQuestion.media_attachment}
-                alt="תמונה לשאלה"
-                style={styles.mediaImage}
-              />
-            </div>
-          )}
+          <QuestionResolvedMedia
+            question={currentQuestion}
+            containerStyle={styles.media}
+            imageStyle={styles.mediaImage}
+          />
 
           <div style={styles.answers}>
             {currentQuestion.question_type === 'single_choice' && (
