@@ -181,6 +181,18 @@ export default function QuestionImport({ onImportComplete }) {
   // ── Analysis ─────────────────────────────────────────
   const analyzeWithRegex = () => {
     if (!rawText.trim()) { showToast('אין טקסט לניתוח', 'error'); return; }
+    // If user pasted full JSON array, preserve metadata fields as-is.
+    try {
+      const jsonQs = parseJSON(rawText);
+      if (Array.isArray(jsonQs) && jsonQs.length > 0) {
+        // #region agent log
+        fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'post-fix',hypothesisId:'H10',location:'components/QuestionImport.jsx:analyzeWithRegex:jsonBypass',message:'Bypassed regex parser for pasted JSON array',data:{count:jsonQs.length,firstCategory:jsonQs[0]?.category??null,firstSubCategory:jsonQs[0]?.sub_category??null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        setParsed(jsonQs);
+        showToast(`זוהו ${jsonQs.length} שאלות מ-JSON`, 'success');
+        return;
+      }
+    } catch (_) {}
     const questions = parseTextQuestions(rawText);
     if (questions.length === 0) {
       showToast('לא זוהו שאלות. נסה לפרמט את הטקסט עם מספור (1. 2. ...)', 'warning');
@@ -192,6 +204,18 @@ export default function QuestionImport({ onImportComplete }) {
 
   const analyzeWithAI = async () => {
     if (!rawText.trim()) { showToast('אין טקסט לניתוח', 'error'); return; }
+    // If user pasted full JSON array, skip AI parsing to avoid dropping category/sub_category metadata.
+    try {
+      const jsonQs = parseJSON(rawText);
+      if (Array.isArray(jsonQs) && jsonQs.length > 0) {
+        // #region agent log
+        fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'post-fix',hypothesisId:'H10',location:'components/QuestionImport.jsx:analyzeWithAI:jsonBypass',message:'Bypassed AI parser for pasted JSON array',data:{count:jsonQs.length,firstCategory:jsonQs[0]?.category??null,firstSubCategory:jsonQs[0]?.sub_category??null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        setParsed(jsonQs);
+        showToast(`זוהו ${jsonQs.length} שאלות מ-JSON`, 'success');
+        return;
+      }
+    } catch (_) {}
     setAnalyzing(true);
     setAiProgress(null);
     try {
