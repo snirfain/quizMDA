@@ -958,6 +958,9 @@ export async function bulkCreateQuestions(questions, options = {}) {
       results.successful++;
       results.created.push(created);
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H6',location:'workflows/questionImport.js:bulkCreateQuestions:createCatch',message:'bulk create failed for single question',data:{index:i+1,error:error?.message||String(error),category:clean?.category||null,sub_category:clean?.sub_category||null,question_type:clean?.question_type||null,textPreview:String(clean?.question_text||'').slice(0,120)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       console.error(`Error creating question ${i + 1}:`, error);
       results.failed++;
       results.errors.push({ index: i, question, error: error.message });

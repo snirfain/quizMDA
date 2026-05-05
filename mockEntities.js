@@ -463,8 +463,12 @@ export const mockEntities = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
+        let errBody = '';
+        if (!res.ok) {
+          try { errBody = await res.text(); } catch (_) {}
+        }
         // #region agent log
-        fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H4',location:'mockEntities.js:Question_Bank.create:serverResponse',message:'POST /api/questions result',data:{status:res.status,ok:res.ok,localId:local.id},timestamp:Date.now()})}).catch(()=>{});
+        fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'pre-fix',hypothesisId:'H4',location:'mockEntities.js:Question_Bank.create:serverResponse',message:'POST /api/questions result',data:{status:res.status,ok:res.ok,localId:local.id,errorBody:errBody.slice(0,400)},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
         if (res.ok) {
           const created = await res.json();
