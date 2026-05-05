@@ -57,12 +57,11 @@ const questionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-questionSchema.pre('save', function (next) {
+questionSchema.pre('save', function () {
   this.has_media = computeQuestionHasMedia({
     media_attachment: this.media_attachment,
     media_bank_tag: this.media_bank_tag,
   });
-  next();
 });
 
 questionSchema.index({ category: 1 });
