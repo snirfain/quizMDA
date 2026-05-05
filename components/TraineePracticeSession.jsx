@@ -10,8 +10,7 @@ import { saveOpenEndedAnswer } from '../workflows/openEndedValidation';
 import { entities } from '../config/appConfig';
 import { announce } from '../utils/accessibility';
 import { savePracticeSession, loadQuestions, addToSyncQueue } from '../utils/offlineStorage';
-import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
-import { pickRandomMedia, recalcMediaStats } from '../workflows/mediaEngine';
+import { MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import LoadingSpinner from './LoadingSpinner';
 import QuestionReportModal from './QuestionReportModal';
 import { sanitizeHtml } from '../utils/sanitize';
@@ -36,8 +35,6 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
   const [showExplanation, setShowExplanation] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineAnswers, setOfflineAnswers] = useState([]);
-  // Dynamic media bank: selected item for current question
-  const [activeMedia, setActiveMedia] = useState(null);
   const [reportModalOpen, setReportModalOpen] = useState(false);
 
   useEffect(() => {
@@ -85,13 +82,6 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         setQuestionStartTime(Date.now());
         setShowHint(false);
         setShowExplanation(false);
-        // Pick a random media item when the question uses a media bank tag
-        if (question.media_bank_tag) {
-          const mediaItem = await pickRandomMedia(question.media_bank_tag);
-          setActiveMedia(mediaItem);
-        } else {
-          setActiveMedia(null);
-        }
       }
     } catch (error) {
       console.error('Error loading question:', error);
@@ -169,8 +159,6 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
           is_correct: correct,
           time_spent: timeSpent,
           last_attempt_date: now,
-          // Include selected media item id when question uses media bank
-          ...(activeMedia ? { media_id: activeMedia.id } : {}),
         };
 
         if (isOnline) {
@@ -189,12 +177,6 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         const { checkAndSuspendQuestion } = await import('../workflows/suspensionLogic');
         await checkAndSuspendQuestion(currentQuestion.id);
 
-        // Trigger media stats recalc (media item level)
-        if (activeMedia) {
-          recalcMediaStats(activeMedia.id).catch(e =>
-            console.warn('[media] שגיאה בחישוב סטטיסטיקות מדיה:', e)
-          );
-        }
       }
 
       setShowResult(true);
@@ -270,7 +252,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
       <div style={styles.container}>
         <div style={styles.emptyState}>
           <h2>אין שאלות זמינות</h2>
-          <p>כל השאלות נענו או מושעות</p>
+          <p>כל השאלות נענו או אינן פעילות</p>
         </div>
       </div>
     );
@@ -294,14 +276,22 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         <div style={styles.questionHeader} role="group" aria-label="פרטי שאלה">
           {(() => {
             const attempts = currentQuestion.total_attempts ?? 0;
-            const showRated = attempts >= MIN_ATTEMPTS_FOR_RATING;
-            const level = showRated ? currentQuestion.difficulty_level : null;
-            const d = getDifficultyDisplay(level);
+            const rate = currentQuestion.success_rate;
+            const label =
+              attempts >= MIN_ATTEMPTS_FOR_RATING && rate != null ? `הצלחה: ${rate}%` : `ניסיונות: ${attempts}`;
             return (
-              <span style={{ ...styles.difficulty, color: d.color, background: d.bg,
-                border: `1px solid ${d.border}`, borderRadius: '10px', padding: '3px 10px' }}
-                aria-label={`רמת קושי: ${d.label}`}>
-                {d.label === 'לא מדורג' ? d.label : `קושי: ${d.label}`}
+              <span
+                style={{
+                  ...styles.difficulty,
+                  color: '#424242',
+                  background: '#f5f5f5',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '10px',
+                  padding: '3px 10px',
+                }}
+                aria-label={`סטטיסטיקת שאלה: ${label}`}
+              >
+                {label}
               </span>
             );
           })()}
@@ -310,12 +300,16 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
           </span>
         </div>
 
-        {/* ── Media display — dynamic (bank) or static attachment ── */}
-        {(activeMedia || currentQuestion.media_attachment) && (() => {
-          // Dynamic media from bank takes priority
-          const media = activeMedia
-            ? { url: activeMedia.url, type: activeMedia.media_type, desc: activeMedia.description }
-            : { url: currentQuestion.media_attachment?.url, type: 'image', desc: '' };
+        {/* ── Media display — static attachment ── */}
+        {currentQuestion.media_attachment && (() => {
+          const att = currentQuestion.media_attachment;
+          const isStr = typeof att === 'string';
+          const media = {
+            url: isStr ? att : (att.url || ''),
+            type: isStr ? 'image' : (att.type || 'image'),
+            desc: isStr ? '' : (att.desc || ''),
+          };
+          if (!media.url) return null;
 
           return (
             <div style={styles.mediaContainer} role="region" aria-label="מדיה לשאלה">

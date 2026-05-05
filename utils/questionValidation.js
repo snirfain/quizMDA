@@ -4,27 +4,30 @@
  * Hebrew: בדיקת תקינות שאלות
  */
 
-/**
- * Validate question text
- */
+import {
+  isValidCategory,
+  isValidThinkingLevel,
+  isValidTrainingLevel,
+} from '../shared/questionBankMetadata.js';
+
 export function validateQuestionText(text) {
   const errors = [];
-  
+
   if (!text || typeof text !== 'string') {
     errors.push('טקסט השאלה הוא שדה חובה');
     return errors;
   }
 
   const trimmed = text.trim();
-  
+
   if (trimmed.length === 0) {
     errors.push('טקסט השאלה לא יכול להיות ריק');
   }
-  
+
   if (trimmed.length < 10) {
     errors.push('טקסט השאלה חייב להכיל לפחות 10 תווים');
   }
-  
+
   if (trimmed.length > 2000) {
     errors.push('טקסט השאלה לא יכול להכיל יותר מ-2000 תווים');
   }
@@ -32,12 +35,9 @@ export function validateQuestionText(text) {
   return errors;
 }
 
-/**
- * Validate options for choice questions
- */
 export function validateOptions(options, questionType) {
   const errors = [];
-  
+
   if (questionType === 'single_choice' || questionType === 'multi_choice') {
     if (!options || !Array.isArray(options)) {
       errors.push('יש לספק רשימת אופציות');
@@ -52,7 +52,6 @@ export function validateOptions(options, questionType) {
       errors.push('לא ניתן לספק יותר מ-50 אופציות');
     }
 
-    // Check each option (support both .text and .label for compatibility with Moodle/Excel import)
     const getOptionLabel = (opt) =>
       typeof opt === 'string' ? opt : (opt?.label ?? opt?.text ?? '');
     options.forEach((option, index) => {
@@ -70,9 +69,8 @@ export function validateOptions(options, questionType) {
       }
     });
 
-    // Check for duplicate options
-    const optionTexts = options.map(opt => getOptionLabel(opt).trim()).filter(Boolean);
-    
+    const optionTexts = options.map((opt) => getOptionLabel(opt).trim()).filter(Boolean);
+
     const uniqueTexts = new Set(optionTexts);
     if (uniqueTexts.size !== optionTexts.length) {
       errors.push('יש אופציות כפולות');
@@ -82,12 +80,10 @@ export function validateOptions(options, questionType) {
   return errors;
 }
 
-/**
- * Validate correct answer
- */
+/** @param {unknown} answer */
 export function validateCorrectAnswer(answer, questionType, options = []) {
   const errors = [];
-  
+
   if (!answer && answer !== 0 && answer !== false) {
     errors.push('יש לספק תשובה נכונה');
     return errors;
@@ -100,7 +96,7 @@ export function validateCorrectAnswer(answer, questionType, options = []) {
         errors.push('תשובה נכונה לא תקינה לסוג שאלה זה');
       }
       if (questionType === 'single_choice' && options.length > 0) {
-        const answerIndex = typeof answer === 'string' ? parseInt(answer) : answer;
+        const answerIndex = typeof answer === 'string' ? parseInt(answer, 10) : answer;
         if (isNaN(answerIndex) || answerIndex < 0 || answerIndex >= options.length) {
           errors.push('תשובה נכונה לא קיימת ברשימת האופציות');
         }
@@ -116,7 +112,7 @@ export function validateCorrectAnswer(answer, questionType, options = []) {
         }
         if (options.length > 0) {
           answer.forEach((ans, index) => {
-            const answerIndex = typeof ans === 'string' ? parseInt(ans) : ans;
+            const answerIndex = typeof ans === 'string' ? parseInt(ans, 10) : ans;
             if (isNaN(answerIndex) || answerIndex < 0 || answerIndex >= options.length) {
               errors.push(`תשובה נכונה ${index + 1} לא קיימת ברשימת האופציות`);
             }
@@ -140,60 +136,80 @@ export function validateCorrectAnswer(answer, questionType, options = []) {
   return errors;
 }
 
-/**
- * Validate difficulty level.
- * Difficulty is never required — it is calculated automatically after ≥50 answers.
- * We do not add any validation errors for difficulty (so form save is never blocked).
- */
-export function validateDifficultyLevel(difficulty) {
-  return [];
-}
-
-/**
- * Validate hierarchy ID
- */
-export function validateHierarchyId(hierarchyId) {
+export function validateQuestionMetadata(q) {
   const errors = [];
-  
-  if (!hierarchyId || hierarchyId.trim().length === 0) {
-    errors.push('יש לבחור נושא מההיררכיה');
+
+  if (!q.category || typeof q.category !== 'string' || !q.category.trim()) {
+    errors.push('יש לבחור קטגוריה (פרק)');
+  } else if (!isValidCategory(q.category.trim())) {
+    errors.push('קטגוריה לא תקינה');
+  }
+
+  if (!q.sub_category || typeof q.sub_category !== 'string' || !q.sub_category.trim()) {
+    errors.push('יש לבחור תת־קטגוריה');
+  }
+
+  if (!q.thinking_level || !isValidThinkingLevel(q.thinking_level)) {
+    errors.push('יש לבחור רמת חשיבה');
+  }
+
+  if (!q.training_level || !isValidTrainingLevel(q.training_level)) {
+    errors.push('יש לבחור רמת הכשרה');
   }
 
   return errors;
 }
 
 /**
- * Validate complete question object
+ * Parse multi_choice answer from stringified JSON { values: [...] }
+ * @param {unknown} answer
+ * @returns {unknown}
  */
+function normalizeAnswerForValidation(answer, questionType) {
+  if (questionType !== 'multi_choice') return answer;
+  if (typeof answer === 'string' && answer.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(answer);
+      if (parsed && Array.isArray(parsed.values)) return parsed.values.map(String);
+    } catch (_) {}
+  }
+  return answer;
+}
+
 export function validateQuestion(question) {
   const errors = [];
-  
+
   if (!question) {
     errors.push('שאלה לא תקינה');
     return { isValid: false, errors };
   }
 
-  // Validate question text
   const textErrors = validateQuestionText(question.question_text);
   errors.push(...textErrors);
 
-  // Validate question type
+  errors.push(...validateQuestionMetadata(question));
+
   const validTypes = ['single_choice', 'multi_choice', 'true_false', 'open_ended'];
   if (!question.question_type || !validTypes.includes(question.question_type)) {
     errors.push('סוג שאלה לא תקין');
   }
 
-  // Validate options if needed
   if (question.question_type === 'single_choice' || question.question_type === 'multi_choice') {
     let options = question.options;
-    let answerForValidation = question.correct_answer;
+    let answerForValidation = normalizeAnswerForValidation(
+      question.correct_answer,
+      question.question_type
+    );
 
-    // correct_answer may be JSON string { value, options } (e.g. Moodle Excel import)
     if (typeof question.correct_answer === 'string' && question.correct_answer.trim().startsWith('{')) {
       try {
         const parsed = JSON.parse(question.correct_answer);
-        if (parsed && typeof parsed.value !== 'undefined' && Array.isArray(parsed.options)) {
-          answerForValidation = parsed.value;
+        if (parsed && Array.isArray(parsed.options)) {
+          if (question.question_type === 'multi_choice' && Array.isArray(parsed.values)) {
+            answerForValidation = parsed.values.map(String);
+          } else if (question.question_type === 'single_choice' && parsed.value !== undefined) {
+            answerForValidation = parsed.value;
+          }
           if (!options || !Array.isArray(options) || options.length === 0) {
             options = parsed.options;
           }
@@ -201,7 +217,6 @@ export function validateQuestion(question) {
       } catch (_) {}
     }
 
-    // Parse options if string
     if (typeof options === 'string') {
       try {
         options = JSON.parse(options);
@@ -214,8 +229,7 @@ export function validateQuestion(question) {
     const optionErrors = validateOptions(options, question.question_type);
     errors.push(...optionErrors);
 
-    // Validate correct answer with options
-    if (options.length > 0) {
+    if (options && options.length > 0) {
       const answerErrors = validateCorrectAnswer(
         answerForValidation,
         question.question_type,
@@ -224,7 +238,6 @@ export function validateQuestion(question) {
       errors.push(...answerErrors);
     }
   } else {
-    // Validate correct answer without options
     const answerErrors = validateCorrectAnswer(
       question.correct_answer,
       question.question_type
@@ -232,30 +245,19 @@ export function validateQuestion(question) {
     errors.push(...answerErrors);
   }
 
-  // Validate difficulty
-  const difficultyErrors = validateDifficultyLevel(question.difficulty_level);
-  errors.push(...difficultyErrors);
-
-  // Validate hierarchy
-  const hierarchyErrors = validateHierarchyId(question.hierarchy_id);
-  errors.push(...hierarchyErrors);
-
   return {
     isValid: errors.length === 0,
-    errors: errors
+    errors,
   };
 }
 
-/**
- * Get validation summary
- */
 export function getValidationSummary(question) {
   const validation = validateQuestion(question);
-  
+
   return {
     isValid: validation.isValid,
     errorCount: validation.errors.length,
     errors: validation.errors,
-    warnings: []
+    warnings: [],
   };
 }

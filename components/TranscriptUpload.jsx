@@ -8,7 +8,7 @@ import { showToast } from './Toast';
 import LoadingSpinner from './LoadingSpinner';
 import Modal from './Modal';
 import ConfirmDialog from './ConfirmDialog';
-import { entities } from '../config/appConfig';
+import { QUESTION_CATEGORIES } from '../shared/questionBankMetadata.js';
 
 const styles = {
   container: {
@@ -105,8 +105,7 @@ export default function TranscriptUpload() {
   const [generatedForName, setGeneratedForName] = useState(null);
   const [selectedForAdd, setSelectedForAdd] = useState(new Set());
   const [expandedQuestions, setExpandedQuestions] = useState(new Set());
-  const [hierarchies, setHierarchies] = useState([]);
-  const [selectedHierarchyId, setSelectedHierarchyId] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(QUESTION_CATEGORIES[0]?.value ?? '');
   const [saving, setSaving] = useState(false);
   const [completeToPerTranscript, setCompleteToPerTranscript] = useState({});
   const [selectedForBatch, setSelectedForBatch] = useState(new Set());
@@ -139,20 +138,6 @@ export default function TranscriptUpload() {
     const t = setTimeout(() => loadList(searchQuery), searchQuery ? 250 : 0);
     return () => clearTimeout(t);
   }, [searchQuery]);
-
-  const loadHierarchies = async () => {
-    try {
-      const all = await entities.Content_Hierarchy.find({});
-      setHierarchies(Array.isArray(all) ? all : []);
-      if (all?.length && !selectedHierarchyId) setSelectedHierarchyId(all[0].id || '');
-    } catch (e) {
-      console.error('Error loading hierarchies:', e);
-    }
-  };
-
-  useEffect(() => {
-    if (generatedQuestions.length > 0) loadHierarchies();
-  }, [generatedQuestions.length]);
 
   const getCompleteTo = (t) => completeToPerTranscript[t._id] ?? DEFAULT_COMPLETE_TO;
   const setCompleteTo = (tid, value) => {
@@ -291,7 +276,8 @@ export default function TranscriptUpload() {
     const o = opts.find((opt) => String(opt.value) === String(ca.value));
     return o ? [o.label] : [];
   };
-  const selectedHierarchyLabel = selectedHierarchyId && hierarchies.find((h) => h.id === selectedHierarchyId);
+  const selectedCategoryLabel =
+    QUESTION_CATEGORIES.find((c) => c.value === selectedCategory)?.label || selectedCategory;
   const toggleSelectQuestion = (index) => {
     setSelectedForAdd((prev) => {
       const next = new Set(prev);
@@ -304,14 +290,14 @@ export default function TranscriptUpload() {
   const clearSelection = () => setSelectedForAdd(new Set());
 
   const handleAddToBank = async () => {
-    if (!selectedHierarchyId || selectedCount === 0) {
-      showToast('בחר יחידה ובחר לפחות שאלה אחת להוספה', 'warning');
+    if (!selectedCategory || selectedCount === 0) {
+      showToast('בחר פרק ובחר לפחות שאלה אחת להוספה', 'warning');
       return;
     }
     const toAdd = generatedQuestions.filter((_, i) => selectedForAdd.has(i));
     setSaving(true);
     try {
-      const payload = toAdd.map((q) => ({ ...q, hierarchy_id: selectedHierarchyId }));
+      const payload = toAdd.map((q) => ({ ...q, category: selectedCategory }));
       const res = await fetch('/api/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -780,7 +766,7 @@ export default function TranscriptUpload() {
                       )}
                       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#666' }}>
                         <span><strong>תגיות:</strong> {(q.tags && q.tags.length) ? q.tags.join(', ') : '—'}</span>
-                        <span><strong>קטגוריה (לאחר הוספה):</strong> {selectedHierarchyLabel ? (selectedHierarchyLabel.category_name || selectedHierarchyLabel.topic_name || selectedHierarchyLabel.id) : '—'}</span>
+                        <span><strong>פרק (לאחר הוספה):</strong> {selectedCategoryLabel || '—'}</span>
                       </div>
                     </div>
                   )}
@@ -788,18 +774,17 @@ export default function TranscriptUpload() {
               );
             })}
           </div>
-          <p style={{ ...styles.note, marginBottom: 12 }}>יחידת תוכן להוספה:</p>
+          <p style={{ ...styles.note, marginBottom: 12 }}>פרק מהמארגן לשיוך השאלות:</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <select
-              value={selectedHierarchyId}
-              onChange={(e) => setSelectedHierarchyId(e.target.value)}
-              style={{ ...styles.input, width: '100%', maxWidth: 300, minWidth: 0, margin: 0 }}
-              aria-label="בחר יחידה"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              style={{ ...styles.input, width: '100%', maxWidth: 420, minWidth: 0, margin: 0 }}
+              aria-label="בחר פרק"
             >
-              {hierarchies.length === 0 && <option value="">טוען יחידות...</option>}
-              {hierarchies.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.category_name || h.topic_name || h.id}
+              {QUESTION_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
                 </option>
               ))}
             </select>
@@ -807,7 +792,7 @@ export default function TranscriptUpload() {
               type="button"
               className="btn btn-primary"
               onClick={handleAddToBank}
-              disabled={saving || !selectedHierarchyId || selectedCount === 0}
+              disabled={saving || !selectedCategory || selectedCount === 0}
               aria-label="הוסף למאגר"
             >
               {saving ? 'מוסיף...' : `הוסף ${selectedCount} למאגר`}

@@ -58,7 +58,7 @@ export async function getSystemStatistics(dateRange = null) {
       total: questions.length,
       byStatus: {
         active: questions.filter(q => q.status === 'active').length,
-        suspended: questions.filter(q => q.status === 'suspended').length,
+        under_review: questions.filter(q => q.status === 'under_review').length,
         draft: questions.filter(q => q.status === 'draft').length
       },
       byType: {
@@ -67,10 +67,12 @@ export async function getSystemStatistics(dateRange = null) {
         true_false: questions.filter(q => q.question_type === 'true_false').length,
         open_ended: questions.filter(q => q.question_type === 'open_ended').length
       },
-      byDifficulty: {
-        easy: questions.filter(q => q.difficulty_level <= 3).length,
-        medium: questions.filter(q => q.difficulty_level > 3 && q.difficulty_level <= 7).length,
-        hard: questions.filter(q => q.difficulty_level > 7).length
+      byTrainingLevel: {
+        A: questions.filter(q => q.training_level === 'A').length,
+        B: questions.filter(q => q.training_level === 'B').length,
+        C: questions.filter(q => q.training_level === 'C').length,
+        D: questions.filter(q => q.training_level === 'D').length,
+        E: questions.filter(q => q.training_level === 'E').length
       },
       avgSuccessRate: questions.length > 0
         ? questions.reduce((sum, q) => sum + (q.success_rate || 0), 0) / questions.length
@@ -293,7 +295,7 @@ export async function getQuestionPerformanceStatistics(dateRange = null) {
         questionId: question.id,
         questionText: question.question_text.substring(0, 100) + '...',
         questionType: question.question_type,
-        difficulty: question.difficulty_level,
+        training_level: question.training_level,
         status: question.status,
         attempts: perf.attempts,
         correct: perf.correct,
@@ -360,46 +362,43 @@ export async function getContentUsageStatistics(dateRange = null) {
 
     activities.forEach(activity => {
       const question = questions.find(q => q.id === activity.question_id);
-      if (question && question.hierarchy_id) {
-        const content = contentHierarchy.find(c => c.id === question.hierarchy_id);
-        if (content) {
-          // Category usage
-          if (!categoryUsage[content.category_name]) {
-            categoryUsage[content.category_name] = {
-              attempts: 0,
-              correct: 0,
-              incorrect: 0,
-              uniqueUsers: new Set()
-            };
-          }
-          categoryUsage[content.category_name].attempts++;
-          if (activity.is_correct) {
-            categoryUsage[content.category_name].correct++;
-          } else {
-            categoryUsage[content.category_name].incorrect++;
-          }
-          categoryUsage[content.category_name].uniqueUsers.add(activity.user_id);
-
-          // Topic usage
-          const topicKey = `${content.category_name}::${content.topic_name}`;
-          if (!topicUsage[topicKey]) {
-            topicUsage[topicKey] = {
-              category: content.category_name,
-              topic: content.topic_name,
-              attempts: 0,
-              correct: 0,
-              incorrect: 0,
-              uniqueUsers: new Set()
-            };
-          }
-          topicUsage[topicKey].attempts++;
-          if (activity.is_correct) {
-            topicUsage[topicKey].correct++;
-          } else {
-            topicUsage[topicKey].incorrect++;
-          }
-          topicUsage[topicKey].uniqueUsers.add(activity.user_id);
+      if (question && question.category) {
+        const catName = question.category;
+        const topName = question.sub_category || '';
+        if (!categoryUsage[catName]) {
+          categoryUsage[catName] = {
+            attempts: 0,
+            correct: 0,
+            incorrect: 0,
+            uniqueUsers: new Set()
+          };
         }
+        categoryUsage[catName].attempts++;
+        if (activity.is_correct) {
+          categoryUsage[catName].correct++;
+        } else {
+          categoryUsage[catName].incorrect++;
+        }
+        categoryUsage[catName].uniqueUsers.add(activity.user_id);
+
+        const topicKey = `${catName}::${topName}`;
+        if (!topicUsage[topicKey]) {
+          topicUsage[topicKey] = {
+            category: catName,
+            topic: topName,
+            attempts: 0,
+            correct: 0,
+            incorrect: 0,
+            uniqueUsers: new Set()
+          };
+        }
+        topicUsage[topicKey].attempts++;
+        if (activity.is_correct) {
+          topicUsage[topicKey].correct++;
+        } else {
+          topicUsage[topicKey].incorrect++;
+        }
+        topicUsage[topicKey].uniqueUsers.add(activity.user_id);
       }
     });
 
@@ -545,9 +544,9 @@ function getMockStatistics() {
     },
     questionStats: {
       total: 500,
-      byStatus: { active: 450, suspended: 30, draft: 20 },
+      byStatus: { active: 450, under_review: 30, draft: 20 },
       byType: { single_choice: 200, multi_choice: 150, true_false: 100, open_ended: 50 },
-      byDifficulty: { easy: 150, medium: 250, hard: 100 },
+      byTrainingLevel: { A: 100, B: 100, C: 100, D: 100, E: 100 },
       avgSuccessRate: 72.5,
       avgAttempts: 45
     },

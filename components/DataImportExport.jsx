@@ -8,6 +8,8 @@ import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { entities } from '../config/appConfig';
 import { showToast } from './Toast';
+import { validateQuestion } from '../utils/questionValidation';
+import { applyQuestionImportDefaults } from '../workflows/questionImport.js';
 import { announce, announceError } from '../utils/accessibility';
 import Modal from './Modal';
 import LoadingSpinner from './LoadingSpinner';
@@ -51,24 +53,28 @@ export default function DataImportExport() {
 
     const headers = [
       'ID',
-      'היררכיה',
+      'קטגוריה',
+      'תת־קטגוריה',
+      'רמת חשיבה',
+      'הכשרה',
       'סוג שאלה',
       'טקסט שאלה',
-      'קושי',
       'תשובה נכונה',
       'סטטוס',
-      'תגיות'
+      'מדיה',
     ];
 
-    const rows = data.map(q => [
+    const rows = data.map((q) => [
       q.id,
-      q.hierarchy_id,
+      q.category,
+      q.sub_category,
+      q.thinking_level,
+      q.training_level,
       q.question_type,
       q.question_text?.replace(/"/g, '""'),
-      q.difficulty_level,
       q.correct_answer,
       q.status,
-      q.tags?.join(';') || ''
+      q.has_media ? 'כן' : 'לא',
     ]);
 
     const csvContent = [
@@ -100,18 +106,19 @@ export default function DataImportExport() {
     const safe = (v) => (v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
     const headers = [
       'ID',
-      'היררכיה',
+      'קטגוריה',
+      'תת־קטגוריה',
+      'רמת חשיבה',
+      'הכשרה',
       'סוג שאלה',
       'טקסט השאלה',
       'אפשרויות (value;label)',
       'תשובה נכונה',
       'הסבר',
       'רמז',
-      'קושי',
       'סטטוס',
-      'תגיות',
-      'מדיה מצורפת',
-      'תג מאגר מדיה',
+      'מדיה',
+      'צרוף מדיה',
       'ניסיונות',
       'הצלחות',
       'אחוז הצלחה',
@@ -120,18 +127,19 @@ export default function DataImportExport() {
     ];
     const rows = data.map((q) => [
       safe(q.id),
-      safe(q.hierarchy_id),
+      safe(q.category),
+      safe(q.sub_category),
+      safe(q.thinking_level),
+      safe(q.training_level),
       safe(q.question_type),
       safe(q.question_text),
       Array.isArray(q.options) ? q.options.map((o) => `${o.value};${o.label || ''}`).join(' | ') : '',
       safe(q.correct_answer),
       safe(q.explanation),
       safe(q.hint),
-      q.difficulty_level != null ? q.difficulty_level : '',
       safe(q.status),
-      Array.isArray(q.tags) ? q.tags.join(';') : '',
+      q.has_media ? 'כן' : 'לא',
       safe(q.media_attachment),
-      safe(q.media_bank_tag),
       typeof q.total_attempts === 'number' ? q.total_attempts : '',
       typeof q.total_success === 'number' ? q.total_success : '',
       typeof q.success_rate === 'number' ? q.success_rate : '',
@@ -140,7 +148,26 @@ export default function DataImportExport() {
     ]);
     const wsData = [headers, ...rows];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const colWidths = [{ wch: 26 }, { wch: 12 }, { wch: 14 }, { wch: 50 }, { wch: 40 }, { wch: 20 }, { wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 22 }, { wch: 22 }];
+    const colWidths = [
+      { wch: 26 },
+      { wch: 28 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 14 },
+      { wch: 50 },
+      { wch: 40 },
+      { wch: 20 },
+      { wch: 30 },
+      { wch: 12 },
+      { wch: 6 },
+      { wch: 24 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 22 },
+      { wch: 22 },
+    ];
     ws['!cols'] = colWidths;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'שאלות');
@@ -195,26 +222,47 @@ export default function DataImportExport() {
     const rows = lines.slice(1);
 
     let imported = 0;
-    let errors = 0;
+    let errorCount = 0;
 
     for (let i = 0; i < rows.length; i++) {
       try {
         const values = parseCSVRow(rows[i]);
         
         if (values.length !== headers.length) {
-          errors++;
+          errorCount++;
           continue;
         }
 
-        const questionData = {
-          hierarchy_id: values[headers.indexOf('היררכיה')] || values[headers.indexOf('hierarchy_id')],
-          question_type: values[headers.indexOf('סוג שאלה')] || values[headers.indexOf('question_type')],
-          question_text: values[headers.indexOf('טקסט שאלה')] || values[headers.indexOf('question_text')],
-          difficulty_level: (() => { const v = values[headers.indexOf('קושי')] ?? values[headers.indexOf('difficulty_level')]; return v ? parseInt(v) : null; })(),
-          correct_answer: values[headers.indexOf('תשובה נכונה')] || values[headers.indexOf('correct_answer')],
-          status: values[headers.indexOf('סטטוס')] || values[headers.indexOf('status')] || 'active',
-          tags: (values[headers.indexOf('תגיות')] || values[headers.indexOf('tags')] || '').split(';').filter(t => t.trim())
+        const pick = (...names) => {
+          for (const n of names) {
+            const idx = headers.indexOf(n);
+            if (idx >= 0 && values[idx] !== undefined && String(values[idx]).trim() !== '') {
+              return values[idx];
+            }
+          }
+          return '';
         };
+
+        const raw = {
+          category: pick('קטגוריה', 'category'),
+          sub_category: pick('תת־קטגוריה', 'sub_category'),
+          thinking_level: pick('רמת חשיבה', 'thinking_level'),
+          training_level: pick('הכשרה', 'training_level'),
+          question_type: pick('סוג שאלה', 'Question Type', 'question_type'),
+          question_text: pick('טקסט שאלה', 'טקסט השאלה', 'Question Text', 'question_text'),
+          correct_answer: pick('תשובה נכונה', 'Correct Answer', 'correct_answer'),
+          explanation: pick('הסבר', 'Explanation', 'explanation'),
+          hint: pick('רמז', 'Hint', 'hint'),
+          status: pick('סטטוס', 'Status', 'status') || undefined,
+          media_attachment: pick('צרוף מדיה', 'מדיה מצורפת', 'media_attachment') || undefined,
+        };
+
+        const questionData = applyQuestionImportDefaults(raw, {});
+        const validation = validateQuestion(questionData);
+        if (!validation.isValid) {
+          errorCount++;
+          continue;
+        }
 
         await entities.Question_Bank.create(questionData);
         imported++;
@@ -222,12 +270,12 @@ export default function DataImportExport() {
         setImportProgress(Math.round(((i + 1) / rows.length) * 100));
       } catch (error) {
         console.error(`Error importing row ${i + 1}:`, error);
-        errors++;
+        errorCount++;
       }
     }
 
-    if (errors > 0) {
-      showToast(`יובאו ${imported} שאלות, ${errors} שגיאות`, 'warning');
+    if (errorCount > 0) {
+      showToast(`יובאו ${imported} שאלות, ${errorCount} שגיאות`, 'warning');
     }
   };
 

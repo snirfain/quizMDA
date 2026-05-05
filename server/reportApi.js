@@ -20,15 +20,9 @@ export async function createReport(req, res) {
       return res.status(400).json({ error: 'suggested changes required' });
     }
 
-    let qSerial = null;
-    try {
-      const q = await Question.findById(question_id).select('serial_number').lean();
-      if (q) qSerial = q.serial_number;
-    } catch (_) {}
-
     const doc = await QuestionReport.create({
       question_id,
-      question_serial: qSerial,
+      question_serial: null,
       reporter_id,
       reporter_name: reporter_name || '',
       original: original || {},
@@ -92,7 +86,19 @@ export async function reviewReport(req, res) {
     if ((status === 'approved' || status === 'partial') && report.question_id) {
       const changes = apply_changes || report.suggested;
       const safeFields = {};
-      const ALLOWED = ['question_text', 'options', 'correct_answer', 'explanation', 'hint', 'hierarchy_id', 'question_type'];
+      const ALLOWED = [
+        'question_text',
+        'options',
+        'correct_answer',
+        'explanation',
+        'hint',
+        'question_type',
+        'category',
+        'sub_category',
+        'thinking_level',
+        'training_level',
+        'media_attachment',
+      ];
       for (const key of ALLOWED) {
         if (changes[key] !== undefined) safeFields[key] = changes[key];
       }

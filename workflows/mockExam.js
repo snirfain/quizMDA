@@ -19,8 +19,8 @@ export async function generateMockExam(userId, preferences = {}) {
     timeLimit = 30, // minutes
     category_name,
     topic_name,
-    difficulty_range,
-    questionTypes = []
+    questionTypes = [],
+    training_levels,
   } = preferences;
 
   try {
@@ -33,12 +33,8 @@ export async function generateMockExam(userId, preferences = {}) {
     const result = await getAdaptiveQuestions(userId, hierarchyFilters);
     let questions = result.questions || [];
 
-    // Filter by difficulty if specified
-    if (difficulty_range) {
-      const [min, max] = difficulty_range.split('-').map(Number);
-      questions = questions.filter(q => 
-        q.difficulty_level >= min && q.difficulty_level <= max
-      );
+    if (training_levels && Array.isArray(training_levels) && training_levels.length > 0) {
+      questions = questions.filter((q) => training_levels.includes(q.training_level));
     }
 
     // Filter by question types if specified
@@ -58,7 +54,10 @@ export async function generateMockExam(userId, preferences = {}) {
         question_text: q.question_text,
         question_type: q.question_type,
         options: q.options,
-        difficulty_level: q.difficulty_level,
+        category: q.category,
+        sub_category: q.sub_category,
+        training_level: q.training_level,
+        thinking_level: q.thinking_level,
         hint: q.hint,
         explanation: q.explanation
       })),

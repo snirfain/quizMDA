@@ -15,6 +15,33 @@ import {
   ENRICH_IDENTIFY_ANSWER,
 } from './questionEnrich';
 import {
+  QUESTION_CATEGORIES,
+  PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY,
+} from '../shared/questionBankMetadata.js';
+
+export function applyQuestionImportDefaults(question, opts = {}) {
+  const firstCat = QUESTION_CATEGORIES[0]?.value || '';
+  const fallbackSub =
+    (firstCat && PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY[firstCat]?.[0]) || 'תת־נושא א';
+  const q = { ...question };
+  delete q.hierarchy_id;
+  delete q.difficulty_level;
+  delete q.adaptive_difficulty;
+  delete q.media_bank_tag;
+  delete q.serial_number;
+  delete q.tags;
+  const category = opts.defaultCategory || (q.category && String(q.category).trim()) || firstCat;
+  const subCat =
+    (q.sub_category && String(q.sub_category).trim()) ||
+    PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY[category]?.[0] ||
+    fallbackSub;
+  q.category = category;
+  q.sub_category = subCat;
+  if (!q.thinking_level) q.thinking_level = 'Knowledge';
+  if (!q.training_level) q.training_level = 'A';
+  return q;
+}
+import {
   checkDuplicatesAgainstDB,
   checkInternalDuplicates,
 } from './questionDeduplication';
@@ -660,8 +687,7 @@ export function parseCSV(csvText) {
   // Parse header
   const headers = lines[0].split(',').map(h => h.trim());
   
-  // Required columns (difficulty_level is optional — computed after ≥50 attempts)
-  const requiredColumns = ['question_text', 'question_type', 'correct_answer', 'hierarchy_id'];
+  const requiredColumns = ['question_text', 'question_type', 'correct_answer'];
   const missingColumns = requiredColumns.filter(col => !headers.includes(col));
   
   if (missingColumns.length > 0) {
@@ -694,8 +720,8 @@ export function parseCSV(csvText) {
       }
       
       // Parse numbers
-      if (header === 'difficulty_level' || header === 'total_attempts' || header === 'total_success') {
-        value = value ? parseInt(value) : undefined;
+      if (header === 'total_attempts' || header === 'total_success') {
+        value = value ? parseInt(value, 10) : undefined;
       }
       
       // Parse booleans
@@ -776,14 +802,14 @@ export function parseMoodleExcel(buffer) {
     }
 
     const correctAnswerPayload = { value: String(correctIndex), options };
-    questions.push({
-      question_text: questionText,
-      question_type: 'single_choice',
-      correct_answer: JSON.stringify(correctAnswerPayload),
-      options, // for validation
-      difficulty_level: null,
-      hierarchy_id: 'h1',
-    });
+    questions.push(
+      applyQuestionImportDefaults({
+        question_text: questionText,
+        question_type: 'single_choice',
+        correct_answer: JSON.stringify(correctAnswerPayload),
+        options,
+      }),
+    );
   }
 
   return questions;
@@ -817,12 +843,13 @@ export function validateQuestionData(question, index = null) {
  */
 export async function bulkCreateQuestions(questions, options = {}) {
   const {
-    validate         = true,
-    skipInvalid      = true,
-    enrich           = true,
-    skipDuplicates   = false,   // when true, questions flagged as duplicates are not saved
-    onProgress       = null,
+    validate = true,
+    skipInvalid = true,
+    enrich = true,
+    skipDuplicates = false,
+    onProgress = null,
     onEnrichProgress = null,
+    defaultCategory = undefined,
   } = options;
 
   const results = {
@@ -892,7 +919,7 @@ export async function bulkCreateQuestions(questions, options = {}) {
 
   // ── Phase 2: validate & save ─────────────────────────────
   for (let i = 0; i < workingSet.length; i++) {
-    const question = workingSet[i];
+    const question = applyQuestionImportDefaults(workingSet[i], { defaultCategory });
 
     // Skip duplicates when requested
     if (skipDuplicates && (question._duplicateFlag || question._internalDuplicate)) {
@@ -917,7 +944,7 @@ export async function bulkCreateQuestions(questions, options = {}) {
     }
 
     try {
-      if (!question.status) question.status = 'active';
+      if (!question.status) question.status = 'draft';
       // Duplicate or AI-error: needs human review
       if (question._duplicateFlag || question.enrichment_error) question.status = 'pending_review';
       // Strip internal dedup metadata before persisting
@@ -971,15 +998,15 @@ export async function importQuestionsFromJSON(jsonText, options = {}) {
 
 /**
  * Import questions from Moodle-style Excel (.xlsx)
- * options.defaultHierarchyId — optional; if set, applied to each question
+ * options.defaultCategory — optional full category string from QUESTION_CATEGORIES
  */
 export async function importQuestionsFromMoodleExcel(buffer, options = {}) {
   try {
-    let questions = parseMoodleExcel(buffer);
-    if (options.defaultHierarchyId) {
-      questions = questions.map(q => ({ ...q, hierarchy_id: options.defaultHierarchyId }));
-    }
-    const results = await bulkCreateQuestions(questions, options);
+    const questions = parseMoodleExcel(buffer);
+    const results = await bulkCreateQuestions(questions, {
+      ...options,
+      defaultCategory: options.defaultCategory ?? options.defaultHierarchyId,
+    });
     return results;
   } catch (error) {
     throw new Error(`שגיאה בייבוא Excel: ${error.message}`);
@@ -995,32 +1022,31 @@ export function previewQuestions(questions) {
     valid: 0,
     invalid: 0,
     byType: {},
-    byDifficulty: {},
-    details: []
+    byTraining: {},
+    details: [],
   };
 
   questions.forEach((question, index) => {
-    const validation = validateQuestionData(question, index);
-    
+    const normalized = applyQuestionImportDefaults(question, {});
+    const validation = validateQuestionData(normalized, index);
+
     if (validation.isValid) {
       preview.valid++;
     } else {
       preview.invalid++;
     }
 
-    // Count by type
-    const type = question.question_type || 'unknown';
+    const type = normalized.question_type || 'unknown';
     preview.byType[type] = (preview.byType[type] || 0) + 1;
 
-    // Count by difficulty
-    const difficulty = question.difficulty_level || 'unknown';
-    preview.byDifficulty[difficulty] = (preview.byDifficulty[difficulty] || 0) + 1;
+    const tl = normalized.training_level || 'unknown';
+    preview.byTraining[tl] = (preview.byTraining[tl] || 0) + 1;
 
     preview.details.push({
       index: index + 1,
-      question: question,
+      question: normalized,
       isValid: validation.isValid,
-      errors: validation.errors
+      errors: validation.errors,
     });
   });
 

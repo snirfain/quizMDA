@@ -80,15 +80,12 @@ export async function listTranscripts(req, res) {
       query.$or = [{ name: re }, { fullText: re }];
     }
     const list = await Transcript.find(query, { name: 1, originalFilename: 1, createdAt: 1 }).sort({ createdAt: -1 }).lean();
-    const Question = (await import('../models/Question.js')).default;
-    const tagCounts = await Question.aggregate([{ $unwind: '$tags' }, { $group: { _id: '$tags', count: { $sum: 1 } } }]);
-    const countByTag = Object.fromEntries((tagCounts || []).map((t) => [t._id, t.count]));
     const withCounts = list.map((t) => ({
       _id: t._id,
       name: t.name,
       originalFilename: t.originalFilename,
       createdAt: t.createdAt,
-      questionCount: countByTag[t.name] || 0,
+      questionCount: 0,
     }));
     res.set('Cache-Control', 'no-store');
     res.json(withCounts);
@@ -294,27 +291,12 @@ export async function matchAllQuestions(req, res) {
       return res.status(503).json({ error: 'Database not connected' });
     }
     const Question = (await import('../models/Question.js')).default;
-    const transcripts = await Transcript.find({}).lean();
-    const transcriptNames = new Set(transcripts.map(t => t.name));
-    const tokenSets = buildTranscriptTokenSets(transcripts);
-    const questions = await Question.find({}).lean();
-    let updated = 0;
-    for (const q of questions) {
-      const text = q.question_text || '';
-      const found = matchQuestionToTranscripts(text, transcripts, tokenSets);
-      const newTag = found || NO_TRANSCRIPT_TAG;
-      const existingTags = Array.isArray(q.tags) ? q.tags : [];
-      const withoutTranscriptTags = existingTags.filter(
-        t => t !== NO_TRANSCRIPT_TAG && !transcriptNames.has(t)
-      );
-      const newTags = [...withoutTranscriptTags, newTag];
-      if (JSON.stringify([...existingTags].sort()) !== JSON.stringify([...newTags].sort())) {
-        await Question.findByIdAndUpdate(q._id, { tags: newTags });
-        updated++;
-      }
-    }
-    console.log('[api/transcripts/match-all] updated', updated, 'of', questions.length);
-    res.json({ updated, total: questions.length });
+    const total = await Question.countDocuments({});
+    res.json({
+      updated: 0,
+      total,
+      message: 'Question tags were removed from the schema; match-all is a no-op.',
+    });
   } catch (err) {
     console.error('POST /api/transcripts/match-all error:', err);
     res.status(500).json({ error: err.message });
@@ -493,13 +475,13 @@ function parseQuestionsJsonFromAI(content) {
   }
 }
 
-function normalizeGeneratedQuestion(q, transcriptName) {
+async function normalizeGeneratedQuestion(q) {
+  const { QUESTION_CATEGORIES, getSubcategoriesForCategory } = await import('../shared/questionBankMetadata.js');
+  const cat = QUESTION_CATEGORIES[0]?.value ?? '';
   const options = (Array.isArray(q.options) ? q.options : []).map((o, i) => ({
     value: String(o?.value ?? i),
     label: String(o?.label ?? o?.text ?? ''),
   }));
-  const tags = Array.isArray(q.tags) ? [...q.tags] : [];
-  if (transcriptName && !tags.includes(transcriptName)) tags.push(transcriptName);
   let correct_answer = q.correct_answer;
   if (typeof correct_answer === 'string') {
     try {
@@ -509,14 +491,18 @@ function normalizeGeneratedQuestion(q, transcriptName) {
     }
   }
   if (!correct_answer || typeof correct_answer !== 'object') correct_answer = { value: '0' };
+  const subs = getSubcategoriesForCategory(cat);
   return {
     question_text: String(q.question_text ?? '').trim(),
-    question_type: ['single_choice', 'multi_choice', 'true_false', 'open_ended', 'ordering'].includes(q.question_type) ? q.question_type : 'single_choice',
+    question_type: ['single_choice', 'multi_choice', 'true_false', 'open_ended'].includes(q.question_type) ? q.question_type : 'single_choice',
     options,
     correct_answer,
     explanation: q.explanation ? String(q.explanation).trim() : null,
-    hierarchy_id: q.hierarchy_id ?? null,
-    tags,
+    category: cat,
+    sub_category: subs[0] || 'תת־נושא א',
+    thinking_level: 'Knowledge',
+    training_level: 'A',
+    has_media: false,
     status: 'draft',
   };
 }
@@ -578,7 +564,7 @@ async function runGenerationJob(job) {
 
     const transcriptNames = [...new Set(transcripts.map((t) => t.name).filter(Boolean))];
     const Question = (await import('../models/Question.js')).default;
-    const existing = await Question.find({ tags: { $in: transcriptNames } }).select('question_text').lean();
+    const existing = await Question.find({}).select('question_text').limit(8000).lean();
     const fromDb = [...new Set(existing.map((q) => (q.question_text || '').trim()).filter(Boolean))];
     const excludeList = Array.isArray(excludeFromBody) ? excludeFromBody.map((t) => String(t || '').trim()).filter(Boolean) : [];
     const existingTexts = [...new Set([...fromDb, ...excludeList])];
@@ -612,19 +598,18 @@ async function runGenerationJob(job) {
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '[]';
     const raw = parseQuestionsJsonFromAI(content);
-    const questions = raw
-      .map((q) => {
-        const normalized = normalizeGeneratedQuestion(q, transcriptNames[0]);
-        normalized.tags = [...new Set([...(normalized.tags || []), ...transcriptNames])];
-        return normalized;
-      })
-      .filter((q) => q.question_text);
+    const questions = [];
+    for (const q of raw) {
+      const normalized = await normalizeGeneratedQuestion(q);
+      questions.push(normalized);
+    }
+    const filteredQuestions = questions.filter((q) => q.question_text);
 
     const transcriptNameLabel = transcriptNames.length === 1 ? transcriptNames[0] : transcriptNames.join(', ');
-    console.log('[generate-questions job]', job.id, transcriptNameLabel, 'requested', count, 'got', questions.length);
+    console.log('[generate-questions job]', job.id, transcriptNameLabel, 'requested', count, 'got', filteredQuestions.length);
 
     job.status = 'done';
-    job.result = { questions, transcriptName: transcriptNameLabel, transcriptNames };
+    job.result = { questions: filteredQuestions, transcriptName: transcriptNameLabel, transcriptNames };
   } catch (err) {
     console.error('[generate-questions job error]', job.id, err);
     job.status = 'error';

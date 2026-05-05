@@ -7,6 +7,7 @@
 import * as XLSX from 'xlsx';
 import { entities } from '../config/appConfig';
 import { validateQuestion } from '../utils/questionValidation';
+import { applyQuestionImportDefaults } from './questionImport.js';
 
 /**
  * Export questions to various formats
@@ -19,7 +20,7 @@ export async function exportQuestions(format, filters = {}) {
     // Get questions based on filters
     const query = {};
     if (filters.status) query.status = filters.status;
-    if (filters.hierarchyId) query.hierarchy_id = filters.hierarchyId;
+    if (filters.category) query.category = filters.category;
     if (filters.questionType) query.question_type = filters.questionType;
 
     const questions = await entities.Question_Bank.find(query);
@@ -50,34 +51,44 @@ function exportToCSV(questions) {
 
   const headers = [
     'ID',
-    'Hierarchy ID',
+    'category',
+    'sub_category',
+    'thinking_level',
+    'training_level',
     'Question Type',
     'Question Text',
     'Options',
     'Correct Answer',
-    'Difficulty Level',
     'Status',
-    'Tags',
+    'has_media',
     'Hint',
     'Explanation',
+    'Attempts',
+    'Success',
+    'Success rate',
     'Created At',
-    'Updated At'
+    'Updated At',
   ];
 
-  const rows = questions.map(q => [
+  const rows = questions.map((q) => [
     q.id || '',
-    q.hierarchy_id || '',
+    q.category || '',
+    q.sub_category || '',
+    q.thinking_level || '',
+    q.training_level || '',
     q.question_type || '',
     (q.question_text || '').replace(/"/g, '""'),
     q.options ? JSON.stringify(q.options) : '',
     q.correct_answer || '',
-    q.difficulty_level || '',
     q.status || '',
-    (q.tags || []).join(';'),
+    q.has_media ? '1' : '0',
     q.hint || '',
     q.explanation || '',
+    typeof q.total_attempts === 'number' ? q.total_attempts : '',
+    typeof q.total_success === 'number' ? q.total_success : '',
+    typeof q.success_rate === 'number' ? q.success_rate : '',
     q.createdAt ? new Date(q.createdAt).toISOString() : '',
-    q.updatedAt ? new Date(q.updatedAt).toISOString() : ''
+    q.updatedAt ? new Date(q.updatedAt).toISOString() : '',
   ]);
 
   const csvContent = [
@@ -105,15 +116,41 @@ function exportToExcel(questions) {
   if (questions.length === 0) throw new Error('אין שאלות לייצוא');
   const safe = (v) => (v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
   const headers = [
-    'ID', 'היררכיה', 'סוג שאלה', 'טקסט השאלה', 'אפשרויות', 'תשובה נכונה', 'הסבר', 'רמז',
-    'קושי', 'סטטוס', 'תגיות', 'מדיה מצורפת', 'תג מאגר מדיה', 'ניסיונות', 'הצלחות', 'אחוז הצלחה', 'נוצר', 'עודכן',
+    'ID',
+    'קטגוריה',
+    'תת־קטגוריה',
+    'רמת חשיבה',
+    'הכשרה',
+    'סוג שאלה',
+    'טקסט השאלה',
+    'אפשרויות',
+    'תשובה נכונה',
+    'הסבר',
+    'רמז',
+    'סטטוס',
+    'מדיה',
+    'קובץ מדיה',
+    'ניסיונות',
+    'הצלחות',
+    'אחוז הצלחה',
+    'נוצר',
+    'עודכן',
   ];
   const rows = questions.map((q) => [
-    safe(q.id), safe(q.hierarchy_id), safe(q.question_type), safe(q.question_text),
+    safe(q.id),
+    safe(q.category),
+    safe(q.sub_category),
+    safe(q.thinking_level),
+    safe(q.training_level),
+    safe(q.question_type),
+    safe(q.question_text),
     Array.isArray(q.options) ? q.options.map((o) => `${o.value};${o.label || ''}`).join(' | ') : '',
-    safe(q.correct_answer), safe(q.explanation), safe(q.hint),
-    q.difficulty_level != null ? q.difficulty_level : '', safe(q.status),
-    Array.isArray(q.tags) ? q.tags.join(';') : '', safe(q.media_attachment), safe(q.media_bank_tag),
+    safe(q.correct_answer),
+    safe(q.explanation),
+    safe(q.hint),
+    safe(q.status),
+    q.has_media ? 'כן' : 'לא',
+    safe(q.media_attachment),
     typeof q.total_attempts === 'number' ? q.total_attempts : '',
     typeof q.total_success === 'number' ? q.total_success : '',
     typeof q.success_rate === 'number' ? q.success_rate : '',
@@ -185,16 +222,16 @@ export async function validateImportData(questions) {
   const errors = [];
 
   for (let i = 0; i < questions.length; i++) {
-    const question = questions[i];
-    const validationErrors = validateQuestion(question);
+    const normalized = applyQuestionImportDefaults(questions[i], {});
+    const { isValid, errors: qErrors } = validateQuestion(normalized);
 
-    if (validationErrors.length === 0) {
-      valid.push(question);
+    if (isValid) {
+      valid.push(normalized);
     } else {
       errors.push({
         row: i + 1,
-        question: question.question_text || 'לא מוגדר',
-        errors: validationErrors
+        question: normalized.question_text || 'לא מוגדר',
+        errors: qErrors,
       });
     }
   }

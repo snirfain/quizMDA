@@ -12,7 +12,6 @@ import QuestionImport from './QuestionImport';
 import SearchBar from './SearchBar';
 import LoadingSpinner from './LoadingSpinner';
 import ConfirmDialog from './ConfirmDialog';
-import TagFilter from './TagFilter';
 import { showToast } from './Toast';
 import { permissions } from '../utils/permissions';
 import PermissionGate from './PermissionGate';
@@ -25,8 +24,15 @@ import {
   getReviewStatistics
 } from '../workflows/questionReview';
 import { reclassifyUnanalyzedQuestionsWithAI } from '../workflows/questionClassification';
-import { getDifficultyDisplay, MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
+import { MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { fixQuestionWithAI } from '../workflows/questionEnrich';
+import {
+  QUESTION_CATEGORIES,
+  THINKING_LEVELS,
+  TRAINING_LEVELS,
+  QUESTION_STATUSES,
+  PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY,
+} from '../shared/questionBankMetadata.js';
 
 /** Custom dropdown for filters — avoids native select dropdown positioning issues in RTL. */
 function FilterDropdown({ value, onChange, options, ariaLabel }) {
@@ -119,34 +125,38 @@ function FilterDropdown({ value, onChange, options, ariaLabel }) {
   );
 }
 
-/** Small reusable badge component for difficulty. Shows "לא מדורג" until ≥50 attempts. */
-function DifficultyBadge({ level, attempts, successRate }) {
-  const belowThreshold = !attempts || attempts < MIN_ATTEMPTS_FOR_RATING;
-  const effectiveLevel = belowThreshold ? null : level;
-  const unrated = !effectiveLevel;
-  const d = getDifficultyDisplay(effectiveLevel);
-  const rateStr = successRate != null ? `${successRate}% נכון` : '';
-  const attStr  = attempts != null ? `${attempts} ניסיונות` : '';
-  const tooltip = unrated
-    ? belowThreshold
-      ? `לא מדורג — נדרשות ${MIN_ATTEMPTS_FOR_RATING} תשובות לפחות (${attStr})`
-      : 'לא מדורג'
-    : [d.label, rateStr, attStr].filter(Boolean).join(' · ');
+/** Training + thinking + success rate (rate shown only after ≥50 attempts). */
+function QuestionStatsBadge({ trainingLevel, thinkingLevel, attempts, successRate }) {
+  const tr = TRAINING_LEVELS.find((t) => t.value === trainingLevel)?.label ?? trainingLevel ?? '—';
+  const th = THINKING_LEVELS.find((t) => t.value === thinkingLevel)?.label ?? thinkingLevel ?? '—';
+  const below = attempts == null || attempts < MIN_ATTEMPTS_FOR_RATING;
+  const rateLabel =
+    below ? `<${MIN_ATTEMPTS_FOR_RATING} נס'` : successRate != null ? `${Number(successRate).toFixed(0)}%` : '—';
+  const tooltip = `${tr} · ${th} · ${attempts ?? 0} ניסיונות`;
   return (
-    <span title={tooltip} style={{
-      display: 'inline-flex', alignItems: 'center',
-      padding: '2px 9px', borderRadius: '10px', fontSize: '12px', fontWeight: 600,
-      color: d.color, background: d.bg, border: `1px solid ${d.border}`,
-      whiteSpace: 'nowrap',
-    }}>
-      {d.label}
-      {!unrated && successRate != null && (
-        <span style={{ marginRight: '4px', fontWeight: 400, opacity: 0.75 }}>
-          {` ${successRate}%`}
-        </span>
-      )}
+    <span
+      title={tooltip}
+      style={{
+        display: 'inline-flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: '2px',
+        fontSize: '11px',
+        lineHeight: 1.2,
+        color: '#424242',
+      }}
+    >
+      <span style={{ fontWeight: 600 }}>{tr}</span>
+      <span style={{ opacity: 0.85 }}>{th}</span>
+      <span style={{ color: '#1565c0', fontWeight: 600 }}>{rateLabel}</span>
     </span>
   );
+}
+
+function statusDisplayLabel(status) {
+  if (status === 'suspended' || status === 'pending_review') return 'בבדיקה';
+  const row = QUESTION_STATUSES.find((s) => s.value === status);
+  return row?.label ?? status ?? '—';
 }
 
 export default function QuestionManagement() {
@@ -160,12 +170,10 @@ export default function QuestionManagement() {
   const [filters, setFilters] = useState({
     status: 'all',
     questionType: 'all',
-    difficulty: 'all',
-    hierarchyId: null
+    category: 'all',
+    thinkingLevel: 'all',
+    trainingLevel: 'all',
   });
-  const [selectedTags, setSelectedTags] = useState([]);
-  const [availableTags, setAvailableTags] = useState([]);
-  const [transcriptNames, setTranscriptNames] = useState(new Set());
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [fixWithAIState, setFixWithAIState] = useState({
@@ -180,13 +188,12 @@ export default function QuestionManagement() {
     progress: { current: 0, total: 0 },
   });
   const [expandedQuestionId, setExpandedQuestionId] = useState(null);
-  const [hierarchies, setHierarchies] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
 
   // ── Bulk selection state ────────────────────────────
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkStatusTarget, setBulkStatusTarget] = useState('');
-  const [bulkHierarchyTarget, setBulkHierarchyTarget] = useState('');
+  const [bulkCategoryTarget, setBulkCategoryTarget] = useState('');
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [userReports, setUserReports] = useState([]);
   const [pendingReportCount, setPendingReportCount] = useState(0);
@@ -195,12 +202,10 @@ export default function QuestionManagement() {
   const [isSyncingToServer, setIsSyncingToServer] = useState(false);
   const [isDeduping, setIsDeduping] = useState(false);
   const [loadSource, setLoadSource] = useState({ fromApi: false, count: 0 });
-  const hasAutoReclassified = useRef(false);
 
   useEffect(() => {
     loadUser();
     loadQuestions();
-    loadHierarchies();
     loadReportCount();
     if (activeTab === 'review') {
       loadPendingQuestions();
@@ -211,39 +216,9 @@ export default function QuestionManagement() {
     }
   }, [activeTab]);
 
-  // Once per session: assign serial numbers + recatalog uncataloged questions
-  useEffect(() => {
-    if (hasAutoReclassified.current || !questions.length || activeTab !== 'list') return;
-    hasAutoReclassified.current = true;
-    let cancelled = false;
-    (async () => {
-      setIsReclassifying(true);
-      let needsReload = false;
-      try {
-        const serialRes = await fetch('/api/questions/assign-serials', { method: 'POST' });
-        const serialData = await serialRes.json().catch(() => ({}));
-        if (serialData.assigned > 0) needsReload = true;
-      } catch (_) { /* non-critical */ }
-      try {
-        const res = await fetch('/api/questions/recatalog', { method: 'POST' });
-        const data = await res.json().catch(() => ({}));
-        if (cancelled) return;
-        if (data.cataloged > 0) needsReload = true;
-      } catch (e) {
-        if (!cancelled) showToast('קטלוג אוטומטי נכשל: ' + (e?.message || ''), 'error');
-      } finally {
-        if (!cancelled) {
-          if (needsReload) await loadQuestions();
-          setIsReclassifying(false);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [questions.length, activeTab]);
-
   useEffect(() => {
     filterQuestions();
-  }, [searchQuery, filters, questions, selectedTags]);
+  }, [searchQuery, filters, questions]);
 
   const loadQuestions = async (opts = {}) => {
     setIsLoading(true);
@@ -254,16 +229,6 @@ export default function QuestionManagement() {
       const allQuestions = await entities.Question_Bank.find({}, { sort: { createdAt: -1 } });
       console.log(`[loadQuestions] ${allQuestions.length} questions from synced cache`);
       setQuestions(allQuestions);
-      const tagsSet = new Set();
-      allQuestions.forEach(q => {
-        if (q.tags && Array.isArray(q.tags)) q.tags.forEach(tag => tagsSet.add(tag));
-      });
-      setAvailableTags(Array.from(tagsSet).sort());
-      try {
-        const tRes = await fetch('/api/transcripts');
-        const tData = await tRes.json().catch(() => []);
-        setTranscriptNames(new Set((Array.isArray(tData) ? tData : []).map(t => t.name).filter(Boolean)));
-      } catch (_) { /* non-critical */ }
       setFilteredQuestions(allQuestions);
       setLoadSource({ fromApi: true, count: allQuestions.length });
       if (opts?.showToastOnRefresh) {
@@ -280,15 +245,6 @@ export default function QuestionManagement() {
   const loadUser = async () => {
     const user = await getCurrentUser();
     setCurrentUser(user);
-  };
-
-  const loadHierarchies = async () => {
-    try {
-      const allHierarchies = await entities.Content_Hierarchy.find({});
-      setHierarchies(allHierarchies);
-    } catch (error) {
-      console.error('Error loading hierarchies:', error);
-    }
   };
 
   const loadPendingQuestions = async () => {
@@ -429,17 +385,23 @@ export default function QuestionManagement() {
         return;
       }
       const CHUNK = 100;
-      const payload = unique.map(q => ({
-        hierarchy_id: q.hierarchy_id,
+      const firstCat = QUESTION_CATEGORIES[0]?.value;
+      const payload = unique.map((q) => ({
+        category: q.category || firstCat,
+        sub_category: (q.sub_category ?? '').trim() || 'תת־נושא א',
+        thinking_level: q.thinking_level || 'Knowledge',
+        training_level: q.training_level || 'A',
         question_type: q.question_type,
         question_text: q.question_text,
         options: q.options ?? [],
         correct_answer: q.correct_answer,
-        difficulty_level: q.difficulty_level ?? null,
         explanation: q.explanation,
         hint: q.hint,
-        tags: q.tags ?? [],
-        status: q.status ?? 'active',
+        status: q.status ?? 'draft',
+        media_attachment: q.media_attachment ?? null,
+        total_attempts: q.total_attempts,
+        total_success: q.total_success,
+        success_rate: q.success_rate,
       }));
       let totalSynced = 0;
       let totalSkipped = 0;
@@ -502,15 +464,21 @@ export default function QuestionManagement() {
     // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(q => 
-        q.question_text?.toLowerCase().includes(query) ||
-        q.tags?.some(tag => tag.toLowerCase().includes(query))
+      filtered = filtered.filter(
+        (q) =>
+          q.question_text?.toLowerCase().includes(query) ||
+          q.category?.toLowerCase().includes(query) ||
+          q.sub_category?.toLowerCase().includes(query),
       );
     }
 
-    // Status filter
     if (filters.status !== 'all') {
-      filtered = filtered.filter(q => q.status === filters.status);
+      filtered = filtered.filter((q) => {
+        if (filters.status === 'under_review') {
+          return ['under_review', 'suspended', 'pending_review'].includes(q.status);
+        }
+        return q.status === filters.status;
+      });
     }
 
     // Type filter
@@ -518,38 +486,19 @@ export default function QuestionManagement() {
       filtered = filtered.filter(q => q.question_type === filters.questionType);
     }
 
-    // Difficulty filter (label-based: קל / בינוני / קשה / unrated)
-    if (filters.difficulty !== 'all') {
-      filtered = filtered.filter(q => {
-        if (filters.difficulty === 'unrated') return !q.difficulty_level;
-        return q.difficulty_level === filters.difficulty;
-      });
+    if (filters.category !== 'all') {
+      filtered = filtered.filter((q) => q.category === filters.category);
     }
 
-    // Hierarchy filter
-    if (filters.hierarchyId) {
-      filtered = filtered.filter(q => q.hierarchy_id === filters.hierarchyId);
+    if (filters.thinkingLevel !== 'all') {
+      filtered = filtered.filter((q) => q.thinking_level === filters.thinkingLevel);
     }
 
-    // Tags filter
-    if (selectedTags.length > 0) {
-      filtered = filtered.filter(q => {
-        if (!q.tags || !Array.isArray(q.tags)) return false;
-        return selectedTags.some(tag => q.tags.includes(tag));
-      });
+    if (filters.trainingLevel !== 'all') {
+      filtered = filtered.filter((q) => q.training_level === filters.trainingLevel);
     }
 
     setFilteredQuestions(filtered);
-  };
-
-  const handleTagToggle = (tag) => {
-    setSelectedTags(prev => {
-      if (prev.includes(tag)) {
-        return prev.filter(t => t !== tag);
-      } else {
-        return [...prev, tag];
-      }
-    });
   };
 
   const handleDelete = async (questionId) => {
@@ -660,6 +609,10 @@ export default function QuestionManagement() {
         }),
         options: item.suggested.options,
         explanation: item.suggested.explanation || item.original.explanation || '',
+        category: item.original.category,
+        sub_category: item.original.sub_category,
+        thinking_level: item.original.thinking_level,
+        training_level: item.original.training_level,
         total_attempts: 0,
         total_success: 0,
         success_rate: null,
@@ -688,6 +641,10 @@ export default function QuestionManagement() {
           }),
           options: item.suggested.options,
           explanation: item.suggested.explanation || item.original.explanation || '',
+          category: item.original.category,
+          sub_category: item.original.sub_category,
+          thinking_level: item.original.thinking_level,
+          training_level: item.original.training_level,
           total_attempts: 0,
           total_success: 0,
           success_rate: null,
@@ -730,8 +687,12 @@ export default function QuestionManagement() {
       for (const id of ids) {
         await entities.Question_Bank.update(id, { status: newStatus });
       }
-      const label = newStatus === 'active' ? 'הופעלו' : newStatus === 'draft' ? 'הוחזרו לטיוטה' : 'הושעו';
-      showToast(`${ids.length} שאלות ${label}`, 'success');
+      const bulkLabels = {
+        active: 'הופעלו',
+        draft: 'הוחזרו לטיוטה',
+        under_review: 'סומנו כבבדיקה',
+      };
+      showToast(`${ids.length} שאלות ${bulkLabels[newStatus] ?? 'עודכנו'}`, 'success');
       setSelectedIds(new Set());
       await loadQuestions();
     } catch (error) {
@@ -739,19 +700,20 @@ export default function QuestionManagement() {
     }
   };
 
-  const handleBulkChangeHierarchy = async (hierarchyId) => {
-    if (!hierarchyId) return;
+  const handleBulkChangeCategory = async (categoryValue) => {
+    if (!categoryValue) return;
     const ids = Array.from(selectedIds);
+    const sub = PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY[categoryValue]?.[0] ?? 'תת־נושא א';
     try {
       for (const id of ids) {
-        await entities.Question_Bank.update(id, { hierarchy_id: hierarchyId });
+        await entities.Question_Bank.update(id, { category: categoryValue, sub_category: sub });
       }
-      showToast(`${ids.length} שאלות הועברו לנושא חדש`, 'success');
+      showToast(`${ids.length} שאלות עודכנו לפרק נבחר`, 'success');
       setSelectedIds(new Set());
-      setBulkHierarchyTarget('');
+      setBulkCategoryTarget('');
       await loadQuestions();
     } catch (error) {
-      showToast('שגיאה בעדכון נושא', 'error');
+      showToast('שגיאה בעדכון קטגוריה', 'error');
     }
   };
 
@@ -766,14 +728,10 @@ export default function QuestionManagement() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Server error');
       await loadQuestions();
-      if (data.cataloged > 0) {
-        const parts = [];
-        if (data.transcriptMatched) parts.push(`${data.transcriptMatched} שויכו לתמלול`);
-        if (data.hierarchyClassified) parts.push(`${data.hierarchyClassified} סווגו לקטגוריה`);
-        showToast(`קוטלגו ${data.cataloged} שאלות: ${parts.join(', ') || 'עודכנו'}. כבר מקוטלגות: ${data.alreadyDone}.`, 'success');
-      } else {
-        showToast('כל השאלות כבר מקוטלגות. לא בוצעו שינויים.', 'info');
-      }
+      showToast(
+        data.message || 'קטלוג אוטומטי מהתמלול/היררכיה אינו בשימוש בסכמה החדשה — לא בוצעו שינויים במסמכים.',
+        'info',
+      );
     } catch (error) {
       showToast('שגיאה בקטלוג: ' + (error?.message || 'unknown'), 'error');
     } finally {
@@ -941,15 +899,6 @@ export default function QuestionManagement() {
               placeholder="חפש שאלות..."
             />
 
-            {availableTags.length > 0 && (
-              <TagFilter
-                tags={availableTags}
-                selectedTags={selectedTags}
-                onToggle={handleTagToggle}
-                multiSelect={true}
-              />
-            )}
-
             <div style={styles.filters}>
               <FilterDropdown
                 ariaLabel="סינון לפי סטטוס"
@@ -957,10 +906,7 @@ export default function QuestionManagement() {
                 onChange={(v) => setFilters({ ...filters, status: v })}
                 options={[
                   { value: 'all', label: 'כל הסטטוסים' },
-                  { value: 'active', label: 'פעיל' },
-                  { value: 'draft', label: 'טיוטה' },
-                  { value: 'pending_review', label: 'לבדיקה' },
-                  { value: 'suspended', label: 'מושעה' },
+                  ...QUESTION_STATUSES.map((s) => ({ value: s.value, label: s.label })),
                 ]}
               />
 
@@ -972,39 +918,56 @@ export default function QuestionManagement() {
                   aria-label="סינון לפי סוג שאלה"
                 >
                   <option value="all">כל הסוגים</option>
-                  <option value="single_choice">בחירה יחידה</option>
-                  <option value="multi_choice">בחירה מרובה</option>
-                  <option value="true_false">נכון/לא נכון</option>
+                  <option value="single_choice">רב ברירה — תשובה אחת</option>
+                  <option value="multi_choice">רב ברירה — מספר תשובות</option>
+                  <option value="true_false">נכון / לא נכון</option>
                   <option value="open_ended">שאלה פתוחה</option>
                 </select>
               </div>
 
-              <div style={styles.filterSelectWrap}>
+              <div style={{ ...styles.filterSelectWrap, flex: '1 1 220px', minWidth: '200px', maxWidth: '100%' }}>
                 <select
                   style={styles.filterSelect}
-                  value={filters.difficulty}
-                  onChange={(e) => setFilters({ ...filters, difficulty: e.target.value })}
-                  aria-label="סינון לפי קושי"
+                  value={filters.category}
+                  onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+                  aria-label="סינון לפי פרק"
                 >
-                  <option value="all">כל רמות הקושי</option>
-                  <option value="קל">קל (95–100%)</option>
-                  <option value="בינוני">בינוני (80–94%)</option>
-                  <option value="קשה">קשה (70–79%)</option>
-                  <option value="unrated">לא מדורג (פחות מ-50 ניסיונות)</option>
+                  <option value="all">כל הפרקים</option>
+                  {QUESTION_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div style={styles.filterSelectWrap}>
                 <select
                   style={styles.filterSelect}
-                  value={filters.hierarchyId || ''}
-                  onChange={(e) => setFilters({ ...filters, hierarchyId: e.target.value || null })}
-                  aria-label="סינון לפי נושא"
+                  value={filters.thinkingLevel}
+                  onChange={(e) => setFilters({ ...filters, thinkingLevel: e.target.value })}
+                  aria-label="סינון לפי רמת חשיבה"
                 >
-                  <option value="">כל הנושאים</option>
-                  {hierarchies.map(h => (
-                    <option key={h.id} value={h.id}>
-                      {h.category_name} - {h.topic_name}
+                  <option value="all">כל רמות החשיבה</option>
+                  {THINKING_LEVELS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.filterSelectWrap}>
+                <select
+                  style={styles.filterSelect}
+                  value={filters.trainingLevel}
+                  onChange={(e) => setFilters({ ...filters, trainingLevel: e.target.value })}
+                  aria-label="סינון לפי רמת הכשרה"
+                >
+                  <option value="all">כל רמות ההכשרה</option>
+                  {TRAINING_LEVELS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
                     </option>
                   ))}
                 </select>
@@ -1116,10 +1079,11 @@ export default function QuestionManagement() {
                 aria-label="בחר סטטוס לשינוי מרובה"
               >
                 <option value="">שנה סטטוס ל...</option>
-                <option value="active">פעיל</option>
-                <option value="draft">טיוטה</option>
-                <option value="pending_review">לבדיקה</option>
-                <option value="suspended">מושעה</option>
+                {QUESTION_STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
               <button
                 style={{ ...styles.bulkBtn, background: '#1976d2' }}
@@ -1129,29 +1093,26 @@ export default function QuestionManagement() {
                 החל סטטוס
               </button>
 
-              {/* Bulk move to hierarchy */}
-              {hierarchies.length > 0 && (
-                <>
-                  <select
-                    value={bulkHierarchyTarget}
-                    onChange={e => setBulkHierarchyTarget(e.target.value)}
-                    style={styles.bulkSelect}
-                    aria-label="העבר לנושא"
-                  >
-                    <option value="">העבר לנושא...</option>
-                    {hierarchies.map(h => (
-                      <option key={h.id} value={h.id}>{h.category_name} — {h.topic_name}</option>
-                    ))}
-                  </select>
-                  <button
-                    style={{ ...styles.bulkBtn, background: '#7b1fa2' }}
-                    disabled={!bulkHierarchyTarget}
-                    onClick={() => handleBulkChangeHierarchy(bulkHierarchyTarget)}
-                  >
-                    העבר נושא
-                  </button>
-                </>
-              )}
+              <select
+                value={bulkCategoryTarget}
+                onChange={(e) => setBulkCategoryTarget(e.target.value)}
+                style={styles.bulkSelect}
+                aria-label="הגדר פרק לשאלות נבחרות"
+              >
+                <option value="">הגדר פרק ל...</option>
+                {QUESTION_CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                style={{ ...styles.bulkBtn, background: '#7b1fa2' }}
+                disabled={!bulkCategoryTarget}
+                onClick={() => handleBulkChangeCategory(bulkCategoryTarget)}
+              >
+                החל פרק
+              </button>
 
               {/* Bulk delete */}
               <PermissionGate permission={permissions.QUESTION_DELETE}>
@@ -1172,26 +1133,54 @@ export default function QuestionManagement() {
             </div>
           )}
 
-          {/* Transcript Catalog Stats */}
-          {questions.length > 0 && (() => {
-            const NO_T = 'לא נמצא בתמלול';
-            const matched = questions.filter(q => (q.tags || []).some(t => transcriptNames.has(t))).length;
-            const unmatched = questions.filter(q => (q.tags || []).includes(NO_T) && !(q.tags || []).some(t => transcriptNames.has(t))).length;
-            const uncataloged = questions.length - matched - unmatched;
-            const pct = Math.round((matched / questions.length) * 100);
-            return (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 16px', marginBottom: '12px', background: '#f5f5f5', borderRadius: '10px', fontSize: '14px', direction: 'rtl' }}>
-                <strong style={{ flexShrink: 0 }}>קטלוג תמלולים:</strong>
-                <div style={{ flex: 1, height: '10px', background: '#e0e0e0', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: '#4caf50', borderRadius: '5px', transition: 'width 0.3s' }} />
+          {questions.length > 0 &&
+            (() => {
+              const complete = questions.filter(
+                (q) => q.category && q.sub_category && q.thinking_level && q.training_level,
+              ).length;
+              const pct = Math.round((complete / questions.length) * 100);
+              return (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    padding: '12px 16px',
+                    marginBottom: '12px',
+                    background: '#f5f5f5',
+                    borderRadius: '10px',
+                    fontSize: '14px',
+                    direction: 'rtl',
+                  }}
+                >
+                  <strong style={{ flexShrink: 0 }}>מטא־דאטה מלא:</strong>
+                  <div
+                    style={{
+                      flex: 1,
+                      height: '10px',
+                      background: '#e0e0e0',
+                      borderRadius: '5px',
+                      overflow: 'hidden',
+                      position: 'relative',
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${pct}%`,
+                        background: '#4caf50',
+                        borderRadius: '5px',
+                        transition: 'width 0.3s',
+                      }}
+                    />
+                  </div>
+                  <span style={{ color: '#4caf50', fontWeight: 600 }}>
+                    {complete} / {questions.length}
+                  </span>
+                  <span style={{ color: '#616161', fontWeight: 600 }}>{pct}%</span>
                 </div>
-                <span style={{ color: '#4caf50', fontWeight: 600 }}>{matched} שויכו</span>
-                {unmatched > 0 && <span style={{ color: '#e65100' }}>{unmatched} לא שויכו</span>}
-                {uncataloged > 0 && <span style={{ color: '#9e9e9e' }}>{uncataloged} ללא תיוג</span>}
-                <span style={{ color: '#616161', fontWeight: 600 }}>{pct}%</span>
-              </div>
-            );
-          })()}
+              );
+            })()}
 
           {/* Questions List */}
           <div style={styles.questionsList}>
@@ -1218,13 +1207,13 @@ export default function QuestionManagement() {
                           style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                         />
                       </th>
-                      <th style={{ ...styles.th, width: '50px', textAlign: 'center' }}>#</th>
+                      <th style={{ ...styles.th, width: '72px', textAlign: 'center' }}>מזהה</th>
                       <th style={styles.th}>שאלה</th>
                       <th style={styles.th}>סוג</th>
-                      <th style={styles.th}>תמלול</th>
-                      <th style={styles.th}>קושי</th>
+                      <th style={styles.th}>מדיה</th>
+                      <th style={styles.th}>רמות</th>
                       <th style={styles.th}>סטטוס</th>
-                      <th style={styles.th}>קטגוריה</th>
+                      <th style={styles.th}>נושא</th>
                       <th style={styles.th}>אחוז הצלחה</th>
                       <th style={styles.th}>פעולות</th>
                     </tr>
@@ -1244,13 +1233,8 @@ export default function QuestionManagement() {
                         : (correctVal != null ? [correctVal] : []);
                       const isExpanded = expandedQuestionId === question.id;
                       const isSelected = selectedIds.has(question.id);
-                      const hierarchy = question.hierarchy || hierarchies.find(h => h.id === question.hierarchy_id);
-                      const categoryLabel = hierarchy
-                        ? [hierarchy.category_name, hierarchy.topic_name].filter(Boolean).join(' / ') || '-'
-                        : '-';
-                      const NO_TRANSCRIPT = 'לא נמצא בתמלול';
-                      const transcriptTag = (question.tags || []).find(t => transcriptNames.has(t)) || null;
-                      const isUnmatched = (question.tags || []).includes(NO_TRANSCRIPT);
+                      const categoryLabel = [question.category, question.sub_category].filter(Boolean).join(' / ') || '—';
+                      const idShort = question.id ? String(question.id).slice(-10) : '—';
 
                       return (
                         <React.Fragment key={question.id}>
@@ -1272,8 +1256,11 @@ export default function QuestionManagement() {
                               />
                             </td>
 
-                            <td style={{ ...styles.td, textAlign: 'center', fontWeight: 600, color: '#616161', fontSize: '13px' }}>
-                              {question.serial_number ?? '—'}
+                            <td
+                              style={{ ...styles.td, textAlign: 'center', fontWeight: 600, color: '#616161', fontSize: '12px' }}
+                              title={question.id}
+                            >
+                              {idShort}
                             </td>
 
                             <td
@@ -1293,39 +1280,34 @@ export default function QuestionManagement() {
                               </span>
                             </td>
                             <td style={styles.td}>
-                              {question.question_type === 'single_choice' && 'בחירה יחידה'}
-                              {question.question_type === 'multi_choice' && 'בחירה מרובה'}
-                              {question.question_type === 'true_false' && 'נכון/לא נכון'}
+                              {question.question_type === 'single_choice' && 'רב ברירה — אחת'}
+                              {question.question_type === 'multi_choice' && 'רב ברירה — כמה'}
+                              {question.question_type === 'true_false' && 'נכון / לא נכון'}
                               {question.question_type === 'open_ended' && 'שאלה פתוחה'}
                             </td>
-                            <td style={{ ...styles.td, maxWidth: '140px' }}>
-                              {transcriptTag ? (
-                                <span style={{ fontSize: '12px', color: '#1565c0', background: '#e3f2fd', padding: '2px 8px', borderRadius: '10px', display: 'inline-block', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={transcriptTag}>
-                                  {transcriptTag}
-                                </span>
-                              ) : isUnmatched ? (
-                                <span style={{ fontSize: '12px', color: '#e65100', background: '#fff3e0', padding: '2px 8px', borderRadius: '10px' }}>
-                                  לא שויך
-                                </span>
+                            <td style={styles.td}>
+                              {question.has_media ? (
+                                <span style={{ fontSize: '12px', color: '#1565c0', fontWeight: 600 }}>יש</span>
                               ) : (
-                                <span style={{ fontSize: '12px', color: '#9e9e9e' }}>—</span>
+                                <span style={{ fontSize: '12px', color: '#9e9e9e' }}>אין</span>
                               )}
                             </td>
                             <td style={styles.td}>
-                              <DifficultyBadge level={question.difficulty_level} attempts={question.total_attempts} successRate={question.success_rate} />
+                              <QuestionStatsBadge
+                                trainingLevel={question.training_level}
+                                thinkingLevel={question.thinking_level}
+                                attempts={question.total_attempts}
+                                successRate={question.success_rate}
+                              />
                             </td>
                             <td style={styles.td}>
                               <span style={{
                                 ...styles.statusBadge,
                                 ...(question.status === 'active' ? styles.statusActive :
-                                    question.status === 'suspended' ? styles.statusSuspended :
-                                    question.status === 'pending_review' ? { background: '#fff3e0', color: '#e65100', border: '1px solid #ffb74d' } :
+                                    ['under_review', 'suspended', 'pending_review'].includes(question.status) ? styles.statusUnderReview :
                                     styles.statusDraft)
                               }}>
-                                {question.status === 'active' && 'פעיל'}
-                                {question.status === 'suspended' && 'מושעה'}
-                                {question.status === 'pending_review' && 'לבדיקה'}
-                                {question.status === 'draft' && 'טיוטה'}
+                                {statusDisplayLabel(question.status)}
                               </span>
                             </td>
                             <td style={styles.td}>{categoryLabel}</td>
@@ -1435,7 +1417,6 @@ export default function QuestionManagement() {
           {editingQuestion !== null && (
             <QuestionEditor
               question={editingQuestion}
-              hierarchies={hierarchies}
               onSave={() => {
                 setEditingQuestion(null);
                 loadQuestions();
@@ -1749,7 +1730,6 @@ export default function QuestionManagement() {
                 onReject={handleReject}
                 onRequestRevision={handleRequestRevision}
                 onEdit={(question) => setEditingQuestion(question)}
-                hierarchies={hierarchies}
               />
             </div>
           )}
@@ -1929,9 +1909,16 @@ function QuestionReviewPanel({
                     <span style={{ ...rs.typeBadge, background: typeColor + '18', color: typeColor, border: `1px solid ${typeColor}40` }}>
                       {TYPE_LABELS[q.question_type] || q.question_type}
                     </span>
-                    <DifficultyBadge level={q.difficulty_level} attempts={q.total_attempts} successRate={q.success_rate} />
-                    {q.hierarchy && (
-                      <span style={rs.hierBadge}>{q.hierarchy.category_name} / {q.hierarchy.topic_name}</span>
+                    <QuestionStatsBadge
+                      trainingLevel={q.training_level}
+                      thinkingLevel={q.thinking_level}
+                      attempts={q.total_attempts}
+                      successRate={q.success_rate}
+                    />
+                    {(q.category || q.sub_category) && (
+                      <span style={rs.hierBadge}>
+                        {[q.category, q.sub_category].filter(Boolean).join(' / ')}
+                      </span>
                     )}
                   </div>
                   <span style={rs.statusDraft}>ממתינה לאישור</span>
@@ -2132,8 +2119,10 @@ function UserReportReviewPanel({ reports, onReview, onRefresh }) {
               onClick={() => setExpandedId(isExpanded ? null : report.id)}
             >
               <span style={{ fontSize: '18px' }}>{isExpanded ? '▾' : '▸'}</span>
-              {report.question_serial && (
-                <span style={{ background: '#f0f0f0', padding: '2px 10px', borderRadius: '10px', fontSize: '12px', fontWeight: 600 }}>#{report.question_serial}</span>
+              {report.question_id && (
+                <span title={report.question_id} style={{ background: '#f0f0f0', padding: '2px 10px', borderRadius: '10px', fontSize: '12px', fontWeight: 600 }}>
+                  id · {String(report.question_id).slice(-10)}
+                </span>
               )}
               <span style={{ flex: 1, fontSize: '14px', color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {original.question_text?.slice(0, 80) || '(ללא טקסט)'}
@@ -2332,6 +2321,11 @@ const styles = {
   statusSuspended: {
     backgroundColor: '#ffebee',
     color: '#c62828'
+  },
+  statusUnderReview: {
+    backgroundColor: '#fff8e1',
+    color: '#f57f17',
+    border: '1px solid #ffcc80',
   },
   statusDraft: {
     backgroundColor: '#fff3e0',

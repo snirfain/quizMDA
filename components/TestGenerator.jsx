@@ -6,14 +6,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { generateRandomTest, getFilterOptions, exportTestToPDF } from '../workflows/testGenerator';
-import { DIFFICULTY_EASY, DIFFICULTY_MEDIUM, DIFFICULTY_HARD, getDifficultyDisplay } from '../workflows/difficultyEngine';
+import { TRAINING_LEVELS } from '../shared/questionBankMetadata.js';
 import { sanitizeHtml } from '../utils/sanitize';
 
 export default function TestGenerator({ instructorId }) {
   const [filters, setFilters] = useState({
-    category_name: '',
-    topic_name: '',
-    difficulty_levels: [],  // array of selected labels: ['קל','בינוני','קשה']
+    category: '',
+    sub_category: '',
+    training_levels: [],
     question_types: [],
     count: 20
   });
@@ -70,7 +70,7 @@ export default function TestGenerator({ instructorId }) {
     setIsExporting(true);
     try {
       const result = await exportTestToPDF(generatedTest.questions, {
-        title: `מבחן מד"א - ${filters.category_name || 'כללי'}`,
+        title: `מבחן מד"א - ${filters.category || 'כללי'}`,
         instructor_name: instructorId,
         date: new Date().toLocaleDateString('he-IL')
       });
@@ -100,68 +100,62 @@ export default function TestGenerator({ instructorId }) {
 
         {/* Category Filter */}
         <div style={styles.filterGroup}>
-          <label style={styles.label}>קטגוריה:</label>
+          <label style={styles.label}>פרק (קטגוריה):</label>
           <select
             style={styles.select}
-            value={filters.category_name}
-            onChange={(e) => handleFilterChange('category_name', e.target.value)}
+            value={filters.category}
+            onChange={(e) => handleFilterChange('category', e.target.value)}
           >
-            <option value="">כל הקטגוריות</option>
-            {filterOptions.categories.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
+            <option value="">כל הפרקים</option>
+            {filterOptions.categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
             ))}
           </select>
         </div>
 
-        {/* Topic Filter */}
         <div style={styles.filterGroup}>
-          <label style={styles.label}>נושא:</label>
+          <label style={styles.label}>תת־קטגוריה:</label>
           <select
             style={styles.select}
-            value={filters.topic_name}
-            onChange={(e) => handleFilterChange('topic_name', e.target.value)}
+            value={filters.sub_category}
+            onChange={(e) => handleFilterChange('sub_category', e.target.value)}
           >
-            <option value="">כל הנושאים</option>
-            {filterOptions.topics.map(topic => (
-              <option key={topic} value={topic}>{topic}</option>
+            <option value="">הכל</option>
+            {filterOptions.topics.map((topic) => (
+              <option key={topic} value={topic}>
+                {topic}
+              </option>
             ))}
           </select>
         </div>
 
-        {/* Difficulty Levels */}
         <div style={styles.filterGroup}>
-          <label style={styles.label}>רמת קושי:</label>
+          <label style={styles.label}>רמת הכשרה:</label>
           <div style={styles.checkboxGroup}>
-            {[DIFFICULTY_EASY, DIFFICULTY_MEDIUM, DIFFICULTY_HARD].map(lvl => {
-              const d = getDifficultyDisplay(lvl);
-              const checked = filters.difficulty_levels.includes(lvl);
+            {TRAINING_LEVELS.map((lvl) => {
+              const checked = filters.training_levels.includes(lvl.value);
               return (
-                <label key={lvl} style={{ ...styles.checkboxLabel, color: checked ? d.color : undefined }}>
+                <label key={lvl.value} style={styles.checkboxLabel}>
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={() => {
                       const next = checked
-                        ? filters.difficulty_levels.filter(l => l !== lvl)
-                        : [...filters.difficulty_levels, lvl];
-                      handleFilterChange('difficulty_levels', next);
+                        ? filters.training_levels.filter((l) => l !== lvl.value)
+                        : [...filters.training_levels, lvl.value];
+                      handleFilterChange('training_levels', next);
                     }}
-                    style={{ ...styles.checkbox, accentColor: d.color }}
+                    style={styles.checkbox}
                   />
-                  <span style={{
-                    padding: '2px 8px', borderRadius: '8px', fontSize: '13px',
-                    background: checked ? d.bg : 'transparent',
-                    border: `1px solid ${checked ? d.border : 'transparent'}`,
-                    fontWeight: checked ? 600 : 400,
-                  }}>
-                    {lvl}
+                  <span style={{ padding: '2px 8px', borderRadius: '8px', fontSize: '13px', fontWeight: checked ? 600 : 400 }}>
+                    {lvl.label}
                   </span>
                 </label>
               );
             })}
-            <span style={{ fontSize: '12px', color: '#888', alignSelf: 'center' }}>
-              (ריק = כל הרמות)
-            </span>
+            <span style={{ fontSize: '12px', color: '#888', alignSelf: 'center' }}>(ריק = כל הרמות)</span>
           </div>
         </div>
 
@@ -229,7 +223,7 @@ export default function TestGenerator({ instructorId }) {
                 <div style={styles.questionContent}>
                   <div style={styles.questionMeta}>
                     <span>סוג: {getQuestionTypeLabel(question.question_type)}</span>
-                    <span>קושי: {question.difficulty_level || 'לא מדורג'}</span>
+                    <span>הכשרה: {question.training_level || '—'}</span>
                   </div>
                   <div 
                     style={styles.questionText}
@@ -256,10 +250,10 @@ export default function TestGenerator({ instructorId }) {
 
 function getQuestionTypeLabel(type) {
   const labels = {
-    single_choice: 'בחירה יחידה',
-    multi_choice: 'בחירה מרובה',
+    single_choice: 'רב ברירה תשובה אחת',
+    multi_choice: 'רב ברירה מספר תשובות',
     true_false: 'נכון/לא נכון',
-    open_ended: 'שאלה פתוחה'
+    open_ended: 'שאלה פתוחה',
   };
   return labels[type] || type;
 }

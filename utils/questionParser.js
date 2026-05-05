@@ -65,7 +65,6 @@ function parseBlock(lines) {
     _correct_raw: '',     // raw correct answer text (resolved later)
     hint: '',
     explanation: '',
-    difficulty_level: null,
     status: 'active',
     tags: [],
   };
@@ -365,7 +364,6 @@ export function parseUnnumberedBlocks(text) {
           correct_answer: buildCorrectAnswer(rawAnswer, options, qType),
           hint: '',
           explanation: '',
-          difficulty_level: null,
           status: 'active',
           tags: [],
         });
@@ -380,7 +378,6 @@ export function parseUnnumberedBlocks(text) {
           correct_answer: JSON.stringify({ value: '' }),
           hint: '',
           explanation: '',
-          difficulty_level: null,
           status: 'active',
           tags: [],
         });
@@ -413,7 +410,6 @@ export function parseUnnumberedBlocks(text) {
           correct_answer: buildCorrectAnswer(rawAnswer, options, qType),
           hint: '',
           explanation: '',
-          difficulty_level: null,
           status: 'active',
           tags: [],
         });
@@ -425,7 +421,6 @@ export function parseUnnumberedBlocks(text) {
           correct_answer: JSON.stringify({ value: '' }),
           hint: '',
           explanation: '',
-          difficulty_level: null,
           status: 'active',
           tags: [],
         });
@@ -438,7 +433,6 @@ export function parseUnnumberedBlocks(text) {
         correct_answer: JSON.stringify({ value: '' }),
         hint: '',
         explanation: '',
-        difficulty_level: null,
         status: 'active',
         tags: [],
       });
@@ -506,7 +500,6 @@ export function parseMasterFormatDocx(text) {
         correct_answer: buildCorrectAnswer(rawAnswer, options, qType),
         hint: '',
         explanation: '',
-        difficulty_level: null,
         status: 'active',
         tags: [],
       });
@@ -518,7 +511,6 @@ export function parseMasterFormatDocx(text) {
         correct_answer: JSON.stringify({ value: rawAnswer || '' }),
         hint: '',
         explanation: '',
-        difficulty_level: null,
         status: 'active',
         tags: [],
       });

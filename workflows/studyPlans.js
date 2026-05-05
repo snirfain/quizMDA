@@ -99,22 +99,18 @@ export async function getPlanProgress(userId, planId) {
  * Calculate plan progress based on user activity
  */
 async function calculatePlanProgress(userId, plan) {
-  // Get questions from plan's categories/topics
-  const hierarchyQuery = {};
+  let planQuestions = await entities.Question_Bank.find({ status: 'active' });
+
   if (plan.categories && plan.categories.length > 0) {
-    hierarchyQuery.category_name = { $in: plan.categories };
+    planQuestions = planQuestions.filter((q) =>
+      plan.categories.some((c) => (q.category || '').includes(String(c)))
+    );
   }
   if (plan.topics && plan.topics.length > 0) {
-    hierarchyQuery.topic_name = { $in: plan.topics };
+    planQuestions = planQuestions.filter((q) =>
+      plan.topics.some((t) => (q.sub_category || '').includes(String(t)))
+    );
   }
-
-  const hierarchies = await entities.Content_Hierarchy.find(hierarchyQuery);
-  const hierarchyIds = hierarchies.map(h => h.id);
-
-  const planQuestions = await entities.Question_Bank.find({
-    hierarchy_id: { $in: hierarchyIds },
-    status: 'active'
-  });
 
   const planQuestionIds = new Set(planQuestions.map(q => q.id));
 

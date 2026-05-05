@@ -4,6 +4,14 @@
  * Hebrew: בנק שאלות
  */
 
+import {
+  QUESTION_CATEGORIES,
+  THINKING_LEVELS,
+  TRAINING_LEVELS,
+  QUESTION_STATUSES,
+  QUESTION_TYPES_UI,
+} from '../shared/questionBankMetadata.js';
+
 export const Question_Bank = {
   name: 'Question_Bank',
   displayName: 'בנק שאלות',
@@ -11,117 +19,101 @@ export const Question_Bank = {
     id: {
       type: 'id',
       required: true,
-      primaryKey: true
+      primaryKey: true,
     },
-    hierarchy_id: {
-      type: 'reference',
-      referenceTo: 'Content_Hierarchy',
+    category: {
+      type: 'select',
       required: true,
-      displayName: 'היררכיית תוכן',
-      description: 'קישור להיררכיית התוכן'
+      displayName: 'פרק (קטגוריה)',
+      description: 'מספר פרק ושם',
+      options: QUESTION_CATEGORIES,
+    },
+    sub_category: {
+      type: 'select',
+      required: true,
+      displayName: 'תת־קטגוריה',
+      description: 'תת־פרק (רשימת placeholder לעת עתה)',
+      options: [],
+    },
+    thinking_level: {
+      type: 'select',
+      required: true,
+      displayName: 'רמת חשיבה',
+      options: THINKING_LEVELS,
+    },
+    training_level: {
+      type: 'select',
+      required: true,
+      displayName: 'רמת הכשרה',
+      description: 'A=ALS, B=BLS, C=CLS, D=DLS, E=ELS',
+      options: TRAINING_LEVELS,
+    },
+    has_media: {
+      type: 'boolean',
+      required: true,
+      displayName: 'יש מדיה',
+      readOnly: true,
+      defaultValue: false,
+      description: 'מחושב אוטומטית לפי קיום media_attachment',
     },
     question_type: {
       type: 'select',
       required: true,
       displayName: 'סוג שאלה',
-      options: [
-        { value: 'single_choice', label: 'בחירה יחידה' },
-        { value: 'multi_choice', label: 'בחירה מרובה' },
-        { value: 'true_false', label: 'נכון/לא נכון' },
-        { value: 'open_ended', label: 'שאלה פתוחה' }
-      ],
-      defaultValue: 'single_choice'
+      options: QUESTION_TYPES_UI,
+      defaultValue: 'single_choice',
     },
     question_text: {
       type: 'richtext',
       required: true,
       displayName: 'טקסט השאלה',
-      description: 'תוכן השאלה בפורמט עשיר'
+      description: 'תוכן השאלה בפורמט עשיר',
     },
     media_attachment: {
       type: 'file',
       required: false,
-      displayName: 'מדיה מצורפת (סטטית)',
-      description: 'תמונה / וידאו / אודיו קבוע לשאלה זו בלבד',
-      accept: 'image/*,video/*,audio/*,application/pdf'
-    },
-    media_bank_tag: {
-      type: 'text',
-      required: false,
-      displayName: 'תג ממאגר המדיה',
-      description: 'כאשר מוגדר, המערכת תשלוף תמונה/וידאו/אודיו אקראי מהמאגר עם התג הזה בכל פעם שהשאלה תוצג. כל פריט נמדד בנפרד סטטיסטית.'
-    },
-    difficulty_level: {
-      type: 'number',
-      required: true,
-      displayName: 'רמת קושי',
-      description: '1-10',
-      min: 1,
-      max: 10,
-      defaultValue: 5
+      displayName: 'מדיה מצורפת',
+      description: 'תמונה / וידאו / אודיו / PDF',
+      accept: 'image/*,video/*,audio/*,application/pdf',
     },
     correct_answer: {
       type: 'text',
       required: false,
       displayName: 'תשובה נכונה',
-      description: 'JSON או טקסט להערכה אוטומטית'
+      description: 'JSON או טקסט להערכה אוטומטית',
     },
     explanation: {
       type: 'richtext',
       required: false,
       displayName: 'הסבר',
-      description: 'הסבר למה התשובה נכונה - מוצג אחרי תשובה שגויה'
+      description: 'הסבר למה התשובה נכונה - מוצג אחרי תשובה שגויה',
     },
     hint: {
       type: 'text',
       required: false,
       displayName: 'רמז',
-      description: 'טיפ לפני תשובה (אופציונלי)'
-    },
-    tags: {
-      type: 'array',
-      required: false,
-      displayName: 'תגיות',
-      description: 'תגיות לסינון וחיפוש',
-      items: {
-        type: 'text'
-      },
-      defaultValue: []
-    },
-    adaptive_difficulty: {
-      type: 'number',
-      required: false,
-      displayName: 'קושי אדפטיבי',
-      description: 'רמת קושי מותאמת למשתמש (מחושב אוטומטית)',
-      min: 1,
-      max: 10,
-      readOnly: true
+      description: 'טיפ לפני תשובה (אופציונלי)',
     },
     status: {
       type: 'select',
       required: true,
       displayName: 'סטטוס',
-      options: [
-        { value: 'active', label: 'פעיל' },
-        { value: 'draft', label: 'טיוטה' },
-        { value: 'suspended', label: 'מושעה' }
-      ],
-      defaultValue: 'active'
+      options: QUESTION_STATUSES,
+      defaultValue: 'draft',
     },
-    // Statistics Fields (Auto-calculated)
     total_attempts: {
       type: 'number',
       required: true,
       displayName: 'סה"כ ניסיונות',
       defaultValue: 0,
-      readOnly: true
+      readOnly: true,
     },
     total_success: {
       type: 'number',
       required: true,
       displayName: 'סה"כ הצלחות',
       defaultValue: 0,
-      readOnly: true
+      readOnly: true,
     },
     success_rate: {
       type: 'number',
@@ -129,29 +121,31 @@ export const Question_Bank = {
       displayName: 'אחוז הצלחה',
       defaultValue: 0,
       readOnly: true,
-      description: 'מחושב אוטומטית: (total_success / total_attempts) * 100'
+      description: 'מחושב אוטומטית: (total_success / total_attempts) * 100',
     },
     createdAt: {
       type: 'datetime',
-      autoGenerated: true
+      autoGenerated: true,
     },
     updatedAt: {
       type: 'datetime',
-      autoGenerated: true
-    }
+      autoGenerated: true,
+    },
   },
   indexes: [
-    { fields: ['hierarchy_id'] },
+    { fields: ['category'] },
+    { fields: ['sub_category'] },
+    { fields: ['thinking_level'] },
+    { fields: ['training_level'] },
     { fields: ['question_type'] },
     { fields: ['status'] },
-    { fields: ['difficulty_level'] },
+    { fields: ['has_media'] },
     { fields: ['status', 'question_type'] },
-    { fields: ['tags'] }
   ],
   permissions: {
     read: ['authenticated'],
     create: ['admin', 'instructor'],
     update: ['admin', 'instructor'],
-    delete: ['admin']
-  }
+    delete: ['admin'],
+  },
 };

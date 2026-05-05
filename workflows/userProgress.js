@@ -121,7 +121,6 @@ export async function getCategoryProgress(userId) {
       user_id: userId
     });
 
-  // Group by hierarchy
   const hierarchyStats = {};
   
   for (const activity of userActivity) {
@@ -131,13 +130,7 @@ export async function getCategoryProgress(userId) {
     
     if (!question) continue;
     
-    const hierarchy = await entities.Content_Hierarchy.findOne({
-      id: question.hierarchy_id
-    });
-    
-    if (!hierarchy) continue;
-    
-    const categoryKey = hierarchy.category_name;
+    const categoryKey = question.category || 'ללא קטגוריה';
     
     if (!hierarchyStats[categoryKey]) {
       hierarchyStats[categoryKey] = {
@@ -155,7 +148,6 @@ export async function getCategoryProgress(userId) {
     hierarchyStats[categoryKey].questions.add(question.id);
   }
 
-    // Convert to array and calculate rates
     return Object.values(hierarchyStats).map(stat => ({
       category: stat.category,
       attempts: stat.attempts,

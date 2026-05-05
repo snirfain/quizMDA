@@ -3,7 +3,16 @@
  * Hebrew: ישויות מדומות לפיתוח
  */
 
+import {
+  QUESTION_CATEGORIES,
+  normalizeLegacyStatus,
+  getSubcategoriesForCategory,
+} from './shared/questionBankMetadata.js';
+
 const STORAGE_KEY = 'quizMDA_mockData';
+
+const SEED_CATEGORY = QUESTION_CATEGORIES[0].value;
+const SEED_SUB = getSubcategoriesForCategory(SEED_CATEGORY)[0];
 
 let _idCounter = Date.now();
 function uid(prefix = '') {
@@ -81,23 +90,34 @@ DEFAULT_DATA.hierarchies = MDA_CATEGORIES.map((name, i) => ({
 DEFAULT_DATA.questions = [
   {
     id: 'q1',
-    hierarchy_id: 'h1',
+    category: SEED_CATEGORY,
+    sub_category: SEED_SUB,
+    thinking_level: 'Knowledge',
+    training_level: 'B',
+    has_media: false,
     question_type: 'single_choice',
     question_text: 'מהו מספר הלחיצות המומלץ בהחייאה?',
-    difficulty_level: 'בינוני',
-    correct_answer: JSON.stringify({ value: '30', options: [
-      { value: '15', label: '15' },
-      { value: '30', label: '30' },
-      { value: '50', label: '50' }
-    ]}),
+    correct_answer: JSON.stringify({
+      value: '1',
+      options: [
+        { value: '0', label: '15' },
+        { value: '1', label: '30' },
+        { value: '2', label: '50' },
+      ],
+    }),
     status: 'active',
     total_attempts: 100,
     total_success: 85,
     success_rate: 85,
     hint: 'זה מספר זוגי',
     explanation: 'מספר הלחיצות המומלץ הוא 30 לפני 2 נשימות',
-    tags: ['החייאה', 'חירום']
-  }
+    options: [
+      { value: '0', label: '15' },
+      { value: '1', label: '30' },
+      { value: '2', label: '50' },
+    ],
+    media_attachment: null,
+  },
 ];
 
 // ── Media Bank seed data ──────────────────────────────────────
@@ -161,14 +181,17 @@ DEFAULT_DATA.mediaBank = [
   }
 ];
 
-// Demo question using media bank tag (ECG rhythm recognition)
+// Demo question with static ECG-style image placeholder
 DEFAULT_DATA.questions.push({
   id: 'q_ecg_demo',
-  hierarchy_id: 'h8',  // מצ״חים קרדיווסקולריים
+  category: QUESTION_CATEGORIES[7]?.value ?? SEED_CATEGORY,
+  sub_category: getSubcategoriesForCategory(QUESTION_CATEGORIES[7]?.value ?? SEED_CATEGORY)[0],
+  thinking_level: 'Application',
+  training_level: 'A',
+  has_media: true,
   question_type: 'single_choice',
   question_text: 'זהה את הפרעת הקצב המוצגת בפס הקצב:',
-  media_bank_tag: 'PSVT',
-  difficulty_level: null,
+  media_attachment: { url: PLACEHOLDER_IMG('psvtquiz'), type: 'image', name: 'rhythm.png' },
   correct_answer: JSON.stringify({
     value: '0',
     options: [
@@ -176,14 +199,20 @@ DEFAULT_DATA.questions.push({
       { value: '1', label: 'פרפור פרוזדורים (AFib)' },
       { value: '2', label: 'טכיקרדיה חדרית (VTach)' },
       { value: '3', label: 'קצב סינוס תקין' },
-    ]
+    ],
   }),
-  explanation: 'PSVT מאופיין ב-QRS צר, קצב סדיר ומהיר (140–280 לדקה), ללא גלי P ברורים לפני כל QRS.',
+  options: [
+    { value: '0', label: 'PSVT (טכיקרדיה על-חדרית התקפית)' },
+    { value: '1', label: 'פרפור פרוזדורים (AFib)' },
+    { value: '2', label: 'טכיקרדיה חדרית (VTach)' },
+    { value: '3', label: 'קצב סינוס תקין' },
+  ],
+  explanation:
+    'PSVT מאופיין ב-QRS צר, קצב סדיר ומהיר (140–280 לדקה), ללא גלי P ברורים לפני כל QRS.',
   status: 'active',
   total_attempts: 0,
   total_success: 0,
   success_rate: null,
-  tags: ['אק"ג', 'קצב לב', 'PSVT']
 });
 
 /**
@@ -228,8 +257,7 @@ function loadFromStorage() {
       const rawQuestions = parsed.questions ?? DEFAULT_DATA.questions;
       const seenIds = new Set();
       const LEADING_NUM_RE = /^\d{1,3}\s*[.):\-]\s*/;
-      const VALID_TYPES = new Set(['single_choice','multi_choice','true_false','open_ended','ordering']);
-      const VALID_DIFF  = new Set(['קל','בינוני','קשה',null,undefined]);
+      const VALID_TYPES = new Set(['single_choice', 'multi_choice', 'true_false', 'open_ended']);
 
       const questions = rawQuestions.map(q => {
         // 1. Fix duplicate IDs
@@ -245,27 +273,24 @@ function loadFromStorage() {
         let question_type = q.question_type;
         if (!VALID_TYPES.has(question_type)) question_type = 'single_choice';
 
-        // 4. Normalise difficulty_level — numeric → label
-        let difficulty_level = q.difficulty_level;
-        if (typeof difficulty_level === 'number') {
-          difficulty_level = difficulty_level >= 8 ? 'קשה' : difficulty_level >= 5 ? 'בינוני' : 'קל';
-        }
-        if (!VALID_DIFF.has(difficulty_level)) difficulty_level = null;
-
-        // 5. Ensure status is a known value
-        const VALID_STATUS = new Set(['draft','pending_review','active','rejected','needs_revision','suspended']);
-        const status = VALID_STATUS.has(q.status) ? q.status : 'active';
+        const status = normalizeLegacyStatus(q.status);
+        const category = q.category || SEED_CATEGORY;
+        const sub_category = q.sub_category || getSubcategoriesForCategory(category)[0];
 
         return {
           ...q,
           id,
           question_text,
-          question_type,
-          difficulty_level: difficulty_level ?? null,
+          question_type: VALID_TYPES.has(question_type) ? question_type : 'single_choice',
+          category,
+          sub_category,
+          thinking_level: q.thinking_level || 'Knowledge',
+          training_level: q.training_level || 'A',
+          has_media: Boolean(q.media_attachment && (typeof q.media_attachment === 'string' ? q.media_attachment.trim() : q.media_attachment?.url)),
           status,
           total_attempts: q.total_attempts ?? 0,
-          total_success:  q.total_success  ?? 0,
-          success_rate:   q.success_rate   ?? null,
+          total_success: q.total_success ?? 0,
+          success_rate: q.success_rate ?? null,
         };
       });
 
@@ -310,24 +335,22 @@ if (loadFromStorage._migratedMediaBank) saveToStorage();
  * Normalize a server question doc into the local format used by components.
  */
 function serverToLocal(sq) {
-  let diff = sq.difficulty_level;
-  if (typeof diff === 'number') {
-    diff = diff >= 8 ? 'קשה' : diff >= 5 ? 'בינוני' : 'קל';
-  }
+  const cat = sq.category || SEED_CATEGORY;
   return {
     id: sq.id || sq._id || uid('q'),
-    hierarchy_id: sq.hierarchy_id,
+    category: cat,
+    sub_category: sq.sub_category || getSubcategoriesForCategory(cat)[0],
+    thinking_level: sq.thinking_level || 'Knowledge',
+    training_level: sq.training_level || 'A',
+    has_media: Boolean(sq.has_media ?? sq.media_attachment),
     question_type: sq.question_type || 'single_choice',
     question_text: sq.question_text,
     options: sq.options ?? [],
     correct_answer: sq.correct_answer,
-    difficulty_level: diff ?? null,
     explanation: sq.explanation ?? null,
     hint: sq.hint ?? null,
-    tags: sq.tags ?? [],
-    status: sq.status || 'active',
+    status: normalizeLegacyStatus(sq.status) || 'draft',
     media_attachment: sq.media_attachment ?? null,
-    media_bank_tag: sq.media_bank_tag ?? null,
     total_attempts: sq.total_attempts ?? 0,
     total_success: sq.total_success ?? 0,
     success_rate: sq.success_rate ?? 0,

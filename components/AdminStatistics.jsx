@@ -194,7 +194,7 @@ function OverviewTab({ stats }) {
           <div style={styles.statValue}>{stats.questionStats?.total || 0}</div>
           <div style={styles.statLabel}>סה"כ שאלות</div>
           <div style={styles.statSubtext}>
-            פעילות: {stats.questionStats?.byStatus?.active || 0} | מושעות: {stats.questionStats?.byStatus?.suspended || 0}
+            פעילות: {stats.questionStats?.byStatus?.active || 0} | בבדיקה: {stats.questionStats?.byStatus?.under_review || 0}
           </div>
         </div>
 

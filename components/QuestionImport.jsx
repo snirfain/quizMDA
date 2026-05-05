@@ -4,7 +4,7 @@
  * Hebrew: ייבוא שאלות חכם
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   importQuestionsFromCSV,
   importQuestionsFromJSON,
@@ -17,12 +17,17 @@ import {
   parseQuestionsWithAI,
   bulkCreateQuestions,
 } from '../workflows/questionImport';
-import { detectEnrichmentType, ENRICH_GENERATE, ENRICH_IDENTIFY_ANSWER } from '../workflows/questionEnrich';
-import { classifyQuestionToHierarchy } from '../workflows/questionClassification';
+import {
+  detectEnrichmentType,
+  ENRICH_GENERATE,
+  ENRICH_IDENTIFY_ANSWER,
+  ENRICH_NONE,
+} from '../workflows/questionEnrich';
 import { parseTextQuestions, getTypeLabel, getTypeColor } from '../utils/questionParser';
 import { showToast } from './Toast';
 import LoadingSpinner from './LoadingSpinner';
 import { entities, appConfig } from '../config/appConfig';
+import { QUESTION_CATEGORIES, THINKING_LEVELS, TRAINING_LEVELS } from '../shared/questionBankMetadata.js';
 
 const TABS = [
   { id: 'text',    label: '📋 הדבקת טקסט',      desc: 'הדבק שאלות בפורמט חופשי' },
@@ -53,17 +58,9 @@ export default function QuestionImport({ onImportComplete }) {
   const [csvXlsxBuffer, setCsvXlsxBuffer] = useState(null);  // ArrayBuffer for Moodle Excel
   const [csvPreview, setCsvPreview]     = useState(null);
 
-  const [hierarchies, setHierarchies]   = useState([]);
-  const [defaultHierarchyId, setDefaultHierarchyId] = useState('');
+  const [defaultCategory, setDefaultCategory] = useState(QUESTION_CATEGORIES[0]?.value ?? '');
 
   const fileInputRef = useRef(null);
-
-  useEffect(() => {
-    entities.Content_Hierarchy.find({}).then(list => {
-      setHierarchies(list || []);
-      if (list?.length && !defaultHierarchyId) setDefaultHierarchyId(list[0].id);
-    });
-  }, []);
 
   // ── Multi-file Drag & Drop ───────────────────────────
   const handleDrop = useCallback(async (e) => {
@@ -238,31 +235,22 @@ export default function QuestionImport({ onImportComplete }) {
   // ── Import ────────────────────────────────────────────
   const handleImportParsed = async () => {
     if (!parsedQuestions?.length) return;
-    const withCategory = parsedQuestions.map(q => ({
-      ...q,
-      hierarchy_id: q.hierarchy_id
-        || (hierarchies.length && classifyQuestionToHierarchy(q.question_text || '', hierarchies))
-        || defaultHierarchyId
-        || (hierarchies[0]?.id),
-    }));
-
     setImporting(true);
     setProgress(null);
     setEnrichProgress(null);
 
-    const needsEnrichment = withCategory.some(
-      q => detectEnrichmentType(q) !== 'none'
-    );
+    const needsEnrichment = parsedQuestions.some((q) => detectEnrichmentType(q) !== ENRICH_NONE);
     if (needsEnrichment) {
       showToast('מעשיר שאלות חסרות מסיחים / תשובות עם AI...', 'info');
     }
 
     try {
-      const results = await bulkCreateQuestions(withCategory, {
+      const results = await bulkCreateQuestions(parsedQuestions, {
         validate: false,
         skipInvalid: true,
         enrich: true,
         skipDuplicates,
+        defaultCategory: defaultCategory || undefined,
         onProgress: (p) => setProgress({ ...p, total: p.total }),
         onEnrichProgress: (p) => setEnrichProgress(p),
       });
@@ -338,7 +326,12 @@ export default function QuestionImport({ onImportComplete }) {
       if (!csvXlsxBuffer) return;
       setImporting(true);
       try {
-        const results = await importQuestionsFromMoodleExcel(csvXlsxBuffer, { validate: true, skipInvalid: true, onProgress: setProgress, defaultHierarchyId: defaultHierarchyId || undefined });
+        const results = await importQuestionsFromMoodleExcel(csvXlsxBuffer, {
+          validate: true,
+          skipInvalid: true,
+          onProgress: setProgress,
+          defaultCategory: defaultCategory || undefined,
+        });
         showToast(`יובאו ${results.successful} שאלות`, 'success');
         setCsvXlsxBuffer(null);
         setCsvPreview(null);
@@ -355,9 +348,11 @@ export default function QuestionImport({ onImportComplete }) {
     if (!csvContent) return;
     setImporting(true);
     try {
-      const results = csvType === 'csv'
-        ? await importQuestionsFromCSV(csvContent, { validate: true, skipInvalid: true, onProgress: setProgress })
-        : await importQuestionsFromJSON(csvContent, { validate: true, skipInvalid: true, onProgress: setProgress });
+      const csvOpts = { validate: true, skipInvalid: true, onProgress: setProgress, defaultCategory: defaultCategory || undefined };
+      const results =
+        csvType === 'csv'
+          ? await importQuestionsFromCSV(csvContent, csvOpts)
+          : await importQuestionsFromJSON(csvContent, csvOpts);
       showToast(`יובאו ${results.successful} שאלות`, 'success');
       setCsvContent('');
       setCsvPreview(null);
@@ -610,20 +605,20 @@ export default function QuestionImport({ onImportComplete }) {
                   : null;
               })()}
             </h3>
-            {hierarchies.length > 0 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
-                <span>קטגוריה לשאלות:</span>
-                <select
-                  value={defaultHierarchyId}
-                  onChange={e => setDefaultHierarchyId(e.target.value)}
-                  style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #e0e0e0' }}
-                >
-                  {hierarchies.map(h => (
-                    <option key={h.id} value={h.id}>{h.category_name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', flexWrap: 'wrap' }}>
+              <span>פרק ברירת מחדל (כשלא צוין בקובץ):</span>
+              <select
+                value={defaultCategory}
+                onChange={(e) => setDefaultCategory(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #e0e0e0', maxWidth: '100%', flex: '1 1 240px' }}
+              >
+                {QUESTION_CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
               <strong>חשוב:</strong> לחץ על &quot;ייבוא&quot; כדי לשמור את השאלות. בלי לחיצה — השאלות לא נשמרות ונעלמות ברענון או במכשיר אחר.
               {typeof window !== 'undefined' && !window.__quizMDA_usingQuestionApi && (
@@ -1034,12 +1029,33 @@ function QuestionEditCard({ draft, setDraft, onSave, onCancel }) {
             <option value="open_ended">פתוחה</option>
           </select>
         </div>
+        <div style={{ flex: 1, minWidth: '140px' }}>
+          <label style={s.editLabel}>רמת חשיבה</label>
+          <select
+            value={draft.thinking_level || 'Knowledge'}
+            onChange={(e) => setDraft({ ...draft, thinking_level: e.target.value })}
+            style={s.editInput}
+          >
+            {THINKING_LEVELS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div style={{ flex: 1, minWidth: '120px' }}>
-          <label style={s.editLabel}>רמת קושי (אופציונלי – מחושבת אוטומטית אחרי 50 תשובות)</label>
-          <input type="number" min="1" max="10" placeholder="—"
-            value={draft.difficulty_level ?? ''}
-            onChange={e => setDraft({ ...draft, difficulty_level: e.target.value === '' ? null : parseInt(e.target.value) })}
-            style={s.editInput} />
+          <label style={s.editLabel}>רמת הכשרה</label>
+          <select
+            value={draft.training_level || 'A'}
+            onChange={(e) => setDraft({ ...draft, training_level: e.target.value })}
+            style={s.editInput}
+          >
+            {TRAINING_LEVELS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

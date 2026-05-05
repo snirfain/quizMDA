@@ -87,11 +87,11 @@ export function computeSimilarity(textA, textB) {
  * Returns an array of { id, question_text, _fp } objects.
  */
 function buildIndex(questions) {
-  return questions.map(q => ({
-    id:            q.id,
+  return questions.map((q) => ({
+    id: q.id,
     question_text: q.question_text,
-    hierarchy_id:  q.hierarchy_id,
-    _fp:           bigrams(words(q.question_text)),
+    category: q.category,
+    _fp: bigrams(words(q.question_text)),
   }));
 }
 
@@ -173,10 +173,10 @@ export async function checkDuplicatesAgainstDB(
         ...q,
         _duplicateFlag: true,
         _similarTo: {
-          id:            found.match.id,
+          id: found.match.id,
           question_text: found.match.question_text,
-          hierarchy_id:  found.match.hierarchy_id,
-          similarity:    Math.round(found.similarity * 100),
+          category: found.match.category,
+          similarity: Math.round(found.similarity * 100),
         },
       });
     } else {

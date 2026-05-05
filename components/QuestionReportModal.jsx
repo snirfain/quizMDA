@@ -1,7 +1,7 @@
 /**
  * QuestionReportModal — trainee flags a question as problematic and suggests corrections.
- * Editable: question_text, options, correct_answer, explanation, hint, hierarchy_id, question_type.
- * Not editable: difficulty_level, transcript tags, status.
+ * Editable: question_text, options, correct_answer, explanation, hint, question_type.
+ * Not editable: סטטוס ושדות מטא־דאטה מהמערכת.
  * Hebrew: דיווח על בעיה בשאלה
  */
 import React, { useState, useMemo } from 'react';
@@ -123,8 +123,10 @@ export default function QuestionReportModal({ question, onClose }) {
       <div style={modal} onClick={e => e.stopPropagation()}>
         <div style={header}>
           <span style={{ fontWeight: 700, fontSize: '18px' }}>דיווח על בעיה בשאלה</span>
-          {question.serial_number != null && (
-            <span style={serialBadge}>#{question.serial_number}</span>
+          {(question.id || question._id) && (
+            <span style={serialBadge} title={String(question.id ?? question._id)}>
+              מזהה · {String(question.id ?? question._id).slice(-10)}
+            </span>
           )}
           <button style={closeBtn} onClick={onClose} aria-label="סגור">✕</button>
         </div>

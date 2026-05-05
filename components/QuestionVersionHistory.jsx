@@ -259,9 +259,15 @@ export default function QuestionVersionHistory({ questionId, onVersionRestored }
                   </div>
                 </div>
                 <div style={styles.detailSection}>
-                  <strong>רמת קושי:</strong>
+                  <strong>מטא־דאטה:</strong>
                   <div style={styles.detailContent}>
-                    {selectedVersion.question_data?.difficulty_level || 'לא זמין'}
+                    {[selectedVersion.question_data?.category, selectedVersion.question_data?.sub_category]
+                      .filter(Boolean)
+                      .join(' / ') || 'לא זמין'}
+                    {selectedVersion.question_data?.training_level != null &&
+                      ` · הכשרה ${selectedVersion.question_data.training_level}`}
+                    {selectedVersion.question_data?.thinking_level != null &&
+                      ` · ${selectedVersion.question_data.thinking_level}`}
                   </div>
                 </div>
                 <div style={styles.detailSection}>

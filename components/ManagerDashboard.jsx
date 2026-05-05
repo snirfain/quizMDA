@@ -173,7 +173,7 @@ export default function ManagerDashboard({ managerId }) {
             <div style={s.statLabel}>פעילות</div>
           </div>
           <div style={s.statCard}>
-            <div style={{ ...s.statValue, color: '#c62828' }}>{stats.suspended}</div>
+            <div style={{ ...s.statValue, color: '#c62828' }}>{stats.under_review ?? stats.suspended}</div>
             <div style={s.statLabel}>מושעות</div>
           </div>
           <div style={s.statCard}>
@@ -268,7 +268,7 @@ export default function ManagerDashboard({ managerId }) {
                       {question.hierarchy?.category_name} / {question.hierarchy?.topic_name}
                     </span>
                     <span style={s.badge}>{getQuestionTypeLabel(question.question_type)}</span>
-                    <span style={s.badge}>קושי: {(question.total_attempts ?? 0) >= 50 && question.difficulty_level != null ? (typeof question.difficulty_level === 'number' ? `${question.difficulty_level}/10` : question.difficulty_level) : 'לא מדורג'}</span>
+                    <span style={s.badge}>הכשרה: {question.training_level || '—'} · הצלחה: {question.success_rate != null ? `${question.success_rate}%` : '—'}</span>
                   </div>
                   <div
                     style={s.qText}
