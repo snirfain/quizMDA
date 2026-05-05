@@ -1924,7 +1924,17 @@ function QuestionReviewPanel({
                     />
                     {(q.category || q.sub_category) && (
                       <span style={rs.hierBadge}>
-                        {[q.category, q.sub_category].filter(Boolean).join(' / ')}
+                        {/* #region agent log */}
+                        {typeof window !== 'undefined' && !window.__dbgH7Sent
+                          ? (() => {
+                              window.__dbgH7Sent = true;
+                              fetch('http://127.0.0.1:7348/ingest/e2bebe2c-443b-45ce-b67f-21266df27271',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b92899'},body:JSON.stringify({sessionId:'b92899',runId:'post-fix',hypothesisId:'H7',location:'components/QuestionManagement.jsx:hierBadge:render',message:'Rendered category/sub_category badge with raw values',data:{category:q.category||null,sub_category:q.sub_category||null},timestamp:Date.now()})}).catch(()=>{});
+                              return null;
+                            })()
+                          : null}
+                        {/* #endregion */}
+                        {q.category && <span style={rs.hierBadgeLine}><strong>נושא:</strong> {q.category}</span>}
+                        {q.sub_category && <span style={rs.hierBadgeLine}><strong>תת־נושא:</strong> {q.sub_category}</span>}
                       </span>
                     )}
                   </div>
@@ -2046,7 +2056,8 @@ const rs = {
   qIndex: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: '#1976d2', color: 'white', fontSize: '13px', fontWeight: '700', flexShrink: 0 },
   typeBadge: { padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' },
   diffBadge: { padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: '#fff3e0', color: '#e65100', border: '1px solid #ffe0b2' },
-  hierBadge: { padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '500', background: '#f3e5f5', color: '#7b1fa2', border: '1px solid #e1bee7', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  hierBadge: { display: 'flex', flexDirection: 'column', gap: '2px', padding: '6px 10px', borderRadius: '10px', fontSize: '12px', fontWeight: '500', background: '#f3e5f5', color: '#7b1fa2', border: '1px solid #e1bee7', maxWidth: '340px', whiteSpace: 'normal', lineHeight: 1.25 },
+  hierBadgeLine: { overflowWrap: 'anywhere' },
   statusDraft: { padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: '#fff8e1', color: '#f57f17', border: '1px solid #ffe082' },
 
   questionText: { fontSize: '15px', fontWeight: '600', color: '#212121', lineHeight: '1.6', margin: '0 0 14px', padding: '12px 16px', background: '#f8f9ff', borderRadius: '10px', border: '1px solid #e8eaf6' },
