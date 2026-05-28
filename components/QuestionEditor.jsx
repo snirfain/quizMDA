@@ -16,6 +16,7 @@ import { MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { getMediaTypeLabel } from '../workflows/mediaEngine';
 import QuestionResolvedMedia from './QuestionResolvedMedia';
 import { generateRollingCaseWithAI } from '../workflows/questionEnrich';
+import { validateRollingCaseStructure } from '../workflows/rollingCaseEngine';
 import {
   QUESTION_CATEGORIES,
   MEDICAL_LEVELS,
@@ -326,6 +327,8 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
       const branches = Array.isArray(rc.branches) ? rc.branches : [];
       if (!formData.case_name?.trim()) extraErrors.push('יש להזין שם מקרה לשאלה מתגלגלת');
       if (branches.length < 3 || branches.length > 10) extraErrors.push('בשאלה מתגלגלת נדרשים בין 3 ל-10 ענפים');
+      const rollingErrors = validateRollingCaseStructure(rc).map((e) => `Flow: ${e}`);
+      extraErrors.push(...rollingErrors);
     }
     const errors = [...validation.errors, ...extraErrors];
     setValidationErrors(errors);
@@ -471,6 +474,10 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
         .join('\n');
 
       const draft = await generateRollingCaseWithAI(prompt, apiKey);
+      const rollingErrors = validateRollingCaseStructure(draft?.rolling_case || {});
+      if (rollingErrors.length > 0) {
+        throw new Error(`ה-AI החזיר Flow לא תקין: ${rollingErrors.join(' | ')}`);
+      }
       setFormData((prev) => ({
         ...prev,
         case_name: draft?.case_name || prev.case_name,

@@ -16,6 +16,7 @@
 import { appConfig } from '../config/appConfig';
 import { callLlmWithFallback } from './llmClient';
 import { retrieveProtocolContextForQuestion } from './protocolContext';
+import { validateRollingCaseStructure } from './rollingCaseEngine';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -502,6 +503,11 @@ export async function batchEnrichQuestions(questions, options = {}) {
  */
 export async function generateRollingCaseWithAI(casePrompt, apiKey) {
   const _ = apiKey;
+  const protocolCtx = await retrieveProtocolContextForQuestion(casePrompt, {
+    tokenBudget: 3500,
+    topK: 6,
+    debug: false,
+  }).catch(() => ({ contextBlock: '', noProtocolMatch: true }));
   const systemPrompt = `אתה יוצר שאלות מתגלגלות רפואיות.
 החזר JSON בלבד:
 {
@@ -528,12 +534,27 @@ export async function generateRollingCaseWithAI(casePrompt, apiKey) {
     ]
   }
 }`;
-  const userPrompt = `בנה שאלה מתגלגלת מלאה ומוכנה לאישור ידני לפי התיאור הבא:\n${casePrompt}`;
+  const userPrompt = `בנה שאלה מתגלגלת מלאה ומוכנה לאישור ידני לפי התיאור הבא:
+${casePrompt}
+
+${protocolCtx.contextBlock || 'לא נמצא הקשר פרוטוקולי תואם.'}
+
+כללים מחייבים:
+1) חייבים 3 עד 10 ענפים.
+2) אין לולאות במעברים.
+3) לכל ענף יש לפחות תשובה נכונה אחת.
+4) אם מופיעה תרופה (למשל אדרנלין) חובה לציין מינון מדויק ותואם להקשר הפרוטוקולי המצורף.
+5) אם המידע הפרוטוקולי לא מספיק - אל תנחש; ציין בהסבר שחסר הקשר.`;
   const draft = await callOpenAI(systemPrompt, userPrompt, appConfig.openai.getApiKey());
+  const normalizedRolling = draft.rolling_case || { branches: [], transitions: [] };
+  const errors = validateRollingCaseStructure(normalizedRolling);
+  if (errors.length > 0) {
+    throw new Error(`טיוטת AI לא תקינה: ${errors.join(' | ')}`);
+  }
   return {
     question_type: 'rolling_case',
     case_name: String(draft.case_name || '').trim(),
     question_text: String(draft.question_text || '').trim(),
-    rolling_case: draft.rolling_case || { branches: [], transitions: [] },
+    rolling_case: normalizedRolling,
   };
 }
