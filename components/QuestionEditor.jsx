@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { entities } from '../config/appConfig';
+import { entities, appConfig } from '../config/appConfig';
 import Modal from './Modal';
 import FormField from './FormField';
 import QuestionVersionHistory from './QuestionVersionHistory';
@@ -15,6 +15,7 @@ import { validateQuestion } from '../utils/questionValidation';
 import { MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { getMediaTypeLabel } from '../workflows/mediaEngine';
 import QuestionResolvedMedia from './QuestionResolvedMedia';
+import { generateRollingCaseWithAI } from '../workflows/questionEnrich';
 import {
   QUESTION_CATEGORIES,
   MEDICAL_LEVELS,
@@ -73,6 +74,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
   const [bankTags, setBankTags] = useState([]);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingRolling, setIsGeneratingRolling] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
   const [showPreview, setShowPreview] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
@@ -206,6 +208,68 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
     const rc = formData.rolling_case || { branches: [], transitions: [] };
     const branches = [...(rc.branches || [])];
     branches[idx] = { ...(branches[idx] || {}), ...patch };
+    handleChange('rolling_case', { ...rc, branches });
+  };
+
+  const updateRollingBranchOption = (branchIdx, optionIdx, label) => {
+    const rc = formData.rolling_case || { branches: [], transitions: [] };
+    const branches = [...(rc.branches || [])];
+    const branch = { ...(branches[branchIdx] || {}) };
+    const opts = Array.isArray(branch.options) ? [...branch.options] : [];
+    opts[optionIdx] = { ...(opts[optionIdx] || {}), value: String(optionIdx), label };
+    branch.options = opts;
+    branches[branchIdx] = branch;
+    handleChange('rolling_case', { ...rc, branches });
+  };
+
+  const addRollingBranchOption = (branchIdx) => {
+    const rc = formData.rolling_case || { branches: [], transitions: [] };
+    const branches = [...(rc.branches || [])];
+    const branch = { ...(branches[branchIdx] || {}) };
+    const opts = Array.isArray(branch.options) ? [...branch.options] : [];
+    if (opts.length >= 10) return;
+    opts.push({ value: String(opts.length), label: '' });
+    branch.options = opts;
+    branches[branchIdx] = branch;
+    handleChange('rolling_case', { ...rc, branches });
+  };
+
+  const removeRollingBranchOption = (branchIdx, optionIdx) => {
+    const rc = formData.rolling_case || { branches: [], transitions: [] };
+    const branches = [...(rc.branches || [])];
+    const branch = { ...(branches[branchIdx] || {}) };
+    let opts = Array.isArray(branch.options) ? [...branch.options] : [];
+    if (opts.length <= 2) return;
+    opts = opts.filter((_, i) => i !== optionIdx).map((o, i) => ({ ...o, value: String(i) }));
+    branch.options = opts;
+    if (branch.question_type === 'multi_choice') {
+      const values = Array.isArray(branch.correct_answer?.values) ? branch.correct_answer.values : [];
+      branch.correct_answer = { values: values.filter((v) => v !== String(optionIdx)).map((v) => {
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) && n > optionIdx ? String(n - 1) : String(v);
+      }) };
+    } else {
+      const cur = String(branch.correct_answer?.value ?? '0');
+      const curNum = parseInt(cur, 10);
+      branch.correct_answer = { value: Number.isFinite(curNum) && curNum > optionIdx ? String(curNum - 1) : (cur === String(optionIdx) ? '0' : cur) };
+    }
+    branches[branchIdx] = branch;
+    handleChange('rolling_case', { ...rc, branches });
+  };
+
+  const setRollingBranchCorrectSingle = (branchIdx, optionValue) => {
+    updateRollingBranch(branchIdx, { correct_answer: { value: String(optionValue) } });
+  };
+
+  const toggleRollingBranchCorrectMulti = (branchIdx, optionValue) => {
+    const rc = formData.rolling_case || { branches: [], transitions: [] };
+    const branches = [...(rc.branches || [])];
+    const branch = { ...(branches[branchIdx] || {}) };
+    const cur = Array.isArray(branch.correct_answer?.values) ? [...branch.correct_answer.values] : [];
+    const v = String(optionValue);
+    const next = cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v];
+    branch.correct_answer = { values: next };
+    branches[branchIdx] = branch;
     handleChange('rolling_case', { ...rc, branches });
   };
 
@@ -383,6 +447,44 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
     }
   };
 
+  const handleGenerateRollingWithAI = async () => {
+    const rootText = String(formData.question_text || '').trim();
+    if (!rootText) {
+      showToast('יש להזין קודם גזע שאלה כדי לבצע ג׳נרוט', 'error');
+      return;
+    }
+    const apiKey = appConfig?.openai?.getApiKey?.();
+    if (!apiKey) {
+      showToast('יש להגדיר VITE_OPENAI_API_KEY בקובץ .env כדי לבצע ג׳נרוט', 'error');
+      return;
+    }
+    setIsGeneratingRolling(true);
+    try {
+      const prompt = [
+        formData.case_name ? `שם מקרה: ${formData.case_name}` : '',
+        `גזע מקרה: ${rootText}`,
+        formData.category ? `קטגוריה: ${formData.category}` : '',
+        formData.sub_category ? `תת־קטגוריה: ${formData.sub_category}` : '',
+        formData.training_level ? `רמת הכשרה: ${formData.training_level}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      const draft = await generateRollingCaseWithAI(prompt, apiKey);
+      setFormData((prev) => ({
+        ...prev,
+        case_name: draft?.case_name || prev.case_name,
+        question_text: draft?.question_text || prev.question_text,
+        rolling_case: draft?.rolling_case || prev.rolling_case,
+      }));
+      showToast('טיוטת שאלה מתגלגלת נוצרה בהצלחה. בדוק ואשר לפני שמירה.', 'success');
+    } catch (error) {
+      showToast(`שגיאה בג׳נרוט: ${error?.message || 'unknown'}`, 'error');
+    } finally {
+      setIsGeneratingRolling(false);
+    }
+  };
+
   return (
     <Modal
       isOpen={true}
@@ -529,9 +631,29 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
           />
         )}
 
+        {formData.question_type === 'rolling_case' && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '13px', color: '#666' }}>
+              הזן גזע מקרה ואז לחץ על ג׳נרוט כדי לייצר ענפים ו־Flow
+            </span>
+            <button
+              type="button"
+              onClick={handleGenerateRollingWithAI}
+              disabled={isGeneratingRolling || !String(formData.question_text || '').trim()}
+              style={{
+                ...styles.addOptionBtn,
+                opacity: isGeneratingRolling || !String(formData.question_text || '').trim() ? 0.65 : 1,
+                cursor: isGeneratingRolling || !String(formData.question_text || '').trim() ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isGeneratingRolling ? 'מג׳נרט...' : 'ג׳נרט עם AI'}
+            </button>
+          </div>
+        )}
+
         <FormField
           marginBottom={10}
-          label="טקסט השאלה"
+          label={formData.question_type === 'rolling_case' ? 'גזע השאלה (תיאור מקרה)' : 'טקסט השאלה'}
           name="question_text"
           type="textarea"
           value={formData.question_text}
@@ -604,13 +726,81 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
                 <div style={{ marginTop: 6 }}>
                   <select
                     value={b.question_type || 'single_choice'}
-                    onChange={(e) => updateRollingBranch(idx, { question_type: e.target.value })}
+                    onChange={(e) => {
+                      const nextType = e.target.value;
+                      const base = {
+                        question_type: nextType,
+                        options: nextType === 'true_false'
+                          ? [{ value: 'true', label: 'נכון' }, { value: 'false', label: 'לא נכון' }]
+                          : (Array.isArray(b.options) && b.options.length >= 2 ? b.options : [{ value: '0', label: '' }, { value: '1', label: '' }]),
+                        correct_answer: nextType === 'multi_choice' ? { values: ['0'] } : { value: nextType === 'true_false' ? 'true' : '0' },
+                      };
+                      updateRollingBranch(idx, base);
+                    }}
                     style={{ ...styles.optionInput, maxWidth: 240 }}
                   >
-                    <option value="single_choice">single_choice</option>
-                    <option value="multi_choice">multi_choice</option>
-                    <option value="true_false">true_false</option>
+                    <option value="single_choice">רב־ברירה (תשובה אחת)</option>
+                    <option value="multi_choice">רב־ברירה (כמה תשובות)</option>
+                    <option value="true_false">נכון/לא נכון</option>
                   </select>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>תשובות לענף</div>
+                  {(b.question_type === 'single_choice' || b.question_type === 'multi_choice') && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {(Array.isArray(b.options) ? b.options : []).map((opt, optIdx) => {
+                        const checked = b.question_type === 'multi_choice'
+                          ? Array.isArray(b.correct_answer?.values) && b.correct_answer.values.includes(String(opt.value ?? optIdx))
+                          : String(b.correct_answer?.value ?? '') === String(opt.value ?? optIdx);
+                        return (
+                          <div key={`${b.id}-opt-${optIdx}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <input
+                              type={b.question_type === 'multi_choice' ? 'checkbox' : 'radio'}
+                              name={`rolling-correct-${b.id}`}
+                              checked={checked}
+                              onChange={() => {
+                                if (b.question_type === 'multi_choice') toggleRollingBranchCorrectMulti(idx, String(opt.value ?? optIdx));
+                                else setRollingBranchCorrectSingle(idx, String(opt.value ?? optIdx));
+                              }}
+                            />
+                            <input
+                              type="text"
+                              value={opt?.label ?? ''}
+                              onChange={(e) => updateRollingBranchOption(idx, optIdx, e.target.value)}
+                              placeholder={`אפשרות ${optIdx + 1}`}
+                              style={styles.optionInput}
+                            />
+                            <button type="button" onClick={() => removeRollingBranchOption(idx, optIdx)} style={styles.removeOptionBtn}>הסר</button>
+                          </div>
+                        );
+                      })}
+                      <button type="button" onClick={() => addRollingBranchOption(idx)} style={styles.addOptionBtn}>+ הוסף תשובה</button>
+                    </div>
+                  )}
+
+                  {b.question_type === 'true_false' && (
+                    <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                      <label style={styles.radioLabel}>
+                        <input
+                          type="radio"
+                          name={`rolling-tf-${b.id}`}
+                          checked={String(b.correct_answer?.value ?? 'true') === 'true'}
+                          onChange={() => updateRollingBranch(idx, { correct_answer: { value: 'true' } })}
+                        />
+                        נכון (תשובה נכונה)
+                      </label>
+                      <label style={styles.radioLabel}>
+                        <input
+                          type="radio"
+                          name={`rolling-tf-${b.id}`}
+                          checked={String(b.correct_answer?.value ?? 'true') === 'false'}
+                          onChange={() => updateRollingBranch(idx, { correct_answer: { value: 'false' } })}
+                        />
+                        לא נכון (תשובה נכונה)
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -678,12 +868,29 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
                   }}
                   style={styles.optionInput}
                 >
-                  <option value="always">always</option>
-                  <option value="is_correct">is_correct</option>
-                  <option value="is_incorrect">is_incorrect</option>
-                  <option value="answer_equals">answer_equals</option>
-                  <option value="score_gte">score_gte</option>
+                  <option value="always">תמיד</option>
+                  <option value="is_correct">אם נכון</option>
+                  <option value="is_incorrect">אם שגוי</option>
+                  <option value="answer_equals">אם נבחרה תשובה מסוימת</option>
+                  <option value="score_gte">אם ציון גדול/שווה</option>
                 </select>
+                {(t.condition?.mode === 'answer_equals' || t.condition?.mode === 'score_gte') && (
+                  <input
+                    type="text"
+                    value={String(t.condition?.value ?? '')}
+                    onChange={(e) => {
+                      const rc = formData.rolling_case || { branches: [], transitions: [] };
+                      const transitions = [...(rc.transitions || [])];
+                      transitions[idx] = {
+                        ...transitions[idx],
+                        condition: { ...(transitions[idx].condition || {}), value: e.target.value },
+                      };
+                      handleChange('rolling_case', { ...rc, transitions });
+                    }}
+                    placeholder={t.condition?.mode === 'score_gte' ? 'למשל 0.7' : 'למשל 2'}
+                    style={styles.optionInput}
+                  />
+                )}
                 <button
                   type="button"
                   style={styles.removeOptionBtn}
