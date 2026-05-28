@@ -12,6 +12,8 @@ import QuestionImport from './QuestionImport';
 import SearchBar from './SearchBar';
 import LoadingSpinner from './LoadingSpinner';
 import ConfirmDialog from './ConfirmDialog';
+import Modal from './Modal';
+import QuestionResolvedMedia from './QuestionResolvedMedia';
 import { showToast } from './Toast';
 import { permissions } from '../utils/permissions';
 import PermissionGate from './PermissionGate';
@@ -195,6 +197,7 @@ export default function QuestionManagement() {
     progress: { current: 0, total: 0 },
   });
   const [expandedQuestionId, setExpandedQuestionId] = useState(null);
+  const [previewQuestion, setPreviewQuestion] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
 
   // ── Bulk selection state ────────────────────────────
@@ -291,6 +294,20 @@ export default function QuestionManagement() {
     } catch (e) {
       console.error('Error loading reports:', e);
     }
+  };
+
+  const parseOptionsForPreview = (question) => {
+    const raw = question?.options;
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   };
 
   const loadReportCount = async () => {
@@ -1284,6 +1301,21 @@ export default function QuestionManagement() {
                       const correctVals = parsed.values
                         ? parsed.values.map(String)
                         : (correctVal != null ? [correctVal] : []);
+                      const rollingCaseData = (() => {
+                        if (question.question_type !== 'rolling_case') return null;
+                        const rc = question.rolling_case;
+                        if (!rc) return null;
+                        if (typeof rc === 'string') {
+                          try {
+                            return JSON.parse(rc);
+                          } catch {
+                            return null;
+                          }
+                        }
+                        return typeof rc === 'object' ? rc : null;
+                      })();
+                      const rollingBranches = Array.isArray(rollingCaseData?.branches) ? rollingCaseData.branches : [];
+                      const rollingTransitions = Array.isArray(rollingCaseData?.transitions) ? rollingCaseData.transitions : [];
                       const isExpanded = expandedQuestionId === question.id;
                       const isSelected = selectedIds.has(question.id);
                       const categoryLabel = [question.category, question.sub_category].filter(Boolean).join(' / ') || '—';
@@ -1380,6 +1412,13 @@ export default function QuestionManagement() {
                                   ערוך
                                 </button>
                                 <button
+                                  style={{ ...styles.actionButton, background: '#e3f2fd', color: '#0d47a1' }}
+                                  onClick={() => setPreviewQuestion(question)}
+                                  aria-label="תצוגה מקדימה"
+                                >
+                                  תצוגה מקדימה
+                                </button>
+                                <button
                                   style={{ ...styles.actionButton, background: '#7b1fa2', color: '#fff' }}
                                   onClick={() => handleFixWithAIClick(question)}
                                   disabled={fixWithAIState.status === 'loading'}
@@ -1408,7 +1447,68 @@ export default function QuestionManagement() {
                                     <strong style={{ marginBottom: '4px' }}>שאלה (מלא):</strong>
                                     <p style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0', fontSize: '14px' }}>{question.question_text}</p>
                                   </div>
-                                  {opts && opts.length > 0 ? (
+                                  {question.question_type === 'rolling_case' ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                      <strong style={{ marginBottom: '4px' }}>מבנה השאלה המתגלגלת:</strong>
+                                      {rollingBranches.length > 0 ? rollingBranches.map((branch, branchIdx) => {
+                                        const branchOptions = Array.isArray(branch?.options) ? branch.options : [];
+                                        const branchType = branch?.question_type || 'single_choice';
+                                        const branchCorrectVals = branchType === 'multi_choice'
+                                          ? (Array.isArray(branch?.correct_answer?.values) ? branch.correct_answer.values.map(String) : [])
+                                          : [String(branch?.correct_answer?.value ?? (branchType === 'true_false' ? 'true' : '0'))];
+                                        return (
+                                          <div key={branch?.id || `branch-${branchIdx}`} style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '10px', background: '#fff' }}>
+                                            <div style={{ fontSize: '12px', color: '#455a64', marginBottom: '6px' }}>
+                                              <strong>ענף {branchIdx + 1}:</strong> {branch?.id || `b${branchIdx + 1}`} | {branchType}
+                                            </div>
+                                            <div style={{ marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{branch?.question_text || '—'}</div>
+                                            {branchOptions.length > 0 ? (
+                                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                {branchOptions.map((opt, optIdx) => {
+                                                  const optValue = String(opt?.value ?? optIdx);
+                                                  const isCorrect = branchCorrectVals.includes(optValue) || branchCorrectVals.includes(String(optIdx));
+                                                  return (
+                                                    <div
+                                                      key={`${branch?.id || branchIdx}-opt-${optIdx}`}
+                                                      style={{
+                                                        padding: '6px 10px',
+                                                        borderRadius: '6px',
+                                                        border: `1px solid ${isCorrect ? '#66bb6a' : '#e0e0e0'}`,
+                                                        background: isCorrect ? '#e8f5e9' : '#fafafa',
+                                                        fontWeight: isCorrect ? 700 : 400,
+                                                      }}
+                                                    >
+                                                      {isCorrect && '✓ '}{opt?.label ?? opt?.text ?? String(opt ?? '')}
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            ) : (
+                                              <span style={{ color: '#757575', fontSize: '13px' }}>לענף אין אפשרויות שמורות</span>
+                                            )}
+                                            {branch?.explanation && (
+                                              <div style={{ marginTop: '8px', padding: '6px 10px', background: '#fff8e1', borderRadius: '6px', border: '1px solid #ffe082', fontSize: '12px' }}>
+                                                <strong>הסבר ענף:</strong> {branch.explanation}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      }) : (
+                                        <span style={{ color: '#757575' }}>לא נמצאו ענפים לשאלה מתגלגלת</span>
+                                      )}
+
+                                      <div style={{ border: '1px dashed #cfd8dc', borderRadius: '8px', padding: '10px', background: '#fcfcfc' }}>
+                                        <strong style={{ display: 'block', marginBottom: '6px' }}>מעברים (Flow)</strong>
+                                        {rollingTransitions.length > 0 ? rollingTransitions.map((t, idx) => (
+                                          <div key={`${t?.from_branch_id || 'from'}-${t?.to_branch_id || 'to'}-${idx}`} style={{ fontSize: '13px', color: '#37474f', marginBottom: '4px' }}>
+                                            {t?.from_branch_id || '—'} → {t?.to_branch_id || '—'} | תנאי: {t?.condition?.mode || 'always'}{t?.condition?.value != null ? ` (${String(t.condition.value)})` : ''}
+                                          </div>
+                                        )) : (
+                                          <span style={{ color: '#757575', fontSize: '13px' }}>אין מעברים שמורים</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ) : opts && opts.length > 0 ? (
                                     <>
                                       <strong style={{ marginBottom: '4px' }}>מסיחים ותשובה נכונה:</strong>
                                       {opts.map((opt, i) => {
@@ -1517,6 +1617,100 @@ export default function QuestionManagement() {
               cancelText="ביטול"
               danger={true}
             />
+          )}
+
+          {previewQuestion && (
+            <Modal
+              isOpen={true}
+              onClose={() => setPreviewQuestion(null)}
+              title="תצוגה מקדימה — כפי שהתלמיד רואה"
+              size="lg"
+            >
+              <div style={styles.previewWrap}>
+                <div style={styles.previewQuestionNumber}>תצוגת שאלה</div>
+                <h2 style={styles.previewQuestionText}>{previewQuestion.question_text || '—'}</h2>
+
+                {previewQuestion.question_type === 'rolling_case' && (
+                  <div style={styles.previewCaseInfo}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>{previewQuestion.case_name || 'מקרה מתגלגל'}</div>
+                    <div style={{ fontSize: 13, color: '#555' }}>
+                      {Array.isArray(previewQuestion?.rolling_case?.branches) ? `${previewQuestion.rolling_case.branches.length} ענפים` : '0 ענפים'}
+                    </div>
+                  </div>
+                )}
+
+                <QuestionResolvedMedia
+                  question={previewQuestion}
+                  containerStyle={styles.previewMedia}
+                  imageStyle={styles.previewMediaImage}
+                />
+
+                <div style={styles.previewAnswers}>
+                  {previewQuestion.question_type === 'single_choice' && (
+                    <div style={styles.previewOptionsList}>
+                      {parseOptionsForPreview(previewQuestion).map((option, index) => (
+                        <label key={index} style={styles.previewOptionLabel}>
+                          <input type="radio" disabled />
+                          <span>{option?.label ?? option?.text ?? String(option ?? '')}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  {previewQuestion.question_type === 'multi_choice' && (
+                    <div style={styles.previewOptionsList}>
+                      {parseOptionsForPreview(previewQuestion).map((option, index) => (
+                        <label key={index} style={styles.previewOptionLabel}>
+                          <input type="checkbox" disabled />
+                          <span>{option?.label ?? option?.text ?? String(option ?? '')}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  {previewQuestion.question_type === 'true_false' && (
+                    <div style={styles.previewOptionsList}>
+                      <label style={styles.previewOptionLabel}><input type="radio" disabled /><span>נכון</span></label>
+                      <label style={styles.previewOptionLabel}><input type="radio" disabled /><span>לא נכון</span></label>
+                    </div>
+                  )}
+
+                  {previewQuestion.question_type === 'open_ended' && (
+                    <textarea
+                      disabled
+                      style={styles.previewTextarea}
+                      placeholder="הקלד את תשובתך כאן..."
+                      rows={5}
+                    />
+                  )}
+
+                  {previewQuestion.question_type === 'rolling_case' && (
+                    <div style={styles.previewOptionsList}>
+                      {(previewQuestion.rolling_case?.branches || []).map((branch, idx) => (
+                        <div key={branch?.id || idx} style={styles.previewBranchCard}>
+                          <div style={{ fontSize: 12, color: '#777', marginBottom: 4 }}>ענף {idx + 1}</div>
+                          <div style={{ fontWeight: 600, marginBottom: 8 }}>{branch?.question_text || '—'}</div>
+                          {branch?.question_type === 'true_false' ? (
+                            <div style={{ display: 'flex', gap: 10 }}>
+                              <button type="button" disabled style={styles.previewControlButton}>נכון</button>
+                              <button type="button" disabled style={styles.previewControlButton}>לא נכון</button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {(branch?.options || []).map((opt, optIdx) => (
+                                <button key={`${branch?.id || idx}-${optIdx}`} type="button" disabled style={styles.previewOptionButton}>
+                                  {opt?.label ?? opt?.text ?? String(opt?.value ?? optIdx)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Modal>
           )}
 
           {/* Bulk rewrite — loading overlay */}
@@ -2763,5 +2957,91 @@ const styles = {
     fontFamily: 'inherit',
     transition: 'opacity 0.2s',
     whiteSpace: 'nowrap',
+  },
+  previewWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  previewQuestionNumber: {
+    fontSize: '13px',
+    color: '#757575',
+  },
+  previewQuestionText: {
+    margin: 0,
+    fontSize: '22px',
+    lineHeight: 1.45,
+    color: '#212121',
+  },
+  previewCaseInfo: {
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 8,
+    border: '1px solid #ddd',
+    background: '#fff',
+  },
+  previewMedia: {
+    margin: '8px 0 12px',
+    maxWidth: '100%',
+    borderRadius: '8px',
+    overflow: 'hidden',
+  },
+  previewMediaImage: {
+    width: '100%',
+    maxHeight: '420px',
+    objectFit: 'contain',
+    display: 'block',
+    borderRadius: '8px',
+    border: '1px solid #e0e0e0',
+    backgroundColor: '#fff',
+  },
+  previewAnswers: {
+    marginTop: 6,
+  },
+  previewOptionsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  previewOptionLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '12px 14px',
+    border: '1px solid #e0e0e0',
+    borderRadius: '8px',
+    backgroundColor: '#fafafa',
+    color: '#212121',
+  },
+  previewTextarea: {
+    width: '100%',
+    border: '1px solid #e0e0e0',
+    borderRadius: '8px',
+    padding: '12px',
+    fontFamily: 'inherit',
+    resize: 'vertical',
+    background: '#fafafa',
+  },
+  previewBranchCard: {
+    border: '1px solid #e0e0e0',
+    borderRadius: 8,
+    padding: 10,
+    background: '#fff',
+  },
+  previewControlButton: {
+    padding: '8px 14px',
+    borderRadius: 8,
+    border: '1px solid #d0d0d0',
+    background: '#f3f3f3',
+    color: '#444',
+  },
+  previewOptionButton: {
+    padding: '10px 12px',
+    borderRadius: 8,
+    border: '1px solid #dcdcdc',
+    background: '#fafafa',
+    color: '#333',
+    textAlign: 'right',
+    cursor: 'not-allowed',
   },
 };
