@@ -15,6 +15,7 @@ import {
   parseMoodleExcel,
   extractTextFromFile,
   parseQuestionsWithAI,
+  normalizeQuestionsWithLLM,
   bulkCreateQuestions,
 } from '../workflows/questionImport';
 import {
@@ -57,10 +58,21 @@ export default function QuestionImport({ onImportComplete }) {
   const [csvContent, setCsvContent]     = useState('');
   const [csvXlsxBuffer, setCsvXlsxBuffer] = useState(null);  // ArrayBuffer for Moodle Excel
   const [csvPreview, setCsvPreview]     = useState(null);
+  const [llmRuntime, setLlmRuntime]     = useState({ provider: '', fallbackUsed: false, lastError: '' });
 
   const [defaultCategory, setDefaultCategory] = useState(QUESTION_CATEGORIES[0]?.value ?? '');
 
   const fileInputRef = useRef(null);
+
+  const handleProviderEvent = useCallback((event) => {
+    if (!event) return;
+    if (event.stage === 'success') {
+      setLlmRuntime((prev) => ({ ...prev, provider: event.provider, fallbackUsed: !!event.isFallback, lastError: '' }));
+    }
+    if (event.stage === 'failure') {
+      setLlmRuntime((prev) => ({ ...prev, lastError: `${event.provider}: ${event.message || 'שגיאה לא ידועה'}` }));
+    }
+  }, []);
 
   // ── Multi-file Drag & Drop ───────────────────────────
   const handleDrop = useCallback(async (e) => {
@@ -139,19 +151,18 @@ export default function QuestionImport({ onImportComplete }) {
           setUploadedFiles(prev => prev.map(f =>
             f.id === entry.id ? { ...f, progress: { done, total } } : f
           ));
-        });
+        }, handleProviderEvent);
         const questions = result.questions || result;
-        const usedFallback = result.usedFallback === true;
-        const tagged = (Array.isArray(questions) ? questions : []).map(q => ({ ...q, _sourceFile: entry.name, _usedFallback: usedFallback }));
+        const tagged = (Array.isArray(questions) ? questions : []).map(q => ({ ...q, _sourceFile: entry.name }));
         setUploadedFiles(prev => prev.map(f =>
           f.id === entry.id ? { ...f, status: 'done', questions: tagged, progress: null } : f
         ));
-        return { questions: tagged, usedFallback };
+        return { questions: tagged };
       } catch (err) {
         setUploadedFiles(prev => prev.map(f =>
           f.id === entry.id ? { ...f, status: 'error', error: err.message, progress: null } : f
         ));
-        return { questions: [], usedFallback: false };
+        return { questions: [] };
       }
     });
 
@@ -163,17 +174,11 @@ export default function QuestionImport({ onImportComplete }) {
     }
 
     const allQuestions = results.flatMap(r => (r && r.questions) || []);
-    const anyFallback = results.some(r => r && r.usedFallback);
     if (allQuestions.length === 0) {
       showToast('לא זוהו שאלות בקבצים שנבחרו', 'warning');
     } else {
       setParsed(allQuestions);
-      showToast(
-        anyFallback
-          ? `זוהו ${allQuestions.length} שאלות מ-${readyFiles.length} קבצים (חלק בניתוח גיבוי — ה-AI לא זיהה שאלות)`
-          : `זוהו ${allQuestions.length} שאלות מ-${readyFiles.length} קבצים`,
-        anyFallback ? 'warning' : 'success'
-      );
+      showToast(`זוהו ${allQuestions.length} שאלות מ-${readyFiles.length} קבצים`, 'success');
     }
     setAnalyzingFiles(false);
   };
@@ -215,16 +220,14 @@ export default function QuestionImport({ onImportComplete }) {
     try {
       const result = await parseQuestionsWithAI(rawText, (done, total) => {
         setAiProgress({ done, total });
-      });
+      }, handleProviderEvent);
       const questions = result.questions || result;
-      const usedFallback = result.usedFallback === true;
+      const providersInfo = Array.isArray(result.providersTried) && result.providersTried.length
+        ? ` (${result.providersTried.join(' -> ')})`
+        : '';
       setParsed(Array.isArray(questions) ? questions : []);
       const n = (Array.isArray(questions) ? questions : []).length;
-      if (usedFallback) {
-        showToast(`ה-AI לא זיהה שאלות; זוהו ${n} שאלות בניתוח גיבוי (ללא AI)`, 'warning');
-      } else {
-        showToast(`ה-AI זיהה ${n} שאלות`, 'success');
-      }
+      showToast(`ה-AI זיהה ${n} שאלות${providersInfo}`, 'success');
     } catch (err) {
       showToast(`שגיאה בניתוח AI: ${err.message}`, 'error');
     } finally {
@@ -263,7 +266,13 @@ export default function QuestionImport({ onImportComplete }) {
     }
 
     try {
-      const results = await bulkCreateQuestions(parsedQuestions, {
+      const normalized = await normalizeQuestionsWithLLM(parsedQuestions, undefined, handleProviderEvent);
+      const llmQuestions = normalized.questions || [];
+      if (!llmQuestions.length) {
+        throw new Error('ה-LLM לא החזיר שאלות תקינות לייבוא');
+      }
+
+      const results = await bulkCreateQuestions(llmQuestions, {
         validate: false,
         skipInvalid: true,
         enrich: true,
@@ -282,8 +291,11 @@ export default function QuestionImport({ onImportComplete }) {
       const dupMsg = results.duplicates > 0
         ? ` | ${results.duplicates} דומות דולגו`
         : '';
+      const providerMsg = normalized.providersTried?.length
+        ? ` | LLM: ${normalized.providersTried.join(' -> ')}`
+        : '';
 
-      showToast(`יובאו ${results.successful} שאלות בהצלחה${splitMsg}${enrichMsg}${dupMsg}`, 'success');
+      showToast(`יובאו ${results.successful} שאלות בהצלחה${splitMsg}${enrichMsg}${dupMsg}${providerMsg}`, 'success');
       if (results.failed > 0) showToast(`${results.failed} נכשלו`, 'warning');
 
       setParsed(null);
@@ -349,8 +361,12 @@ export default function QuestionImport({ onImportComplete }) {
           skipInvalid: true,
           onProgress: setProgress,
           defaultCategory: defaultCategory || undefined,
+          onProviderEvent: handleProviderEvent,
         });
-        showToast(`יובאו ${results.successful} שאלות`, 'success');
+        const via = Array.isArray(results.providersTried) && results.providersTried.length
+          ? ` (LLM: ${results.providersTried.join(' -> ')})`
+          : '';
+        showToast(`יובאו ${results.successful} שאלות${via}`, 'success');
         setCsvXlsxBuffer(null);
         setCsvPreview(null);
         if (onImportComplete) onImportComplete(results);
@@ -369,9 +385,12 @@ export default function QuestionImport({ onImportComplete }) {
       const csvOpts = { validate: true, skipInvalid: true, onProgress: setProgress, defaultCategory: defaultCategory || undefined };
       const results =
         csvType === 'csv'
-          ? await importQuestionsFromCSV(csvContent, csvOpts)
-          : await importQuestionsFromJSON(csvContent, csvOpts);
-      showToast(`יובאו ${results.successful} שאלות`, 'success');
+          ? await importQuestionsFromCSV(csvContent, { ...csvOpts, onProviderEvent: handleProviderEvent })
+          : await importQuestionsFromJSON(csvContent, { ...csvOpts, onProviderEvent: handleProviderEvent });
+      const via = Array.isArray(results.providersTried) && results.providersTried.length
+        ? ` (LLM: ${results.providersTried.join(' -> ')})`
+        : '';
+      showToast(`יובאו ${results.successful} שאלות${via}`, 'success');
       setCsvContent('');
       setCsvPreview(null);
       if (onImportComplete) onImportComplete(results);
@@ -390,6 +409,25 @@ export default function QuestionImport({ onImportComplete }) {
     <div style={s.container}>
       <h2 style={s.title}>📥 ייבוא שאלות חכם</h2>
       <p style={s.subtitle}>הדבק שאלות, העלה קובץ Word/PDF, או ייבא CSV — המערכת תנתח אוטומטית</p>
+      {(llmRuntime.provider || llmRuntime.lastError) && (
+        <div style={{
+          marginBottom: '14px',
+          padding: '10px 12px',
+          borderRadius: '8px',
+          border: `1px solid ${llmRuntime.lastError ? '#ef9a9a' : '#90caf9'}`,
+          background: llmRuntime.lastError ? '#ffebee' : '#e3f2fd',
+          color: llmRuntime.lastError ? '#c62828' : '#0d47a1',
+          fontSize: '13px',
+        }}>
+          {llmRuntime.provider && (
+            <div>
+              ספק פעיל: <strong>{llmRuntime.provider === 'gemini' ? 'Gemini' : 'OpenAI'}</strong>
+              {llmRuntime.fallbackUsed && ' (Fallback)'}
+            </div>
+          )}
+          {llmRuntime.lastError && <div>כשל ספק: {llmRuntime.lastError}</div>}
+        </div>
+      )}
 
       {/* ── Tabs ── */}
       <div style={s.tabs}>
@@ -416,7 +454,7 @@ export default function QuestionImport({ onImportComplete }) {
             disabled={isAnalyzing || isImporting}
           />
           <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-            לשימוש במפתח OpenAI (ניתוח מדויק עם בינה מלאכותית) לחץ על <strong>ניתוח חכם עם AI</strong>. הכפתור &quot;נתח שאלות (מהיר)&quot; לא שולח ל-AI.
+            המערכת מנסה קודם <strong>Gemini</strong> ואז <strong>OpenAI</strong> כגיבוי. הכפתור &quot;נתח שאלות (מהיר)&quot; לא שולח ל-AI.
           </p>
           <AnalysisButtons
             onRegex={analyzeWithRegex}
@@ -431,12 +469,12 @@ export default function QuestionImport({ onImportComplete }) {
       {/* ══════════ TAB: FILE ══════════ */}
       {activeTab === 'file' && (
         <div>
-          {(!appConfig?.openai?.getApiKey || !appConfig.openai.getApiKey()) && (
+          {(!appConfig?.llm?.gemini?.getApiKey?.() && !appConfig?.openai?.getApiKey?.()) && (
             <div style={{
               padding: '10px 14px', marginBottom: '12px', background: '#FFF3E0',
               border: '1px solid #FFB74D', borderRadius: '8px', fontSize: '13px', color: '#E65100',
             }}>
-              לניתוח קבצים עם AI יש להגדיר <code style={{ background: '#FFE0B2', padding: '2px 6px', borderRadius: '4px' }}>VITE_OPENAI_API_KEY</code> בקובץ <code>.env</code>.
+              לניתוח קבצים עם AI יש להגדיר לפחות אחד מהמפתחות: <code style={{ background: '#FFE0B2', padding: '2px 6px', borderRadius: '4px' }}>VITE_GEMINI_API_KEY</code> או <code style={{ background: '#FFE0B2', padding: '2px 6px', borderRadius: '4px' }}>VITE_OPENAI_API_KEY</code> בקובץ <code>.env</code>.
             </div>
           )}
           {/* Drop zone */}

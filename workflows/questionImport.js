@@ -6,7 +6,6 @@
 
 import { entities, appConfig } from '../config/appConfig';
 import { validateQuestion } from '../utils/questionValidation';
-import { parseTextQuestions, parseUnnumberedBlocks, parseMasterFormatDocx } from '../utils/questionParser';
 import {
   detectEnrichmentType,
   enrichQuestion,
@@ -18,6 +17,7 @@ import {
   QUESTION_CATEGORIES,
   PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY,
 } from '../shared/questionBankMetadata.js';
+import { callLlmWithFallback } from './llmClient';
 
 export function applyQuestionImportDefaults(question, opts = {}) {
   const firstCat = QUESTION_CATEGORIES[0]?.value || '';
@@ -244,16 +244,30 @@ function parseQuestionsJson(content) {
     .replace(/```\s*$/i, '')
     .trim();
 
-  const jsonMatch = stripped.match(/\[[\s\S]*\]/);
+  try {
+    const parsed = JSON.parse(stripped);
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed?.questions)) return parsed.questions;
+  } catch (_) {}
+
+  const jsonMatch = stripped.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
   if (!jsonMatch) return [];
 
   let raw = jsonMatch[0];
 
   // 1. Direct parse
-  try { return JSON.parse(raw); } catch (_) {}
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed?.questions)) return parsed.questions;
+  } catch (_) {}
 
   // 2. Repair then parse
-  try { return JSON.parse(repairJsonString(raw)); } catch (_) {}
+  try {
+    const parsed = JSON.parse(repairJsonString(raw));
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed?.questions)) return parsed.questions;
+  } catch (_) {}
 
   // 3. Progressive scan — salvage completed objects before a truncation point
   let depth = 0, inStr = false, esc = false, lastGood = 0;
@@ -267,22 +281,110 @@ function parseQuestionsJson(content) {
     if (c === ']' || c === '}') { depth--; if (depth === 0) lastGood = i + 1; }
   }
   if (lastGood > 1) {
-    try { return JSON.parse(raw.slice(0, lastGood)); } catch (_) {}
+    try {
+      const parsed = JSON.parse(raw.slice(0, lastGood));
+      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed?.questions)) return parsed.questions;
+    } catch (_) {}
   }
   return [];
 }
 
 // ── Smart chunking — robust section-aware splitting ──────────
 //
-// PROBLEM: pdfjs extracts "1 . text" (number SPACE period) not "1. text".
-//          Each topic section restarts numbering from 1, so naive chunking
-//          sends multiple sections in one call and the AI gets confused.
+// PROBLEM: extraction can produce dense text and page markers. Without splitting,
+//          a full file may be interpreted as one question.
 //
 // SOLUTION:
-//   1. Detect question boundaries with a regex that handles "1 . text" AND "1. text".
-//   2. Detect topic-section headers and insert a mandatory flush at each one.
-//   3. Flush a chunk whenever it would exceed CHUNK_MAX_CHARS.
-//   4. Guaranteed fallback: plain character-based slicing if nothing is detected.
+//   1. Normalize extracted text (page markers/tabs/spacing).
+//   2. Build question-like blocks from option markers and question lines.
+//   3. Chunk blocks with small overlap and section awareness.
+//   4. Fallback to regex/size-based chunking only if no blocks were found.
+
+const PAGE_MARKER_RE = /^\s*--\s*\d+\s*of\s*\d+\s*--\s*$/i;
+const OPTION_MARKER_RE = /^\s*([A-H]|[א-ט])\s*[.)\-]\s+/;
+
+export function normalizeExtractedTextForLLM(rawText) {
+  if (!rawText || typeof rawText !== 'string') return '';
+  const lines = rawText
+    .replace(/\r/g, '\n')
+    .replace(/\t+/g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter((line) => !PAGE_MARKER_RE.test(line));
+
+  const cleaned = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isLikelySectionHeader =
+      line.length < 45 &&
+      !/[?.:]/.test(line) &&
+      !OPTION_MARKER_RE.test(line) &&
+      /[\u05D0-\u05FFA-Za-z]/.test(line);
+    if (isLikelySectionHeader && i + 1 < lines.length && !OPTION_MARKER_RE.test(lines[i + 1])) {
+      cleaned.push(`[נושא: ${line}]`);
+      continue;
+    }
+    cleaned.push(line);
+  }
+  return cleaned.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function isQuestionLikeLine(line) {
+  return (
+    /\?$/.test(line) ||
+    /^נכון\s+או\s+לא\s+נכון[:\s]/.test(line) ||
+    /^(מהו|מהי|כיצד|איזה|איזו|מדוע|האם|כמה|באיזה|מתי)\s/.test(line)
+  );
+}
+
+function splitIntoQuestionBlocks(text) {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const blocks = [];
+  let current = null;
+
+  const flush = () => {
+    if (!current) return;
+    const question = current.question.join(' ').trim();
+    if (question.length >= 10) {
+      blocks.push([question, ...current.options].join('\n'));
+    }
+    current = null;
+  };
+
+  for (const line of lines) {
+    if (/^\[נושא:/.test(line)) {
+      flush();
+      blocks.push(line);
+      continue;
+    }
+
+    if (OPTION_MARKER_RE.test(line)) {
+      if (!current) current = { question: [], options: [] };
+      current.options.push(line);
+      continue;
+    }
+
+    const startsNew = isQuestionLikeLine(line) || Q_LINE_RE.test(line);
+    if (!current) {
+      current = { question: [line], options: [] };
+      continue;
+    }
+
+    if (startsNew && current.options.length >= 2) {
+      flush();
+      current = { question: [line], options: [] };
+      continue;
+    }
+
+    if (current.options.length === 0) current.question.push(line);
+    else current.options.push(line);
+  }
+
+  flush();
+  return blocks.filter((b) => b.trim().length > 20);
+}
 
 /**
  * Matches question-start lines: "1. text", "1 . text", "(1)", "1-", "2.1.", "שאלה 1", "Question 1"
@@ -328,6 +430,25 @@ function isSectionHeader(trimmed, allLines, fromIdx) {
  * the medical topic even when the chunk doesn't contain the full section.
  */
 function smartChunkText(text) {
+  const questionBlocks = splitIntoQuestionBlocks(text);
+  if (questionBlocks.length >= 2) {
+    const chunks = [];
+    let chunk = '';
+    let previousTail = '';
+    for (const block of questionBlocks) {
+      const candidate = chunk ? `${chunk}\n\n${block}` : `${previousTail}${block}`;
+      if (candidate.length > CHUNK_MAX_CHARS && chunk) {
+        chunks.push(chunk.trim());
+        previousTail = `${chunk.split('\n').slice(-4).join('\n')}\n\n`;
+        chunk = `${previousTail}${block}`;
+      } else {
+        chunk = candidate;
+      }
+    }
+    if (chunk.trim()) chunks.push(chunk.trim());
+    return chunks.filter((c) => c.length > 30);
+  }
+
   const lines = text.split('\n');
 
   // Build a flat list of "boundary events" with their byte positions
@@ -447,17 +568,16 @@ function stripLeadingNumber(str) {
 
 // ── Single chunk API call ─────────────────────────────────────
 
-const SYSTEM_PROMPT = `אתה מנתח מסמך מלא של שאלות בחינה רפואיות (מד"א).
-מקבל קובץ כמחרוזת אחת — לפעמים עם שורות ברורות, לפעמים טקסט רצוף בלי מעברי שורה.
-תפקידך: לנתח את כל התוכן, לזהות ולפצל כל שאלה בנפרד, ולהחזיר JSON בלבד — מערך אובייקטים. ללא markdown, ללא הסברים מחוץ ל-JSON.
-זהה כל שאלה גם כשאין מספור (1. 2.) — לפי משפטי שאלה, סימני שאלה, ואפשרויות בחירה (א. ב. ג. ד. / תשובות א+ג נכונות וכו').
-אם התשובה הנכונה לא מסומנת, השתמש בידע הרפואי שלך לקבוע אותה.`;
+const SYSTEM_PROMPT = `אתה מנתח מסמכי שאלות רפואיות בעברית. חובה לפצל את הקלט לכמה שאלות נפרדות כשיש יותר משאלה אחת.
+החזר JSON תקין בלבד כאובייקט יחיד בפורמט {"questions":[...]} ללא markdown.
+אסור להחזיר את כל הקלט כשאלה אחת אם קיימות אפשרויות בחירה/סימני שאלה מרובים.
+אם תשובה נכונה אינה מסומנת, קבע תשובה סבירה לפי ההקשר הרפואי.`;
 
 const USER_PROMPT_TEMPLATE = (fullText) =>
 `להלן קובץ מלא (מחרוזת אחת). נתח את כל התוכן, זהה ופצל כל שאלה, והחזר מערך JSON של כל השאלות.
 
-פורמט JSON:
-[{"question_text":"...","question_type":"single_choice","options":[{"value":"0","label":"..."}],"correct_answer":{"value":"0"},"explanation":"..."}]
+פורמט JSON מחייב:
+{"questions":[{"question_text":"...","question_type":"single_choice","options":[{"value":"0","label":"..."}],"correct_answer":{"value":"0"},"explanation":"..."}]}
 
 חוקים:
 1. זהה כל שאלה — גם ממוספרות (1. 2.) וגם לא ממוספרות (טקסט רצוף עם משפטי שאלה ואפשרויות)
@@ -469,37 +589,25 @@ const USER_PROMPT_TEMPLATE = (fullText) =>
 7. correct_answer: {"value":"N"} | {"values":["N","M"]} | {"value":"true"/"false"}
 8. explanation: הסבר רפואי קצר לכל שאלה
 9. התעלם מקטעים שאינם שאלות (כותרות בלבד, מספרים בודדים כמו "4 מ\"ג", "200 מ\"ל" בלי שאלה)
+10. אם זיהית יותר משאלה אחת, חובה להחזיר מערך עם כל השאלות ב-questions.
 
 תוכן הקובץ:
 ${fullText}`;
 
-async function parseOneChunkWithAI(fullText, apiKey) {
-  const response = await fetch(appConfig.openai.apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: appConfig.openai.model,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user',   content: USER_PROMPT_TEMPLATE(fullText) },
-      ],
+async function parseOneChunkWithLLM(fullText, onProviderEvent) {
+  const result = await callLlmWithFallback(
+    {
+      systemPrompt: SYSTEM_PROMPT,
+      userPrompt: USER_PROMPT_TEMPLATE(fullText),
       temperature: 0.05,
-      max_tokens: 16000,  // תשובה אחת לכל הקובץ — מספיק לעשרות שאלות
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI ${response.status}: ${err.slice(0, 200)}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '[]';
-  const parsed = parseQuestionsJson(content);
-  return parsed;
+      maxTokens: 14000,
+    },
+    onProviderEvent
+  );
+  return {
+    provider: result.provider,
+    parsed: parseQuestionsJson(result.content),
+  };
 }
 
 // ── Deduplication ────────────────────────────────────────────
@@ -561,78 +669,49 @@ async function runInBatches(tasks, concurrency, onBatchDone) {
  * @param {string}   text   full file content (one string)
  * @param {Function} [onProgress]  called as (done, total) — one call (1, 1) when done
  */
-/** Minimum Master-format blocks to prefer Master parser over AI (Final_Master_Questions style). */
-const MASTER_FORMAT_MIN_BLOCKS = 8;
+export async function parseQuestionsWithAI(text, onProgress, onProviderEvent) {
+  const normalized = normalizeExtractedTextForLLM((text || '').trim());
+  if (!normalized) throw new Error('אין טקסט לניתוח');
 
-export async function parseQuestionsWithAI(text, onProgress) {
-  const trimmed = (text || '').trim();
-  if (!trimmed) throw new Error('אין טקסט לניתוח');
+  const chunks = smartChunkText(normalized);
+  if (!chunks.length) throw new Error('לא ניתן לפצל את המסמך לניתוח');
 
-  if (import.meta.env.DEV) {
-    console.log(`[AI parse] שולח קובץ כמחרוזת אחת (${trimmed.length} תווים)`);
+  const providerUsage = [];
+  const tasks = chunks.map((chunk) => async () => {
+    const parsedChunk = await parseOneChunkWithLLM(chunk, (event) => {
+      onProviderEvent?.(event);
+      if (event?.stage === 'success') providerUsage.push(event.provider);
+    });
+    return parsedChunk.parsed || [];
+  });
+  const rawResults = await runInBatches(tasks, PARALLEL_BATCH, onProgress);
+  let unique = deduplicateQuestions(rawResults.flat().filter(Boolean));
+
+  // Guard: suspicious output means retry with tighter chunking.
+  if (unique.length <= 1 && normalized.length > 1400) {
+    const tighter = chunks.flatMap((chunk) => {
+      const unit = Math.max(900, Math.floor(CHUNK_MAX_CHARS / 3));
+      const out = [];
+      for (let i = 0; i < chunk.length; i += unit) out.push(chunk.slice(i, i + unit));
+      return out;
+    });
+    const retryTasks = tighter.map((chunk) => async () => {
+      const parsedChunk = await parseOneChunkWithLLM(chunk, (event) => {
+        onProviderEvent?.(event);
+        if (event?.stage === 'success') providerUsage.push(event.provider);
+      });
+      return parsedChunk.parsed || [];
+    });
+    const retryResults = await runInBatches(retryTasks, Math.max(4, Math.floor(PARALLEL_BATCH / 2)), undefined);
+    unique = deduplicateQuestions(retryResults.flat().filter(Boolean));
   }
 
-  // Prefer Master format when document uses "----------" blocks with "תשובה נכונה" (e.g. Final_Master_Questions_Full.docx)
-  const masterQuestions = parseMasterFormatDocx(trimmed);
-  if (masterQuestions.length >= MASTER_FORMAT_MIN_BLOCKS) {
-    if (import.meta.env.DEV) {
-      console.log(`[AI parse] פורמט Master: ${masterQuestions.length} שאלות — משתמש בפרסר המקומי`);
-    }
-    onProgress?.(1, 1);
-    try {
-      const withDupFlags = await checkDuplicatesAgainstDB(
-        checkInternalDuplicates(masterQuestions),
-        0.80,
-        undefined
-      );
-      return { questions: withDupFlags, usedFallback: false };
-    } catch (err) {
-      console.warn('[AI parse] שגיאה בבדיקת כפילויות:', err.message);
-      return { questions: masterQuestions, usedFallback: false };
-    }
-  }
-
-  const apiKey = appConfig.openai.getApiKey();
-  if (!apiKey) throw new Error('מפתח OpenAI לא מוגדר. הגדר VITE_OPENAI_API_KEY בקובץ .env');
-
-  const raw = await parseOneChunkWithAI(trimmed, apiKey);
-  onProgress?.(1, 1);
-
-  if (import.meta.env.DEV) {
-    console.log(`[AI parse] לפני dedup: ${raw.length} שאלות`);
-  }
-
-  // Deduplicate (handles overlap artefacts)
-  const unique = deduplicateQuestions(raw);
-
-  if (import.meta.env.DEV) {
-    console.log(`[AI parse] אחרי dedup: ${unique.length} שאלות ייחודיות`);
-  }
-
-  let toNormalise = unique;
-  let usedFallback = false;
-  if (toNormalise.length === 0) {
-    // Fallback 1: quick regex parser (works when doc has "1. question" per line)
-    let quick = parseTextQuestions(trimmed);
-    // Fallback 2: unnumbered blocks (DOCX with no "1." — question + options per paragraph block)
-    if (quick.length === 0) quick = parseUnnumberedBlocks(trimmed);
-    if (quick.length > 0) {
-      usedFallback = true;
-      if (import.meta.env.DEV) console.log('[AI parse] fallback: נתח מהיר זיהה', quick.length, 'שאלות');
-      toNormalise = quick.map(q => ({
-        question_text: q.question_text || '',
-        question_type: q.question_type || 'single_choice',
-        options: (q.options || []).map((o, i) => ({ value: String(i), label: o.text || o.label || '' })),
-        correct_answer: q.correct_answer || '{}',
-        explanation: q.explanation || '',
-      }));
-    } else {
-      throw new Error('ה-AI לא זיהה שאלות בטקסט. נסה לפרמט את המסמך עם מספור (1. 2. ...) או להשתמש ב"נתח שאלות (מהיר)".');
-    }
+  if (unique.length === 0) {
+    throw new Error('לא זוהו שאלות ע"י LLM. בדוק מפתחות Gemini/OpenAI או נסה קובץ ברור יותר.');
   }
 
   // Normalise each question: strip leading numbers, fix correct_answer format
-  const normalised = toNormalise.map(q => {
+  const normalised = unique.map(q => {
     // Strip leading question number from question_text ("1 . שאלה" → "שאלה")
     const cleanText = stripLeadingNumber(q.question_text || '');
 
@@ -654,6 +733,8 @@ export async function parseQuestionsWithAI(text, onProgress) {
     return { ...q, question_text: cleanText, correct_answer: ca || '{}', status: 'active' };
   });
 
+  const attemptedProviders = Array.from(new Set(providerUsage));
+
   // ── Duplicate detection against existing DB ──────────────
   // Runs in background; flags are attached to each question object.
   // The preview UI uses _duplicateFlag / _similarTo to warn the user.
@@ -667,11 +748,11 @@ export async function parseQuestionsWithAI(text, onProgress) {
       const flagged = withDupFlags.filter(q => q._duplicateFlag || q._internalDuplicate);
       if (flagged.length) console.log(`[AI parse] ${flagged.length} שאלות דומות זוהו`);
     }
-    return { questions: withDupFlags, usedFallback };
+    return { questions: withDupFlags, usedFallback: false, providersTried: attemptedProviders };
   } catch (err) {
     // Dedup failure must never block import
     console.warn('[AI parse] שגיאה בבדיקת כפילויות:', err.message);
-    return { questions: normalised, usedFallback };
+    return { questions: normalised, usedFallback: false, providersTried: attemptedProviders };
   }
 }
 
@@ -813,6 +894,42 @@ export function parseMoodleExcel(buffer) {
   }
 
   return questions;
+}
+
+export async function normalizeQuestionsWithLLM(questions, onProgress, onProviderEvent) {
+  const input = Array.isArray(questions) ? questions : [];
+  if (!input.length) return { questions: [], providersTried: [] };
+
+  const batches = [];
+  const size = 25;
+  for (let i = 0; i < input.length; i += size) batches.push(input.slice(i, i + size));
+
+  const providers = [];
+  const tasks = batches.map((batch) => async () => {
+    const payload = JSON.stringify(batch);
+    const { provider, content } = await callLlmWithFallback(
+      {
+        systemPrompt:
+          'Normalize medical exam questions into strict JSON. Return ONLY {"questions":[...]}. Keep category/sub_category/media fields when provided.',
+        userPrompt: `Normalize and improve these imported questions. Keep one output question per logical input question unless a split is absolutely required.\nInput JSON:\n${payload}`,
+        temperature: 0.03,
+        maxTokens: 12000,
+      },
+      (event) => {
+        if (event?.stage === 'success') providers.push(event.provider);
+        onProviderEvent?.(event);
+      }
+    );
+    const parsed = parseQuestionsJson(content);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  });
+
+  const result = await runInBatches(tasks, 4, onProgress);
+  return {
+    questions: result.flat().filter(Boolean),
+    providersTried: Array.from(new Set(providers)),
+  };
 }
 
 /**
@@ -976,7 +1093,9 @@ export async function bulkCreateQuestions(questions, options = {}) {
 export async function importQuestionsFromCSV(csvText, options = {}) {
   try {
     const questions = parseCSV(csvText);
-    const results = await bulkCreateQuestions(questions, options);
+    const normalized = await normalizeQuestionsWithLLM(questions, null, options.onProviderEvent);
+    const results = await bulkCreateQuestions(normalized.questions, options);
+    results.providersTried = normalized.providersTried || [];
     return results;
   } catch (error) {
     throw new Error(`שגיאה בייבוא CSV: ${error.message}`);
@@ -989,7 +1108,9 @@ export async function importQuestionsFromCSV(csvText, options = {}) {
 export async function importQuestionsFromJSON(jsonText, options = {}) {
   try {
     const questions = parseJSON(jsonText);
-    const results = await bulkCreateQuestions(questions, options);
+    const normalized = await normalizeQuestionsWithLLM(questions, null, options.onProviderEvent);
+    const results = await bulkCreateQuestions(normalized.questions, options);
+    results.providersTried = normalized.providersTried || [];
     return results;
   } catch (error) {
     throw new Error(`שגיאה בייבוא JSON: ${error.message}`);
@@ -1003,10 +1124,12 @@ export async function importQuestionsFromJSON(jsonText, options = {}) {
 export async function importQuestionsFromMoodleExcel(buffer, options = {}) {
   try {
     const questions = parseMoodleExcel(buffer);
-    const results = await bulkCreateQuestions(questions, {
+    const normalized = await normalizeQuestionsWithLLM(questions, null, options.onProviderEvent);
+    const results = await bulkCreateQuestions(normalized.questions, {
       ...options,
       defaultCategory: options.defaultCategory ?? options.defaultHierarchyId,
     });
+    results.providersTried = normalized.providersTried || [];
     return results;
   } catch (error) {
     throw new Error(`שגיאה בייבוא Excel: ${error.message}`);
