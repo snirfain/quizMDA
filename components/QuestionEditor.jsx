@@ -17,6 +17,7 @@ import { getMediaTypeLabel } from '../workflows/mediaEngine';
 import QuestionResolvedMedia from './QuestionResolvedMedia';
 import {
   QUESTION_CATEGORIES,
+  MEDICAL_LEVELS,
   THINKING_LEVELS,
   TRAINING_LEVELS,
   QUESTION_STATUSES,
@@ -40,7 +41,9 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
         : '',
     thinking_level: question?.thinking_level || 'Knowledge',
     training_level: question?.training_level || '',
+    medical_levels: Array.isArray(question?.medical_levels) ? question.medical_levels : [],
     question_type: question?.question_type || '',
+    case_name: question?.case_name || '',
     question_text: question?.question_text || '',
     media_attachment: question?.media_attachment ?? null,
     media_bank_tag: typeof question?.media_bank_tag === 'string' ? question.media_bank_tag.trim() : question?.media_bank_tag || '',
@@ -48,6 +51,17 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
     explanation: question?.explanation || '',
     hint: question?.hint || '',
     status: question?.status === 'pending_review' || question?.status === 'suspended' ? 'under_review' : (question?.status || ''),
+    rolling_case: question?.rolling_case || {
+      branches: [
+        { id: 'b1', question_type: 'single_choice', question_text: '', options: [{ value: '0', label: '' }, { value: '1', label: '' }], correct_answer: { value: '0' }, explanation: '' },
+        { id: 'b2', question_type: 'single_choice', question_text: '', options: [{ value: '0', label: '' }, { value: '1', label: '' }], correct_answer: { value: '0' }, explanation: '' },
+        { id: 'b3', question_type: 'single_choice', question_text: '', options: [{ value: '0', label: '' }, { value: '1', label: '' }], correct_answer: { value: '0' }, explanation: '' },
+      ],
+      transitions: [
+        { from_branch_id: 'b1', to_branch_id: 'b2', priority: 1, condition: { mode: 'always' } },
+        { from_branch_id: 'b2', to_branch_id: 'b3', priority: 1, condition: { mode: 'always' } },
+      ],
+    },
   });
 
   const [mediaMode, setMediaMode] = useState(() => {
@@ -188,6 +202,13 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
     setOptions(newOptions);
   };
 
+  const updateRollingBranch = (idx, patch) => {
+    const rc = formData.rolling_case || { branches: [], transitions: [] };
+    const branches = [...(rc.branches || [])];
+    branches[idx] = { ...(branches[idx] || {}), ...patch };
+    handleChange('rolling_case', { ...rc, branches });
+  };
+
   const handleAddOption = () => {
     if (options.length >= 10) return;
     setOptions([...options, '']);
@@ -236,6 +257,12 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
     if (!formData.training_level) extraErrors.push('יש לבחור רמת הכשרה');
     if (!formData.question_type) extraErrors.push('יש לבחור סוג שאלה');
     if (!formData.status) extraErrors.push('יש לבחור סטטוס');
+    if (formData.question_type === 'rolling_case') {
+      const rc = formData.rolling_case || {};
+      const branches = Array.isArray(rc.branches) ? rc.branches : [];
+      if (!formData.case_name?.trim()) extraErrors.push('יש להזין שם מקרה לשאלה מתגלגלת');
+      if (branches.length < 3 || branches.length > 10) extraErrors.push('בשאלה מתגלגלת נדרשים בין 3 ל-10 ענפים');
+    }
     const errors = [...validation.errors, ...extraErrors];
     setValidationErrors(errors);
     return errors.length === 0;
@@ -316,7 +343,9 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
         ...formData,
         ...m,
         options: preparedOptions ? JSON.stringify(preparedOptions) : undefined,
-        correct_answer: correctAnswerPayload,
+        correct_answer: formData.question_type === 'rolling_case' ? null : correctAnswerPayload,
+        case_name: formData.question_type === 'rolling_case' ? formData.case_name : '',
+        rolling_case: formData.question_type === 'rolling_case' ? formData.rolling_case : null,
       };
 
       if (question?.id) {
@@ -449,7 +478,56 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
               </option>
             ))}
           </FormField>
+          <FormField
+            compact
+            label="רמות רפואיות"
+            name="medical_levels"
+            type="select"
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              if (!formData.medical_levels.includes(v)) {
+                handleChange('medical_levels', [...formData.medical_levels, v]);
+              }
+              e.target.value = '';
+            }}
+          >
+            <option value="">הוסף רמה...</option>
+            {MEDICAL_LEVELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </FormField>
         </div>
+
+        {formData.medical_levels.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {formData.medical_levels.map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => handleChange('medical_levels', formData.medical_levels.filter((x) => x !== level))}
+                style={{ border: '1px solid #ddd', borderRadius: 16, padding: '4px 10px', background: '#f6f6f6', cursor: 'pointer' }}
+              >
+                {level} ×
+              </button>
+            ))}
+          </div>
+        )}
+
+        {formData.question_type === 'rolling_case' && (
+          <FormField
+            marginBottom={10}
+            label="שם מקרה"
+            name="case_name"
+            type="text"
+            value={formData.case_name}
+            onChange={(e) => handleChange('case_name', e.target.value)}
+            required
+          />
+        )}
 
         <FormField
           marginBottom={10}
@@ -506,6 +584,131 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
             })}
             <button type="button" onClick={handleAddOption} disabled={options.length >= 10} style={styles.addOptionBtn}>
               + הוסף מסיח
+            </button>
+          </div>
+        )}
+
+        {formData.question_type === 'rolling_case' && (
+          <div style={styles.optionsSection}>
+            <label style={styles.label}>עורך זרימה — ענפים</label>
+            {(formData.rolling_case?.branches || []).map((b, idx) => (
+              <div key={b.id || idx} style={{ border: '1px solid #ddd', borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>ענף #{idx + 1} ({b.id || `b${idx + 1}`})</div>
+                <input
+                  type="text"
+                  value={b.question_text || ''}
+                  onChange={(e) => updateRollingBranch(idx, { question_text: e.target.value })}
+                  placeholder="טקסט שאלה לענף"
+                  style={styles.optionInput}
+                />
+                <div style={{ marginTop: 6 }}>
+                  <select
+                    value={b.question_type || 'single_choice'}
+                    onChange={(e) => updateRollingBranch(idx, { question_type: e.target.value })}
+                    style={{ ...styles.optionInput, maxWidth: 240 }}
+                  >
+                    <option value="single_choice">single_choice</option>
+                    <option value="multi_choice">multi_choice</option>
+                    <option value="true_false">true_false</option>
+                  </select>
+                </div>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                style={styles.addOptionBtn}
+                disabled={(formData.rolling_case?.branches || []).length >= 10}
+                onClick={() => {
+                  const rc = formData.rolling_case || { branches: [], transitions: [] };
+                  const next = [...(rc.branches || []), { id: `b${(rc.branches || []).length + 1}`, question_type: 'single_choice', question_text: '', options: [{ value: '0', label: '' }, { value: '1', label: '' }], correct_answer: { value: '0' }, explanation: '' }];
+                  handleChange('rolling_case', { ...rc, branches: next });
+                }}
+              >
+                + הוסף ענף
+              </button>
+              <button
+                type="button"
+                style={styles.removeOptionBtn}
+                disabled={(formData.rolling_case?.branches || []).length <= 3}
+                onClick={() => {
+                  const rc = formData.rolling_case || { branches: [], transitions: [] };
+                  const next = [...(rc.branches || [])];
+                  next.pop();
+                  handleChange('rolling_case', { ...rc, branches: next });
+                }}
+              >
+                הסר ענף אחרון
+              </button>
+            </div>
+            <label style={{ ...styles.label, marginTop: 10 }}>מעברים (Flow)</label>
+            {(formData.rolling_case?.transitions || []).map((t, idx) => (
+              <div key={`${t.from_branch_id}-${t.to_branch_id}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'center' }}>
+                <select
+                  value={t.from_branch_id}
+                  onChange={(e) => {
+                    const rc = formData.rolling_case || { branches: [], transitions: [] };
+                    const transitions = [...(rc.transitions || [])];
+                    transitions[idx] = { ...transitions[idx], from_branch_id: e.target.value };
+                    handleChange('rolling_case', { ...rc, transitions });
+                  }}
+                  style={styles.optionInput}
+                >
+                  {(formData.rolling_case?.branches || []).map((b) => <option key={b.id} value={b.id}>{b.id}</option>)}
+                </select>
+                <select
+                  value={t.to_branch_id}
+                  onChange={(e) => {
+                    const rc = formData.rolling_case || { branches: [], transitions: [] };
+                    const transitions = [...(rc.transitions || [])];
+                    transitions[idx] = { ...transitions[idx], to_branch_id: e.target.value };
+                    handleChange('rolling_case', { ...rc, transitions });
+                  }}
+                  style={styles.optionInput}
+                >
+                  {(formData.rolling_case?.branches || []).map((b) => <option key={b.id} value={b.id}>{b.id}</option>)}
+                </select>
+                <select
+                  value={t.condition?.mode || 'always'}
+                  onChange={(e) => {
+                    const rc = formData.rolling_case || { branches: [], transitions: [] };
+                    const transitions = [...(rc.transitions || [])];
+                    transitions[idx] = { ...transitions[idx], condition: { ...(transitions[idx].condition || {}), mode: e.target.value } };
+                    handleChange('rolling_case', { ...rc, transitions });
+                  }}
+                  style={styles.optionInput}
+                >
+                  <option value="always">always</option>
+                  <option value="is_correct">is_correct</option>
+                  <option value="is_incorrect">is_incorrect</option>
+                  <option value="answer_equals">answer_equals</option>
+                  <option value="score_gte">score_gte</option>
+                </select>
+                <button
+                  type="button"
+                  style={styles.removeOptionBtn}
+                  onClick={() => {
+                    const rc = formData.rolling_case || { branches: [], transitions: [] };
+                    const transitions = [...(rc.transitions || [])].filter((_, i) => i !== idx);
+                    handleChange('rolling_case', { ...rc, transitions });
+                  }}
+                >
+                  הסר
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              style={styles.addOptionBtn}
+              onClick={() => {
+                const rc = formData.rolling_case || { branches: [], transitions: [] };
+                const first = rc.branches?.[0]?.id || 'b1';
+                const second = rc.branches?.[1]?.id || first;
+                const transitions = [...(rc.transitions || []), { from_branch_id: first, to_branch_id: second, priority: 1, condition: { mode: 'always' } }];
+                handleChange('rolling_case', { ...rc, transitions });
+              }}
+            >
+              + הוסף מעבר
             </button>
           </div>
         )}

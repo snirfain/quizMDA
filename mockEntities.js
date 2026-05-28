@@ -259,7 +259,7 @@ function loadFromStorage() {
       const rawQuestions = parsed.questions ?? DEFAULT_DATA.questions;
       const seenIds = new Set();
       const LEADING_NUM_RE = /^\d{1,3}\s*[.):\-]\s*/;
-      const VALID_TYPES = new Set(['single_choice', 'multi_choice', 'true_false', 'open_ended']);
+      const VALID_TYPES = new Set(['single_choice', 'multi_choice', 'true_false', 'open_ended', 'rolling_case']);
 
       const questions = rawQuestions.map(q => {
         // 1. Fix duplicate IDs
@@ -288,6 +288,10 @@ function loadFromStorage() {
           sub_category,
           thinking_level: q.thinking_level || 'Knowledge',
           training_level: q.training_level || 'A',
+          medical_levels: Array.isArray(q.medical_levels) ? q.medical_levels : [],
+          case_name: q.case_name || '',
+          rolling_case: q.rolling_case || null,
+          suspended_due_to_branch: q.suspended_due_to_branch || '',
           has_media: computeQuestionHasMedia({
             media_attachment: q.media_attachment,
             media_bank_tag: q.media_bank_tag,
@@ -347,6 +351,10 @@ function serverToLocal(sq) {
     sub_category: sq.sub_category || getSubcategoriesForCategory(cat)[0],
     thinking_level: sq.thinking_level || 'Knowledge',
     training_level: sq.training_level || 'A',
+    medical_levels: Array.isArray(sq.medical_levels) ? sq.medical_levels : [],
+    case_name: sq.case_name || '',
+    rolling_case: sq.rolling_case || null,
+    suspended_due_to_branch: sq.suspended_due_to_branch || '',
     has_media:
       typeof sq.has_media === 'boolean'
         ? sq.has_media

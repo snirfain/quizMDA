@@ -34,6 +34,12 @@ import {
   PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY,
 } from '../shared/questionBankMetadata.js';
 import { syncQuestionsFromServer } from '../mockEntities.js';
+import {
+  activateProtocolVersion,
+  ingestProtocolPdf,
+  listProtocolVersions,
+  retrieveProtocolContextForQuestion,
+} from '../workflows/protocolContext.js';
 
 /** Custom dropdown for filters — avoids native select dropdown positioning issues in RTL. */
 function FilterDropdown({ value, onChange, options, ariaLabel }) {
@@ -161,7 +167,7 @@ function statusDisplayLabel(status) {
 }
 
 export default function QuestionManagement() {
-  const [activeTab, setActiveTab] = useState('list'); // 'list', 'import', 'review', 'reports'
+  const [activeTab, setActiveTab] = useState('list'); // 'list', 'import', 'review', 'reports', 'protocols'
   const [questions, setQuestions] = useState([]);
   const [filteredQuestions, setFilteredQuestions] = useState([]);
   const [pendingQuestions, setPendingQuestions] = useState([]);
@@ -203,6 +209,7 @@ export default function QuestionManagement() {
   const [isSyncingToServer, setIsSyncingToServer] = useState(false);
   const [isDeduping, setIsDeduping] = useState(false);
   const [loadSource, setLoadSource] = useState({ fromApi: false, count: 0 });
+  const [protocolVersions, setProtocolVersions] = useState([]);
 
   useEffect(() => {
     loadUser();
@@ -214,6 +221,9 @@ export default function QuestionManagement() {
     }
     if (activeTab === 'reports') {
       loadUserReports();
+    }
+    if (activeTab === 'protocols') {
+      loadProtocolVersions();
     }
   }, [activeTab]);
 
@@ -291,6 +301,16 @@ export default function QuestionManagement() {
         setPendingReportCount(data.pending || 0);
       }
     } catch (_) {}
+  };
+
+  const loadProtocolVersions = async () => {
+    try {
+      const rows = await listProtocolVersions();
+      setProtocolVersions(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      console.error('Error loading protocol versions:', e);
+      showToast('שגיאה בטעינת גרסאות פרוטוקול', 'error');
+    }
   };
 
   const handleReportReview = async (reportId, status, applyChanges, reviewNote) => {
@@ -471,6 +491,7 @@ export default function QuestionManagement() {
       filtered = filtered.filter(
         (q) =>
           q.question_text?.toLowerCase().includes(query) ||
+          q.case_name?.toLowerCase().includes(query) ||
           q.category?.toLowerCase().includes(query) ||
           q.sub_category?.toLowerCase().includes(query),
       );
@@ -855,6 +876,21 @@ export default function QuestionManagement() {
                 )}
               </button>
             </PermissionGate>
+            <PermissionGate permission={permissions.QUESTION_APPROVE}>
+              <button
+                style={{
+                  ...styles.tab,
+                  ...(activeTab === 'protocols' ? styles.tabActive : {})
+                }}
+                onClick={() => setActiveTab('protocols')}
+                role="tab"
+                aria-selected={activeTab === 'protocols'}
+                aria-controls="protocols-panel"
+                id="protocols-tab"
+              >
+                ניהול פרוטוקולים
+              </button>
+            </PermissionGate>
           </div>
 
           {/* Tab Panels */}
@@ -926,6 +962,7 @@ export default function QuestionManagement() {
                   <option value="multi_choice">רב ברירה — מספר תשובות</option>
                   <option value="true_false">נכון / לא נכון</option>
                   <option value="open_ended">שאלה פתוחה</option>
+                  <option value="rolling_case">שאלה מתגלגלת</option>
                 </select>
               </div>
 
@@ -1288,6 +1325,7 @@ export default function QuestionManagement() {
                               {question.question_type === 'multi_choice' && 'רב ברירה — כמה'}
                               {question.question_type === 'true_false' && 'נכון / לא נכון'}
                               {question.question_type === 'open_ended' && 'שאלה פתוחה'}
+                              {question.question_type === 'rolling_case' && `שאלה מתגלגלת (${question?.rolling_case?.branches?.length || 0} ענפים)`}
                             </td>
                             <td style={styles.td}>
                               {question.has_media ? (
@@ -1400,6 +1438,7 @@ export default function QuestionManagement() {
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '8px 12px', fontSize: '13px' }}>
                                       <div><strong>מזהה מלא:</strong> {question.id || '—'}</div>
                                       <div><strong>סוג שאלה:</strong> {question.question_type || '—'}</div>
+                                      {question.question_type === 'rolling_case' && <div><strong>שם מקרה:</strong> {question.case_name || '—'}</div>}
                                       <div><strong>סטטוס:</strong> {statusDisplayLabel(question.status)}</div>
                                       <div><strong>קטגוריה:</strong> {question.category || '—'}</div>
                                       <div><strong>תת-קטגוריה:</strong> {question.sub_category || '—'}</div>
@@ -1772,6 +1811,15 @@ export default function QuestionManagement() {
               />
             </div>
           )}
+
+          {activeTab === 'protocols' && (
+            <div role="tabpanel" aria-labelledby="protocols-tab" id="protocols-panel">
+              <ProtocolContextAdminPanel
+                versions={protocolVersions}
+                onRefresh={loadProtocolVersions}
+              />
+            </div>
+          )}
       </div>
     </PermissionGate>
   );
@@ -1840,7 +1888,7 @@ function QuestionReviewPanel({
     return { opts, correctVals, explanation: parsed.explanation || q.explanation || '' };
   };
 
-  const TYPE_LABELS = { single_choice: 'בחירה יחידה', multi_choice: 'בחירה מרובה', true_false: 'נכון/לא נכון', open_ended: 'שאלה פתוחה' };
+  const TYPE_LABELS = { single_choice: 'בחירה יחידה', multi_choice: 'בחירה מרובה', true_false: 'נכון/לא נכון', open_ended: 'שאלה פתוחה', rolling_case: 'שאלה מתגלגלת' };
   const TYPE_COLORS = { single_choice: '#1976d2', multi_choice: '#7b1fa2', true_false: '#388e3c', open_ended: '#f57c00' };
 
   const visible = pendingQuestions.filter(q => {
@@ -1882,6 +1930,7 @@ function QuestionReviewPanel({
           <option value="multi_choice">בחירה מרובה</option>
           <option value="true_false">נכון/לא נכון</option>
           <option value="open_ended">שאלה פתוחה</option>
+          <option value="rolling_case">שאלה מתגלגלת</option>
         </select>
         <span style={rs.countBadge}>{visible.length} שאלות</span>
       </div>
@@ -2220,6 +2269,101 @@ function UserReportReviewPanel({ reports, onReview, onRefresh }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function ProtocolContextAdminPanel({ versions, onRefresh }) {
+  const [isBusy, setIsBusy] = useState(false);
+  const [version, setVersion] = useState('ALS-2024-04');
+  const [effectiveDate, setEffectiveDate] = useState('');
+  const [query, setQuery] = useState('');
+  const [debugResult, setDebugResult] = useState(null);
+
+  const handleIngest = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsBusy(true);
+    try {
+      const result = await ingestProtocolPdf(file, {
+        version: version || undefined,
+        effectiveDate: effectiveDate || null,
+        sourceDoc: file.name,
+      });
+      showToast(`האוגדן נטען: ${result.chunks_created || 0} צ'אנקים`, 'success');
+      await onRefresh?.();
+    } catch (e) {
+      showToast('שגיאה בטעינת PDF: ' + (e?.message || 'unknown'), 'error');
+    } finally {
+      setIsBusy(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleActivate = async (v) => {
+    setIsBusy(true);
+    try {
+      await activateProtocolVersion(v);
+      showToast(`גרסה ${v} הופעלה`, 'success');
+      await onRefresh?.();
+    } catch (e) {
+      showToast('שגיאה בהפעלת גרסה: ' + (e?.message || 'unknown'), 'error');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleDebug = async () => {
+    const q = query.trim();
+    if (!q) return;
+    setIsBusy(true);
+    try {
+      const data = await retrieveProtocolContextForQuestion(q, { tokenBudget: 2500, topK: 5, debug: true });
+      setDebugResult(data);
+    } catch (e) {
+      showToast('שגיאה בבדיקת retrieval: ' + (e?.message || 'unknown'), 'error');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  return (
+    <div style={styles.section}>
+      <h2 style={styles.sectionTitle}>ניהול הקשר פרוטוקולי (ALS)</h2>
+      <p style={styles.description}>העלאת גרסה, הפעלת גרסה פעילה, ובדיקת retrieval לשאלה.</p>
+      <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
+        <input style={styles.filterSelect} value={version} onChange={(e) => setVersion(e.target.value)} placeholder="גרסה (למשל ALS-2024-04)" />
+        <input style={styles.filterSelect} value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} placeholder="effective date (YYYY-MM-DD אופציונלי)" />
+        <input type="file" accept=".pdf" onChange={handleIngest} disabled={isBusy} />
+      </div>
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ marginBottom: 8 }}>גרסאות קיימות</h3>
+        {(versions || []).map((v) => (
+          <div key={v.version} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span>{v.version} ({v.chunks} צ'אנקים){v.active ? ' — פעילה' : ''}</span>
+            {!v.active && (
+              <button style={styles.actionButton} onClick={() => handleActivate(v.version)} disabled={isBusy}>הפעל</button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div>
+        <h3 style={{ marginBottom: 8 }}>בדיקת retrieval</h3>
+        <textarea
+          style={{ ...styles.filterSelect, minHeight: 80 }}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="הדבק שאלה עם תרופה/מינון לבדיקה"
+        />
+        <button style={{ ...styles.actionButton, marginTop: 8 }} onClick={handleDebug} disabled={isBusy}>
+          בדוק הקשר
+        </button>
+        {debugResult?.contextBlock && (
+          <pre style={{ whiteSpace: 'pre-wrap', background: '#fafafa', border: '1px solid #eee', borderRadius: 6, padding: 10, marginTop: 10 }}>
+            {debugResult.contextBlock}
+          </pre>
+        )}
+      </div>
     </div>
   );
 }

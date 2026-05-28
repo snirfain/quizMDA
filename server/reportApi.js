@@ -98,6 +98,10 @@ export async function reviewReport(req, res) {
         'sub_category',
         'thinking_level',
         'training_level',
+        'medical_levels',
+        'case_name',
+        'rolling_case',
+        'suspended_due_to_branch',
         'media_attachment',
         'media_bank_tag',
       ];
@@ -117,6 +121,15 @@ export async function reviewReport(req, res) {
           safeFields.has_media = m.has_media;
         }
         await Question.findByIdAndUpdate(report.question_id, { $set: safeFields });
+      }
+      if ((changes?.branch_id || changes?.suspend_case_due_to_branch) && report.question_id) {
+        const branchId = String(changes?.branch_id || '');
+        await Question.findByIdAndUpdate(report.question_id, {
+          $set: {
+            status: 'under_review',
+            suspended_due_to_branch: branchId || 'reported_branch',
+          },
+        });
       }
     }
 

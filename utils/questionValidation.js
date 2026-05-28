@@ -6,6 +6,7 @@
 
 import {
   isValidCategory,
+  isValidMedicalLevel,
   isValidThinkingLevel,
   isValidTrainingLevel,
 } from '../shared/questionBankMetadata.js';
@@ -157,6 +158,11 @@ export function validateQuestionMetadata(q) {
     errors.push('יש לבחור רמת הכשרה');
   }
 
+  if (Array.isArray(q.medical_levels) && q.medical_levels.length > 0) {
+    const invalid = q.medical_levels.filter((x) => !isValidMedicalLevel(x));
+    if (invalid.length > 0) errors.push('רמות רפואיות לא תקינות');
+  }
+
   return errors;
 }
 
@@ -190,11 +196,32 @@ export function validateQuestion(question) {
   errors.push(...validateQuestionMetadata(question));
 
   const validTypes = ['single_choice', 'multi_choice', 'true_false', 'open_ended'];
-  if (!question.question_type || !validTypes.includes(question.question_type)) {
+  const validTypesWithRolling = [...validTypes, 'rolling_case'];
+  if (!question.question_type || !validTypesWithRolling.includes(question.question_type)) {
     errors.push('סוג שאלה לא תקין');
   }
 
-  if (question.question_type === 'single_choice' || question.question_type === 'multi_choice') {
+  if (question.question_type === 'rolling_case') {
+    const rc = question.rolling_case;
+    if (!rc || typeof rc !== 'object') {
+      errors.push('מבנה שאלה מתגלגלת חסר');
+    } else {
+      const branches = Array.isArray(rc.branches) ? rc.branches : [];
+      if (branches.length < 3 || branches.length > 10) {
+        errors.push('בשאלה מתגלגלת נדרשים בין 3 ל-10 ענפים');
+      }
+      if (!Array.isArray(rc.transitions) || rc.transitions.length === 0) {
+        errors.push('בשאלה מתגלגלת חייבים להגדיר מעברים בין ענפים');
+      }
+      for (const b of branches) {
+        if (!b?.id) errors.push('ענף ללא מזהה');
+        if (!b?.question_text || String(b.question_text).trim().length < 6) errors.push('ענף ללא טקסט שאלה תקין');
+        if (!['single_choice', 'multi_choice', 'true_false'].includes(b?.question_type)) {
+          errors.push('סוג ענף לא נתמך בשאלה מתגלגלת');
+        }
+      }
+    }
+  } else if (question.question_type === 'single_choice' || question.question_type === 'multi_choice') {
     let options = question.options;
     let answerForValidation = normalizeAnswerForValidation(
       question.correct_answer,

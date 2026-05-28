@@ -421,8 +421,7 @@ export default function QuestionImport({ onImportComplete }) {
         }}>
           {llmRuntime.provider && (
             <div>
-              ספק פעיל: <strong>{llmRuntime.provider === 'gemini' ? 'Gemini' : 'OpenAI'}</strong>
-              {llmRuntime.fallbackUsed && ' (Fallback)'}
+              ספק פעיל: <strong>OpenAI</strong>
             </div>
           )}
           {llmRuntime.lastError && <div>כשל ספק: {llmRuntime.lastError}</div>}
@@ -454,7 +453,7 @@ export default function QuestionImport({ onImportComplete }) {
             disabled={isAnalyzing || isImporting}
           />
           <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-            המערכת מנסה קודם <strong>Gemini</strong> ואז <strong>OpenAI</strong> כגיבוי. הכפתור &quot;נתח שאלות (מהיר)&quot; לא שולח ל-AI.
+            המערכת משתמשת ב-<strong>OpenAI</strong>. הכפתור &quot;נתח שאלות (מהיר)&quot; לא שולח ל-AI.
           </p>
           <AnalysisButtons
             onRegex={analyzeWithRegex}
@@ -469,12 +468,12 @@ export default function QuestionImport({ onImportComplete }) {
       {/* ══════════ TAB: FILE ══════════ */}
       {activeTab === 'file' && (
         <div>
-          {(!appConfig?.llm?.gemini?.getApiKey?.() && !appConfig?.openai?.getApiKey?.()) && (
+          {!appConfig?.openai?.getApiKey?.() && (
             <div style={{
               padding: '10px 14px', marginBottom: '12px', background: '#FFF3E0',
               border: '1px solid #FFB74D', borderRadius: '8px', fontSize: '13px', color: '#E65100',
             }}>
-              לניתוח קבצים עם AI יש להגדיר לפחות אחד מהמפתחות: <code style={{ background: '#FFE0B2', padding: '2px 6px', borderRadius: '4px' }}>VITE_GEMINI_API_KEY</code> או <code style={{ background: '#FFE0B2', padding: '2px 6px', borderRadius: '4px' }}>VITE_OPENAI_API_KEY</code> בקובץ <code>.env</code>.
+              לניתוח קבצים עם AI יש להגדיר את המפתח <code style={{ background: '#FFE0B2', padding: '2px 6px', borderRadius: '4px' }}>VITE_OPENAI_API_KEY</code> בקובץ <code>.env</code>.
             </div>
           )}
           {/* Drop zone */}

@@ -131,13 +131,7 @@ export const appConfig = {
     }
   },
   llm: {
-    providers: ['gemini', 'openai'],
-    gemini: {
-      model: 'gemini-2.5-flash',
-      getApiKey: function () {
-        return import.meta.env?.VITE_GEMINI_API_KEY || '';
-      },
-    },
+    providers: ['openai'],
   },
   
   // Google OAuth (clientId from env; no clientSecret in client)

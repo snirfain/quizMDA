@@ -494,7 +494,7 @@ async function normalizeGeneratedQuestion(q) {
   const subs = getSubcategoriesForCategory(cat);
   return {
     question_text: String(q.question_text ?? '').trim(),
-    question_type: ['single_choice', 'multi_choice', 'true_false', 'open_ended'].includes(q.question_type) ? q.question_type : 'single_choice',
+    question_type: ['single_choice', 'multi_choice', 'true_false', 'open_ended', 'rolling_case'].includes(q.question_type) ? q.question_type : 'single_choice',
     options,
     correct_answer,
     explanation: q.explanation ? String(q.explanation).trim() : null,

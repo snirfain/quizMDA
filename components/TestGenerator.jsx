@@ -207,6 +207,7 @@ export default function TestGenerator({ instructorId }) {
             <h2>מבחן שנוצר</h2>
             <div style={styles.testStats}>
               <span>נבחרו {generatedTest.selected} מתוך {generatedTest.totalAvailable} שאלות זמינות</span>
+              <span style={{ marginInlineStart: 12 }}>יחידות ציון בפועל: {generatedTest.effectiveUnits || generatedTest.selected}</span>
             </div>
             <button
               style={styles.exportButton}
@@ -251,6 +252,7 @@ function getQuestionTypeLabel(type) {
     multi_choice: 'רב ברירה מספר תשובות',
     true_false: 'נכון/לא נכון',
     open_ended: 'שאלה פתוחה',
+    rolling_case: 'שאלה מתגלגלת',
   };
   return labels[type] || type;
 }

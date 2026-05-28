@@ -18,6 +18,7 @@ import {
   PLACEHOLDER_SUBCATEGORIES_BY_CATEGORY,
 } from '../shared/questionBankMetadata.js';
 import { callLlmWithFallback } from './llmClient';
+import { retrieveProtocolContextForQuestion } from './protocolContext';
 
 export function applyQuestionImportDefaults(question, opts = {}) {
   const firstCat = QUESTION_CATEGORIES[0]?.value || '';
@@ -707,7 +708,7 @@ export async function parseQuestionsWithAI(text, onProgress, onProviderEvent) {
   }
 
   if (unique.length === 0) {
-    throw new Error('לא זוהו שאלות ע"י LLM. בדוק מפתחות Gemini/OpenAI או נסה קובץ ברור יותר.');
+    throw new Error('לא זוהו שאלות ע"י LLM. בדוק מפתח OpenAI או נסה קובץ ברור יותר.');
   }
 
   // Normalise each question: strip leading numbers, fix correct_answer format
@@ -906,12 +907,22 @@ export async function normalizeQuestionsWithLLM(questions, onProgress, onProvide
 
   const providers = [];
   const tasks = batches.map((batch) => async () => {
-    const payload = JSON.stringify(batch);
+    const batchWithContext = await Promise.all(batch.map(async (q) => {
+      const text = String(q?.question_text || '');
+      if (!text.trim()) return { ...q, _protocol_context: '' };
+      try {
+        const ctx = await retrieveProtocolContextForQuestion(text, { tokenBudget: 900, topK: 2 });
+        return { ...q, _protocol_context: ctx.contextBlock || '' };
+      } catch (_) {
+        return { ...q, _protocol_context: '' };
+      }
+    }));
+    const payload = JSON.stringify(batchWithContext);
     const { provider, content } = await callLlmWithFallback(
       {
         systemPrompt:
           'Normalize medical exam questions into strict JSON. Return ONLY {"questions":[...]}. Keep category/sub_category/media fields when provided.',
-        userPrompt: `Normalize and improve these imported questions. Keep one output question per logical input question unless a split is absolutely required.\nInput JSON:\n${payload}`,
+        userPrompt: `Normalize and improve these imported questions. Keep one output question per logical input question unless a split is absolutely required.\nWhen _protocol_context is provided, respect it for dosage/protocol correctness.\nInput JSON:\n${payload}`,
         temperature: 0.03,
         maxTokens: 12000,
       },

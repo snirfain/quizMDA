@@ -14,6 +14,8 @@
  */
 
 import { appConfig } from '../config/appConfig';
+import { callLlmWithFallback } from './llmClient';
+import { retrieveProtocolContextForQuestion } from './protocolContext';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
@@ -94,30 +96,14 @@ export function detectEnrichmentType(question) {
 // ─────────────────────────────────────────────────────────────
 
 async function callOpenAI(systemPrompt, userPrompt, apiKey) {
-  const response = await fetch(appConfig.openai.apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: appConfig.openai.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userPrompt   },
-      ],
-      temperature: 0.2,
-      max_tokens: 4096,
-    }),
+  const _ = apiKey; // retained for backward API compatibility
+  const result = await callLlmWithFallback({
+    systemPrompt,
+    userPrompt,
+    temperature: 0.2,
+    maxTokens: 4096,
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI ${response.status}: ${err.slice(0, 200)}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
+  const content = result.content || '';
 
   // Strip markdown fences
   let clean = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
@@ -138,6 +124,18 @@ async function callOpenAI(systemPrompt, userPrompt, apiKey) {
       try { return JSON.parse(repaired); } catch { /* fall through */ }
     }
     throw new Error(`לא ניתן לפענח תשובת AI: ${clean.slice(0, 120)}`);
+  }
+}
+
+async function buildQuestionWithProtocolContext(questionText) {
+  try {
+    const ctx = await retrieveProtocolContextForQuestion(questionText, { tokenBudget: 3200, topK: 5 });
+    return {
+      contextBlock: ctx.contextBlock || '',
+      noProtocolMatch: ctx.noProtocolMatch,
+    };
+  } catch (_) {
+    return { contextBlock: '', noProtocolMatch: true };
   }
 }
 
@@ -211,14 +209,18 @@ function repairTruncatedJson(str) {
  * @returns {{ options: {value,label}[], correct_answer: {value}, explanation: string }}
  */
 export async function generateDistractors(questionText, apiKey) {
+  const protocolContext = await buildQuestionWithProtocolContext(questionText);
   const systemPrompt = `אתה כותב שאלות בחינה רפואיות עבור מגן דוד אדום (מד"א).
 תפקידך: לקבל שאלה פתוחה ולהפוך אותה לשאלה רב-ברירה עם 4 אפשרויות.
-החזר JSON בלבד — ללא markdown, ללא הסברים.`;
+החזר JSON בלבד — ללא markdown, ללא הסברים.
+אם סופק הקשר פרוטוקולי, יש לעבוד לפיו בלבד לצורך מינונים והנחיות.`;
 
   const userPrompt = `צור 4 אפשרויות תשובה לשאלה הרפואית הבאה.
 אחת מהן צריכה להיות התשובה הנכונה והשלוש האחרות — מסיחים סבירים אך שגויים.
 
 שאלה: ${questionText}
+
+${protocolContext.contextBlock || 'אין הקשר פרוטוקולי תואם שנשלף.'}
 
 החזר בדיוק בפורמט הבא:
 {
@@ -250,9 +252,11 @@ export async function generateDistractors(questionText, apiKey) {
  * @returns {{ correct_answer: {value}, explanation: string }}
  */
 export async function identifyCorrectAnswer(questionText, options, apiKey) {
+  const protocolContext = await buildQuestionWithProtocolContext(questionText);
   const systemPrompt = `אתה מומחה בחינות רפואיות ל-מגן דוד אדום (מד"א).
 תפקידך: לזהות את התשובה הנכונה מבין האפשרויות הנתונות.
-החזר JSON בלבד — ללא markdown, ללא הסברים.`;
+החזר JSON בלבד — ללא markdown, ללא הסברים.
+אם קיים הקשר פרוטוקולי — הכרעה על מינון/בחירת טיפול תתבסס עליו בלבד.`;
 
   const optsList = options
     .map(o => `${o.value}. ${o.label ?? o.text ?? o.value}`)
@@ -263,6 +267,8 @@ ${questionText}
 
 אפשרויות:
 ${optsList}
+
+${protocolContext.contextBlock || 'אין הקשר פרוטוקולי תואם שנשלף.'}
 
 זהה את התשובה הנכונה מבחינה רפואית והחזר:
 {
@@ -287,9 +293,11 @@ ${optsList}
  * @returns {Promise<{ question_text: string, options: {value,label}[], correct_answer: {value}, explanation: string }>}
  */
 export async function fixQuestionWithAI(question, apiKey) {
+  const protocolContext = await buildQuestionWithProtocolContext(question.question_text || '');
   const systemPrompt = `אתה מומחה לכתיבת שאלות בחינה רפואיות עבור מגן דוד אדום (מד"א).
 תפקידך: לתקן ולשפר שאלה קיימת — ניסוח ברור ותקני בעברית, מסיחים טובים (סבירים אך שגויים), תשובה נכונה אחת מסומנת.
-החזר JSON בלבד — ללא markdown, ללא טקסט חופשי.`;
+החזר JSON בלבד — ללא markdown, ללא טקסט חופשי.
+כאשר מדובר בתרופות/פרוטוקולים — היצמד להקשר הפרוטוקולי המצורף.`;
 
   let optsList = '';
   const parsed = parseCorrectAnswer(question.correct_answer);
@@ -308,6 +316,8 @@ ${question.question_text || ''}
 
 אפשרויות נוכחיות:
 ${optsList || '(אין)'}
+
+${protocolContext.contextBlock || 'אין הקשר פרוטוקולי תואם שנשלף.'}
 
 החזר בדיוק בפורמט הבא (עברית):
 {
@@ -484,4 +494,46 @@ export async function batchEnrichQuestions(questions, options = {}) {
   }
 
   return { questions: enriched, enrichmentLog: log };
+}
+
+/**
+ * Generate a full rolling-case draft (root + branches + transitions) via LLM.
+ * Returned object requires manual instructor approval before publishing.
+ */
+export async function generateRollingCaseWithAI(casePrompt, apiKey) {
+  const _ = apiKey;
+  const systemPrompt = `אתה יוצר שאלות מתגלגלות רפואיות.
+החזר JSON בלבד:
+{
+  "case_name":"...",
+  "question_text":"תיאור מקרה",
+  "rolling_case":{
+    "branches":[
+      {
+        "id":"b1",
+        "question_type":"single_choice|multi_choice|true_false",
+        "question_text":"...",
+        "options":[{"value":"0","label":"..."}],
+        "correct_answer":{"value":"0"} או {"values":["0","2"]},
+        "explanation":"..."
+      }
+    ],
+    "transitions":[
+      {
+        "from_branch_id":"b1",
+        "to_branch_id":"b2",
+        "priority":1,
+        "condition":{"mode":"always|is_correct|is_incorrect|answer_equals|score_gte","value":"..."}
+      }
+    ]
+  }
+}`;
+  const userPrompt = `בנה שאלה מתגלגלת מלאה ומוכנה לאישור ידני לפי התיאור הבא:\n${casePrompt}`;
+  const draft = await callOpenAI(systemPrompt, userPrompt, appConfig.openai.getApiKey());
+  return {
+    question_type: 'rolling_case',
+    case_name: String(draft.case_name || '').trim(),
+    question_text: String(draft.question_text || '').trim(),
+    rolling_case: draft.rolling_case || { branches: [], transitions: [] },
+  };
 }

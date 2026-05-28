@@ -8,6 +8,7 @@ import {
   QUESTION_CATEGORIES,
   THINKING_LEVELS,
   TRAINING_LEVELS,
+  MEDICAL_LEVELS,
   QUESTION_STATUSES,
   QUESTION_TYPES_UI,
 } from '../shared/questionBankMetadata.js';
@@ -48,6 +49,13 @@ export const Question_Bank = {
       description: 'A=ALS, B=BLS, C=CLS, D=DLS, E=ELS',
       options: TRAINING_LEVELS,
     },
+    medical_levels: {
+      type: 'multiselect',
+      required: false,
+      displayName: 'רמות רפואיות',
+      description: 'ניתן לבחור כמה: ALS/BLS/CLS/DLS/ELS',
+      options: MEDICAL_LEVELS,
+    },
     has_media: {
       type: 'boolean',
       required: true,
@@ -62,6 +70,11 @@ export const Question_Bank = {
       displayName: 'סוג שאלה',
       options: QUESTION_TYPES_UI,
       defaultValue: 'single_choice',
+    },
+    case_name: {
+      type: 'text',
+      required: false,
+      displayName: 'שם מקרה (לשאלה מתגלגלת)',
     },
     question_text: {
       type: 'richtext',
@@ -99,6 +112,11 @@ export const Question_Bank = {
       required: false,
       displayName: 'רמז',
       description: 'טיפ לפני תשובה (אופציונלי)',
+    },
+    rolling_case: {
+      type: 'json',
+      required: false,
+      displayName: 'מבנה שאלה מתגלגלת',
     },
     status: {
       type: 'select',
@@ -144,6 +162,8 @@ export const Question_Bank = {
     { fields: ['thinking_level'] },
     { fields: ['training_level'] },
     { fields: ['question_type'] },
+    { fields: ['case_name'] },
+    { fields: ['medical_levels'] },
     { fields: ['status'] },
     { fields: ['has_media'] },
     { fields: ['media_bank_tag'] },

@@ -6,6 +6,8 @@
 
 import { entities } from '../config/appConfig';
 import { appConfig } from '../config/appConfig';
+import { callLlmWithFallback } from './llmClient';
+import { retrieveProtocolContextForQuestion } from './protocolContext';
 
 /**
  * Send answer to OpenAI API for validation
@@ -34,11 +36,18 @@ export async function validateOpenEndedAnswer(questionId, userAnswerText) {
     }
 
     // Prepare prompt for OpenAI
+    const ctx = await retrieveProtocolContextForQuestion(question.question_text || '', {
+      tokenBudget: 3200,
+      topK: 5,
+    }).catch(() => ({ contextBlock: '', noProtocolMatch: true }));
+
     const prompt = `אתה עוזר מערכת למידה רפואית למד"א (מגן דוד אדום).
 
 שאלה: ${question.question_text}
 
 ${correctAnswer ? `תשובה נכונה/רצויה: ${correctAnswer}\n\n` : ''}תשובת המשתמש: ${userAnswerText}
+
+${ctx.contextBlock || 'אין הקשר פרוטוקולי תואם שנשלף.'}
 
 אנא בדוק את תשובת המשתמש והחזר:
 1. הערכה כללית (נכון/חלקי/שגוי)
@@ -54,40 +63,13 @@ ${correctAnswer ? `תשובה נכונה/רצויה: ${correctAnswer}\n\n` : ''}
   "suggestions": ["הצעה 1", "הצעה 2"]
 }`;
 
-    // Get API key
-    const apiKey = appConfig.openai.getApiKey();
-
-    // Call OpenAI API
-    const response = await fetch(appConfig.openai.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: appConfig.openai.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'אתה עוזר מערכת למידה רפואית. תן משוב מפורט ומקצועי בעברית על תשובות של מתאמנים.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 500
-      })
+    const llmResult = await callLlmWithFallback({
+      systemPrompt: 'אתה עוזר מערכת למידה רפואית. תן משוב מפורט ומקצועי בעברית על תשובות של מתאמנים, ובהינתן הקשר פרוטוקולי היצמד אליו בלבד.',
+      userPrompt: prompt,
+      temperature: 0.3,
+      maxTokens: 900,
     });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('OpenAI API error:', errorData);
-      throw new Error(`OpenAI API error: ${response.statusText}`);
-    }
-
-    const openaiResponse = await response.json();
+    const openaiResponse = { choices: [{ message: { content: llmResult.content || '' } }] };
     
     // Extract the assistant's message
     let botFeedback = '';

@@ -13,6 +13,12 @@ import { listTranscripts, getTranscript, updateTranscript, deleteTranscript, upl
 import { getUsers, postUser, setupUser, updateCourseNumbers, changeUserRole, setInstructorCourses, getUsersByCourse } from './server/userApi.js';
 import { createReport, listReports, countPendingReports, reviewReport } from './server/reportApi.js';
 import { submitContactForm } from './server/contactApi.js';
+import {
+  activateProtocolVersion,
+  ingestProtocolText,
+  listProtocolVersions,
+  retrieveProtocolContext,
+} from './server/protocolContextApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -69,6 +75,10 @@ async function start() {
   app.get('/api/transcripts/:id', getTranscript);
   app.put('/api/transcripts/:id', updateTranscript);
   app.delete('/api/transcripts/:id', deleteTranscript);
+  app.get('/api/protocol-context/versions', listProtocolVersions);
+  app.post('/api/protocol-context/ingest', ingestProtocolText);
+  app.post('/api/protocol-context/activate', activateProtocolVersion);
+  app.post('/api/protocol-context/retrieve', retrieveProtocolContext);
   app.use(express.static(path.join(__dirname, 'dist')));
   app.use((_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 

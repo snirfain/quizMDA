@@ -8,6 +8,13 @@ import { entities } from '../config/appConfig';
 import { QUESTION_TYPES_UI } from '../shared/questionBankMetadata.js';
 import { pickRandomMedia } from './mediaEngine.js';
 
+export function getQuestionEffectiveUnits(question) {
+  if (question?.question_type === 'rolling_case' && Array.isArray(question?.rolling_case?.branches)) {
+    return question.rolling_case.branches.length || 1;
+  }
+  return 1;
+}
+
 async function resolvedQuestionMediaUrlForExport(q) {
   const att = q.media_attachment;
   if (att && typeof att === 'object' && att.url) return att.url;
@@ -56,11 +63,13 @@ export async function generateRandomTest(filters) {
 
   const shuffled = pool.sort(() => 0.5 - Math.random());
   const selectedQuestions = shuffled.slice(0, Math.min(count, shuffled.length));
+  const effectiveUnits = selectedQuestions.reduce((sum, q) => sum + getQuestionEffectiveUnits(q), 0);
 
   return {
     questions: selectedQuestions,
     totalAvailable: pool.length,
     selected: selectedQuestions.length,
+    effectiveUnits,
     filters,
   };
 }

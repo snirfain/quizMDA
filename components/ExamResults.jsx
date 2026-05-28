@@ -69,6 +69,12 @@ export default function ExamResults({ results, questions, answers }) {
             <div style={styles.statValue}>{results.totalQuestions}</div>
             <div style={styles.statLabel}>סה"כ שאלות</div>
           </div>
+          {results.scoreUnits && (
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{`${Math.round(results.scoreUnits.scored * 10) / 10}/${results.scoreUnits.total}`}</div>
+              <div style={styles.statLabel}>ניקוד יחידות (ענפים + שאלות)</div>
+            </div>
+          )}
           <div style={styles.statItem}>
             <div style={{...styles.statValue, color: '#4CAF50'}}>
               {results.correctAnswers}
@@ -176,7 +182,9 @@ export default function ExamResults({ results, questions, answers }) {
                       ? styles.answerCorrect 
                       : styles.answerIncorrect)
                   }}>
-                    {answers[reviewQuestion.id] || 'לא ענה'}
+                    {typeof answers[reviewQuestion.id] === 'object'
+                      ? JSON.stringify(answers[reviewQuestion.id])
+                      : (answers[reviewQuestion.id] || 'לא ענה')}
                   </span>
                 </div>
                 <div style={styles.answerRow}>
@@ -191,6 +199,14 @@ export default function ExamResults({ results, questions, answers }) {
                 <div style={styles.explanation}>
                   <strong>הסבר:</strong>
                   <p>{reviewQuestion.explanation}</p>
+                </div>
+              )}
+              {reviewQuestion.question_type === 'rolling_case' && Array.isArray(results?.rollingBreakdown) && (
+                <div style={styles.explanation}>
+                  <strong>פירוט ענפים:</strong>
+                  {(results.rollingBreakdown.find((r) => r.question_id === reviewQuestion.id)?.perBranch || []).map((b) => (
+                    <p key={b.branch_id}>{b.branch_id}: {Math.round((b.score || 0) * 100)}%</p>
+                  ))}
                 </div>
               )}
 

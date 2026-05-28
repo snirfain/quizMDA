@@ -51,6 +51,7 @@ export const THINKING_LEVELS = [
 ];
 
 export const TRAINING_LEVEL_VALUES = ['A', 'B', 'C', 'D', 'E'];
+export const MEDICAL_LEVEL_VALUES = ['ALS', 'BLS', 'CLS', 'DLS', 'ELS'];
 
 /** @type {{ value: string, label: string }[]} — A=ALS … E=ELS */
 export const TRAINING_LEVELS = [
@@ -59,6 +60,14 @@ export const TRAINING_LEVELS = [
   { value: 'C', label: 'C (CLS)' },
   { value: 'D', label: 'D (DLS)' },
   { value: 'E', label: 'E (ELS)' },
+];
+
+export const MEDICAL_LEVELS = [
+  { value: 'ALS', label: 'ALS' },
+  { value: 'BLS', label: 'BLS' },
+  { value: 'CLS', label: 'CLS' },
+  { value: 'DLS', label: 'DLS' },
+  { value: 'ELS', label: 'ELS' },
 ];
 
 export const QUESTION_STATUS_VALUES = ['active', 'under_review', 'draft'];
@@ -324,6 +333,11 @@ export function isValidTrainingLevel(value) {
 }
 
 /** @returns {boolean} */
+export function isValidMedicalLevel(value) {
+  return typeof value === 'string' && MEDICAL_LEVEL_VALUES.includes(value);
+}
+
+/** @returns {boolean} */
 export function isValidQuestionStatus(value) {
   return typeof value === 'string' && QUESTION_STATUS_VALUES.includes(value);
 }
@@ -333,6 +347,7 @@ export const QUESTION_TYPES_UI = [
   { value: 'multi_choice', label: 'רב ברירה מספר תשובות נכונות' },
   { value: 'true_false', label: 'נכון/לא נכון' },
   { value: 'open_ended', label: 'שאלה פתוחה' },
+  { value: 'rolling_case', label: 'שאלה מתגלגלת (גזע + ענפים)' },
 ];
 
 /**

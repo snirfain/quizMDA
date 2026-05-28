@@ -19,9 +19,10 @@ const questionSchema = new mongoose.Schema(
   {
     question_type: {
       type: String,
-      enum: ['single_choice', 'multi_choice', 'true_false', 'open_ended'],
+      enum: ['single_choice', 'multi_choice', 'true_false', 'open_ended', 'rolling_case'],
       default: 'single_choice',
     },
+    case_name: { type: String, default: '' },
     question_text: { type: String, required: true },
     options: { type: [optionSchema], default: [] },
     /** URL string or { url, type?, name? } from upload flow */
@@ -43,6 +44,19 @@ const questionSchema = new mongoose.Schema(
       type: String,
       enum: ['A', 'B', 'C', 'D', 'E'],
       required: true,
+    },
+    medical_levels: {
+      type: [String],
+      enum: ['ALS', 'BLS', 'CLS', 'DLS', 'ELS'],
+      default: [],
+    },
+    rolling_case: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    suspended_due_to_branch: {
+      type: String,
+      default: '',
     },
     has_media: { type: Boolean, default: false },
     status: {
@@ -69,9 +83,11 @@ questionSchema.index({ sub_category: 1 });
 questionSchema.index({ thinking_level: 1 });
 questionSchema.index({ training_level: 1 });
 questionSchema.index({ question_type: 1 });
+questionSchema.index({ case_name: 1 });
 questionSchema.index({ status: 1 });
 questionSchema.index({ has_media: 1 });
 questionSchema.index({ media_bank_tag: 1 });
+questionSchema.index({ medical_levels: 1 });
 questionSchema.index({ createdAt: -1 });
 questionSchema.index({ question_text: 'text' });
 

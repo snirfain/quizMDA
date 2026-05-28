@@ -14,6 +14,7 @@ import { showToast } from './Toast';
 import { announce } from '../utils/accessibility';
 import QuestionReportModal from './QuestionReportModal';
 import QuestionResolvedMedia from './QuestionResolvedMedia';
+import { computeRollingCaseTotalScore } from '../workflows/rollingCaseEngine';
 
 const safeParse = (v, fallback = []) => {
   if (Array.isArray(v)) return v;
@@ -41,6 +42,9 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
   const [results, setResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [reportQuestion, setReportQuestion] = useState(null);
+  const [effectiveQuestionUnits, setEffectiveQuestionUnits] = useState(questionCount);
+  const [rollingProgress, setRollingProgress] = useState({});
+  const [rollingDraft, setRollingDraft] = useState({});
   const timerRef = useRef(null);
 
   const hasTimeLimit = timeLimit < 999;
@@ -69,12 +73,24 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
     try {
       if (routeState?.preGeneratedQuestions?.length > 0) {
         setQuestions(routeState.preGeneratedQuestions);
+        const units = routeState.preGeneratedQuestions.reduce((sum, q) => {
+          if (q.question_type === 'rolling_case' && q.rolling_case?.branches?.length) return sum + q.rolling_case.branches.length;
+          return sum + 1;
+        }, 0);
+        setEffectiveQuestionUnits(units);
+        if (hasTimeLimit) setTimeRemaining(Math.round((timeLimitMinutes * 60 * units) / Math.max(1, questionCount)));
         setIsLoading(false);
         return;
       }
       if (routeState?.examSpec) {
         const { questions: qs } = await generateTraineeExam(routeState.examSpec);
         setQuestions(qs);
+        const units = qs.reduce((sum, q) => {
+          if (q.question_type === 'rolling_case' && q.rolling_case?.branches?.length) return sum + q.rolling_case.branches.length;
+          return sum + 1;
+        }, 0);
+        setEffectiveQuestionUnits(units);
+        if (hasTimeLimit) setTimeRemaining(Math.round((timeLimitMinutes * 60 * units) / Math.max(1, questionCount)));
         return;
       }
       const user = await getCurrentUser();
@@ -84,7 +100,14 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
         routeState?.hierarchyFilters || {},
         routeState?.tagFilters || []
       );
-      setQuestions(result.questions.slice(0, questionCount));
+      const picked = result.questions.slice(0, questionCount);
+      setQuestions(picked);
+      const units = picked.reduce((sum, q) => {
+        if (q.question_type === 'rolling_case' && q.rolling_case?.branches?.length) return sum + q.rolling_case.branches.length;
+        return sum + 1;
+      }, 0);
+      setEffectiveQuestionUnits(units);
+      if (hasTimeLimit) setTimeRemaining(Math.round((timeLimitMinutes * 60 * units) / Math.max(1, questionCount)));
     } catch (error) {
       console.error('Error loading questions:', error);
       showToast('שגיאה בטעינת שאלות', 'error');
@@ -103,6 +126,17 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
     setAnswers(prev => ({
       ...prev,
       [questionId]: answer
+    }));
+  };
+
+  const handleRollingBranchAnswer = (questionId, branchId, answer) => {
+    const existing = answers[questionId] || {};
+    if (existing[branchId] != null) return; // no backtracking edits
+    const next = { ...existing, [branchId]: answer };
+    setAnswers((prev) => ({ ...prev, [questionId]: next }));
+    setRollingProgress((prev) => ({
+      ...prev,
+      [questionId]: Math.max(prev[questionId] || 0, Object.keys(next).length),
     }));
   };
 
@@ -128,25 +162,43 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
   const calculateResults = async () => {
     const correctAnswers = [];
     const incorrectAnswers = [];
+    const rollingBreakdown = [];
+    let scoredUnits = 0;
+    let maxUnits = 0;
 
     for (const question of questions) {
       const userAnswer = answers[question.id];
+      if (question.question_type === 'rolling_case' && question.rolling_case) {
+        const rcScore = computeRollingCaseTotalScore(question.rolling_case, userAnswer || {});
+        scoredUnits += rcScore.rawScore;
+        maxUnits += rcScore.totalBranches;
+        rollingBreakdown.push({ question_id: question.id, ...rcScore });
+        if (rcScore.percent >= 99.9) correctAnswers.push(question.id);
+        else incorrectAnswers.push(question.id);
+        continue;
+      }
+
       const isCorrect = await checkAnswer(question, userAnswer);
       
       if (isCorrect) {
         correctAnswers.push(question.id);
+        scoredUnits += 1;
       } else {
         incorrectAnswers.push(question.id);
       }
+      maxUnits += 1;
     }
 
-    const score = (correctAnswers.length / questions.length) * 100;
+    const score = maxUnits > 0 ? (scoredUnits / maxUnits) * 100 : 0;
 
     return {
       totalQuestions: questions.length,
       correctAnswers: correctAnswers.length,
       incorrectAnswers: incorrectAnswers.length,
       score: Math.round(score),
+      scoreUnits: { scored: scoredUnits, total: maxUnits },
+      effectiveQuestionUnits,
+      rollingBreakdown,
       correctQuestionIds: correctAnswers,
       incorrectQuestionIds: incorrectAnswers,
       timeSpent: (timeLimit * 60) - timeRemaining
@@ -303,6 +355,14 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
             שאלה {currentIndex + 1} מתוך {questions.length}
           </div>
           <h2 style={styles.questionText}>{currentQuestion.question_text}</h2>
+          {currentQuestion.question_type === 'rolling_case' && (
+            <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, border: '1px solid #ddd', background: '#fff' }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>{currentQuestion.case_name || 'מקרה מתגלגל'}</div>
+              <div style={{ fontSize: 13, color: '#555' }}>
+                ענף {(rollingProgress[currentQuestion.id] || 0) + 1} מתוך {(currentQuestion.rolling_case?.branches || []).length}
+              </div>
+            </div>
+          )}
           <button
             type="button"
             style={{ padding: '4px 10px', fontSize: '12px', color: '#c62828', background: 'transparent', border: '1px solid #c62828', borderRadius: '6px', cursor: 'pointer', marginBottom: '8px' }}
@@ -395,6 +455,77 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
                 rows={6}
                 aria-label="תשובה לשאלה פתוחה"
               />
+            )}
+
+            {currentQuestion.question_type === 'rolling_case' && (
+              <div style={styles.optionsList}>
+                {(currentQuestion.rolling_case?.branches || []).map((branch, branchIdx) => {
+                  const branchAns = answers[currentQuestion.id]?.[branch.id];
+                  const prevAnsweredCount = rollingProgress[currentQuestion.id] || 0;
+                  const enabled = branchIdx <= prevAnsweredCount;
+                  return (
+                    <div key={branch.id} style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 10, opacity: enabled ? 1 : 0.6 }}>
+                      <div style={{ fontSize: 12, color: '#777', marginBottom: 4 }}>ענף {branchIdx + 1}</div>
+                      <div style={{ fontWeight: 600, marginBottom: 8 }}>{branch.question_text}</div>
+                      {branch.question_type === 'true_false' ? (
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          {['true', 'false'].map((v) => (
+                            <button
+                              key={v}
+                              type="button"
+                              disabled={!enabled || branchAns != null}
+                              onClick={() => handleRollingBranchAnswer(currentQuestion.id, branch.id, v)}
+                              style={styles.controlButton}
+                            >
+                              {v === 'true' ? 'נכון' : 'לא נכון'}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {(branch.options || []).map((opt, optIdx) => {
+                            const v = String(opt.value ?? optIdx);
+                            const draftKey = `${currentQuestion.id}:${branch.id}`;
+                            const draftValues = Array.isArray(rollingDraft[draftKey]) ? rollingDraft[draftKey] : [];
+                            return (
+                              <button
+                                key={v}
+                                type="button"
+                                disabled={!enabled || branchAns != null}
+                                onClick={() => {
+                                  if (branch.question_type === 'multi_choice') {
+                                    const next = draftValues.includes(v)
+                                      ? draftValues.filter((x) => x !== v)
+                                      : [...draftValues, v];
+                                    setRollingDraft((prev) => ({ ...prev, [draftKey]: next }));
+                                  } else {
+                                    handleRollingBranchAnswer(currentQuestion.id, branch.id, v);
+                                  }
+                                }}
+                                style={{ ...styles.optionLabel, justifyContent: 'flex-start', textAlign: 'right', background: draftValues.includes(v) ? '#e3f2fd' : styles.optionLabel.backgroundColor }}
+                              >
+                                {opt.label ?? opt.text ?? v}
+                              </button>
+                            );
+                          })}
+                          {branch.question_type === 'multi_choice' && branchAns == null && enabled && (
+                            <button
+                              type="button"
+                              style={styles.controlButton}
+                              onClick={() => {
+                                const draftKey = `${currentQuestion.id}:${branch.id}`;
+                                handleRollingBranchAnswer(currentQuestion.id, branch.id, rollingDraft[draftKey] || []);
+                              }}
+                            >
+                              אשר ענף
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
