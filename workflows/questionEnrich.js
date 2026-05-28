@@ -501,7 +501,7 @@ export async function batchEnrichQuestions(questions, options = {}) {
  * Generate a full rolling-case draft (root + branches + transitions) via LLM.
  * Returned object requires manual instructor approval before publishing.
  */
-export async function generateRollingCaseWithAI(casePrompt, apiKey) {
+export async function generateRollingCaseWithAI(casePrompt, apiKey, fixedStemText = '') {
   const _ = apiKey;
   const protocolCtx = await retrieveProtocolContextForQuestion(casePrompt, {
     tokenBudget: 3500,
@@ -534,6 +534,7 @@ export async function generateRollingCaseWithAI(casePrompt, apiKey) {
     ]
   }
 }`;
+  const lockedStem = String(fixedStemText || '').trim();
   const userPrompt = `בנה שאלה מתגלגלת מלאה ומוכנה לאישור ידני לפי התיאור הבא:
 ${casePrompt}
 
@@ -544,7 +545,10 @@ ${protocolCtx.contextBlock || 'לא נמצא הקשר פרוטוקולי תוא�
 2) אין לולאות במעברים.
 3) לכל ענף יש לפחות תשובה נכונה אחת.
 4) אם מופיעה תרופה (למשל אדרנלין) חובה לציין מינון מדויק ותואם להקשר הפרוטוקולי המצורף.
-5) אם המידע הפרוטוקולי לא מספיק - אל תנחש; ציין בהסבר שחסר הקשר.`;
+5) אם המידע הפרוטוקולי לא מספיק - אל תנחש; ציין בהסבר שחסר הקשר.
+6) אסור לשנות את גזע המקרה שניתן ע"י המשתמש - יש להחזיר אותו זהה לחלוטין, תו-בתו, כולל סימני פיסוק ושורות.
+7) "question_text" בפלט חייב להיות בדיוק המחרוזת הבאה:
+"""${lockedStem}"""`;
   const draft = await callOpenAI(systemPrompt, userPrompt, appConfig.openai.getApiKey());
   const normalizedRolling = draft.rolling_case || { branches: [], transitions: [] };
   const errors = validateRollingCaseStructure(normalizedRolling);
@@ -554,7 +558,7 @@ ${protocolCtx.contextBlock || 'לא נמצא הקשר פרוטוקולי תוא�
   return {
     question_type: 'rolling_case',
     case_name: String(draft.case_name || '').trim(),
-    question_text: String(draft.question_text || '').trim(),
+    question_text: lockedStem || String(draft.question_text || '').trim(),
     rolling_case: normalizedRolling,
   };
 }

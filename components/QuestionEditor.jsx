@@ -479,7 +479,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
         .filter(Boolean)
         .join('\n');
 
-      const draft = await generateRollingCaseWithAI(prompt, apiKey);
+      const draft = await generateRollingCaseWithAI(prompt, apiKey, rootText);
       const rollingErrors = validateRollingCaseStructure(draft?.rolling_case || {});
       if (rollingErrors.length > 0) {
         throw new Error(`ה-AI החזיר Flow לא תקין: ${rollingErrors.join(' | ')}`);
@@ -487,7 +487,8 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
       setFormData((prev) => ({
         ...prev,
         case_name: draft?.case_name || prev.case_name,
-        question_text: draft?.question_text || prev.question_text,
+        // Keep stem exactly as entered by instructor; AI may only generate branches/flow.
+        question_text: prev.question_text,
         rolling_case: draft?.rolling_case || prev.rolling_case,
       }));
       showToast('טיוטת שאלה מתגלגלת נוצרה בהצלחה. בדוק ואשר לפני שמירה.', 'success');
