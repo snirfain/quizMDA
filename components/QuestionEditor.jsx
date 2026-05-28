@@ -304,7 +304,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
       ...formData,
       status: formData.status,
       options:
-        formData.question_type !== 'open_ended'
+        !['open_ended', 'rolling_case'].includes(formData.question_type)
           ? options.map((opt, idx) => {
               const text = typeof opt === 'string' ? opt : opt.text || '';
               const isCorrect =
@@ -349,7 +349,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
 
     try {
       let preparedOptions;
-      if (formData.question_type !== 'open_ended') {
+      if (!['open_ended', 'rolling_case'].includes(formData.question_type)) {
         preparedOptions = options.map((opt, idx) => {
           const text = typeof opt === 'string' ? opt : opt.text || '';
           return {
@@ -410,7 +410,12 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
       const questionData = {
         ...formData,
         ...m,
-        options: preparedOptions ? JSON.stringify(preparedOptions) : undefined,
+        options:
+          formData.question_type === 'rolling_case'
+            ? JSON.stringify([])
+            : preparedOptions
+              ? JSON.stringify(preparedOptions)
+              : undefined,
         correct_answer: formData.question_type === 'rolling_case' ? null : correctAnswerPayload,
         case_name: formData.question_type === 'rolling_case' ? formData.case_name : '',
         rolling_case: formData.question_type === 'rolling_case' ? formData.rolling_case : null,
