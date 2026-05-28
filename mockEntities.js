@@ -340,6 +340,16 @@ function loadFromStorage() {
 const mockData = loadFromStorage();
 if (loadFromStorage._migratedMediaBank) saveToStorage();
 
+async function readApiError(res, fallbackMessage) {
+  try {
+    const data = await res.json();
+    if (data?.error) return data.error;
+  } catch {
+    // ignore parse errors
+  }
+  return fallbackMessage;
+}
+
 /**
  * Normalize a server question doc into the local format used by components.
  */
@@ -448,34 +458,24 @@ export const mockEntities = {
       return null;
     },
     create: async (data) => {
-      const mediaPayload = normalizeQuestionMediaPayload(data);
-      const local = {
-        id: uid('q'),
-        ...data,
-        ...mediaPayload,
-        total_attempts: 0,
-        total_success: 0,
-        success_rate: 0,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
       try {
         const res = await fetch('/api/questions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
-        if (res.ok) {
-          const created = await res.json();
-          const q = serverToLocal(Array.isArray(created) ? created[0] : created);
-          mockData.questions.push(q);
-          saveToStorage();
-          return q;
+        if (!res.ok) {
+          const msg = await readApiError(res, 'יצירת השאלה נכשלה בשרת');
+          throw new Error(msg);
         }
-      } catch (_) { /* server unreachable — save locally as fallback */ }
-      mockData.questions.push(local);
-      saveToStorage();
-      return local;
+        const created = await res.json();
+        const q = serverToLocal(Array.isArray(created) ? created[0] : created);
+        mockData.questions.push(q);
+        saveToStorage();
+        return q;
+      } catch (err) {
+        throw new Error(err?.message || 'שגיאת תקשורת בשמירת השאלה');
+      }
     },
     update: async (id, data) => {
       try {
@@ -484,33 +484,30 @@ export const mockEntities = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
-        if (res.ok) {
-          const updated = serverToLocal(await res.json());
-          const idx = mockData.questions.findIndex(q => q.id === id);
-          if (idx !== -1) mockData.questions[idx] = updated;
-          else mockData.questions.push(updated);
-          saveToStorage();
-          return updated;
+        if (!res.ok) {
+          const msg = await readApiError(res, 'עדכון השאלה נכשל בשרת');
+          throw new Error(msg);
         }
-      } catch (_) { /* fallback to local */ }
-      const index = mockData.questions.findIndex(q => q.id === id);
-      if (index !== -1) {
-        const mergedLocal = { ...mockData.questions[index], ...data };
-        const mediaPayload = normalizeQuestionMediaPayload(mergedLocal);
-        mockData.questions[index] = {
-          ...mergedLocal,
-          ...mediaPayload,
-          updatedAt: new Date(),
-        };
+        const updated = serverToLocal(await res.json());
+        const idx = mockData.questions.findIndex(q => q.id === id);
+        if (idx !== -1) mockData.questions[idx] = updated;
+        else mockData.questions.push(updated);
         saveToStorage();
-        return mockData.questions[index];
+        return updated;
+      } catch (err) {
+        throw new Error(err?.message || 'שגיאת תקשורת בעדכון השאלה');
       }
-      return null;
     },
     delete: async (id) => {
       try {
         const res = await fetch(`/api/questions/${id}`, { method: 'DELETE' });
-      } catch (_) { /* best-effort */ }
+        if (!res.ok) {
+          const msg = await readApiError(res, 'מחיקת השאלה נכשלה בשרת');
+          throw new Error(msg);
+        }
+      } catch (err) {
+        throw new Error(err?.message || 'שגיאת תקשורת במחיקת השאלה');
+      }
       const index = mockData.questions.findIndex(q => q.id === id);
       if (index !== -1) {
         mockData.questions.splice(index, 1);
