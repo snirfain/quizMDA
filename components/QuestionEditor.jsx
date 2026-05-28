@@ -192,6 +192,7 @@ export default function QuestionEditor({ question, hierarchies: _hierarchies, on
     formData.sub_category,
     formData.thinking_level,
     formData.training_level,
+    formData.status,
     options,
   ]);
 

@@ -1265,8 +1265,20 @@ export default function QuestionManagement() {
                       try { parsed = JSON.parse(question.correct_answer || '{}'); } catch { /* empty */ }
                       // Check both parsed.options (regex parser) and question.options (AI parser)
                       const rawOpts = parsed.options || question.options || null;
-                      const opts = rawOpts
-                        ? rawOpts.map((o, i) => ({ value: String(o.value ?? i), label: o.label ?? o.text ?? String(o) }))
+                      const normalizedOpts = (() => {
+                        if (Array.isArray(rawOpts)) return rawOpts;
+                        if (typeof rawOpts === 'string') {
+                          try {
+                            const parsedOpts = JSON.parse(rawOpts);
+                            return Array.isArray(parsedOpts) ? parsedOpts : [];
+                          } catch {
+                            return [];
+                          }
+                        }
+                        return [];
+                      })();
+                      const opts = normalizedOpts.length
+                        ? normalizedOpts.map((o, i) => ({ value: String(o?.value ?? i), label: o?.label ?? o?.text ?? String(o) }))
                         : null;
                       const correctVal = parsed.value != null ? String(parsed.value) : null;
                       const correctVals = parsed.values
