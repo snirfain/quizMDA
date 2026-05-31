@@ -5,7 +5,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { getCurrentUser } from './utils/auth';
+import { getCurrentUser, logout } from './utils/auth';
+import { isTokenExpiringSoon } from './utils/apiClient';
 import { getCurrentPath, getRouteByPath, navigateTo } from './utils/router';
 import MainLayout from './components/MainLayout';
 import AuthGuard from './components/AuthGuard';
@@ -95,6 +96,20 @@ export default function App() {
   const loadUser = async () => {
     try {
       const currentUser = await getCurrentUser();
+      // Self-heal stuck sessions: a user logged in before the auth-token
+      // mechanism (or whose token expired) has no valid token and would hit
+      // 401 on every API call. Force a fresh login so they obtain a session
+      // token. Skip on localhost where auth enforcement is off.
+      if (currentUser && typeof window !== 'undefined') {
+        const host = window.location.hostname;
+        const isLocal = host === 'localhost' || host === '127.0.0.1';
+        if (!isLocal && isTokenExpiringSoon(0)) {
+          console.warn('Session has no valid auth token — forcing re-login');
+          logout();
+          setUser(null);
+          return;
+        }
+      }
       setUser(currentUser);
     } catch (error) {
       console.error('Error loading user:', error);

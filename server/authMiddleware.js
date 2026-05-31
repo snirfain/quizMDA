@@ -142,6 +142,109 @@ export async function verifyGoogleIdToken(token) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// App session tokens (HS256) — long-lived, server-issued
+// ─────────────────────────────────────────────────────────────
+//
+// Google ID tokens expire after ~1 hour and are only available at sign-in.
+// To keep users logged in, we exchange a verified Google credential for our own
+// signed session token (default 30 days) which the client sends on every request.
+
+const APP_TOKEN_ISS = 'quizmda';
+const APP_TOKEN_TTL_SEC = 30 * 24 * 60 * 60; // 30 days
+
+function getAppSecret() {
+  return (
+    process.env.JWT_SECRET ||
+    (process.env.CLOUDINARY_API_SECRET ? `quizmda:${process.env.CLOUDINARY_API_SECRET}` : '') ||
+    'quizmda-dev-secret-change-me'
+  );
+}
+
+function base64UrlEncode(input) {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/** Sign a long-lived app session token (HS256, built-in crypto). */
+export function signAppToken(payload, expiresInSec = APP_TOKEN_TTL_SEC) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const body = base64UrlEncode(
+    JSON.stringify({ ...payload, iss: APP_TOKEN_ISS, iat: now, exp: now + expiresInSec }),
+  );
+  const data = `${header}.${body}`;
+  const sig = base64UrlEncode(crypto.createHmac('sha256', getAppSecret()).update(data).digest());
+  return `${data}.${sig}`;
+}
+
+/** Verify an app session token. Throws on any failure; returns the payload. */
+export function verifyAppToken(token) {
+  if (!token || typeof token !== 'string') throw new Error('טוקן ריק');
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new Error('מבנה טוקן שגוי');
+  const [headerSeg, payloadSeg, signatureSeg] = parts;
+
+  let header;
+  try {
+    header = JSON.parse(base64UrlDecode(headerSeg).toString('utf8'));
+  } catch {
+    throw new Error('כותרת הטוקן אינה תקינה');
+  }
+  if (header.alg !== 'HS256') throw new Error(`אלגוריתם חתימה לא נתמך: ${header.alg}`);
+
+  const expected = base64UrlEncode(
+    crypto.createHmac('sha256', getAppSecret()).update(`${headerSeg}.${payloadSeg}`).digest(),
+  );
+  const a = Buffer.from(signatureSeg);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    throw new Error('חתימת הטוקן אינה תקפה');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(base64UrlDecode(payloadSeg).toString('utf8'));
+  } catch {
+    throw new Error('גוף הטוקן אינו תקין');
+  }
+  if (payload.iss !== APP_TOKEN_ISS) throw new Error('מנפיק הטוקן אינו תקין');
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (payload.exp && payload.exp < nowSec) throw new Error('תוקף הטוקן פג');
+  if (!payload.email) throw new Error('הטוקן אינו כולל כתובת אימייל');
+  return payload;
+}
+
+/**
+ * POST /api/auth/session (public)
+ * Body: { credential } — a Google ID token.
+ * Verifies it and returns a long-lived app session token: { token, user, email }.
+ */
+export async function createSession(req, res) {
+  try {
+    const { credential } = req.body || {};
+    if (!credential) return res.status(400).json({ error: 'חסר credential של Google' });
+
+    let gp;
+    try {
+      gp = await verifyGoogleIdToken(credential);
+    } catch (err) {
+      return res.status(401).json({ error: `אימות Google נכשל: ${err.message}` });
+    }
+
+    const email = (gp.email || '').toLowerCase();
+    const user = await lookupDbUser(email, gp.sub);
+    const token = signAppToken({ sub: gp.sub, email, name: gp.name || user?.full_name || '' });
+    res.json({ token, user: user || null, email });
+  } catch (err) {
+    console.error('POST /api/auth/session error:', err);
+    res.status(500).json({ error: 'יצירת סשן נכשלה' });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // Identity resolution
 // ─────────────────────────────────────────────────────────────
 
@@ -190,11 +293,19 @@ function effectiveRoleFor(auth, user) {
 async function authenticate(req) {
   const token = getBearerToken(req);
   if (!token) return { error: 'נדרשת הזדהות — חסר טוקן', status: 401 };
-  let payload;
+  let payload = null;
+  // Prefer our own session token; fall back to a raw Google ID token.
   try {
-    payload = await verifyGoogleIdToken(token);
-  } catch (err) {
-    return { error: `הזדהות נכשלה: ${err.message}`, status: 401 };
+    payload = verifyAppToken(token);
+  } catch {
+    payload = null;
+  }
+  if (!payload) {
+    try {
+      payload = await verifyGoogleIdToken(token);
+    } catch (err) {
+      return { error: `הזדהות נכשלה: ${err.message}`, status: 401 };
+    }
   }
   const auth = {
     email: (payload.email || '').toLowerCase(),
@@ -211,7 +322,12 @@ async function attachIdentityBestEffort(req) {
   const token = getBearerToken(req);
   if (token) {
     try {
-      const payload = await verifyGoogleIdToken(token);
+      let payload = null;
+      try {
+        payload = verifyAppToken(token);
+      } catch {
+        payload = await verifyGoogleIdToken(token);
+      }
       req.auth = {
         email: (payload.email || '').toLowerCase(),
         sub: payload.sub,

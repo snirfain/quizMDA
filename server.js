@@ -21,7 +21,7 @@ import {
 } from './server/protocolContextApi.js';
 import { listQuestionVersions, mergeMediaTags } from './server/questionApi.js';
 import { submitExam } from './server/examApi.js';
-import { requireAuth, requireRole, isAuthEnforced } from './server/authMiddleware.js';
+import { requireAuth, requireRole, isAuthEnforced, createSession } from './server/authMiddleware.js';
 import { recoverStuckJobs } from './server/transcriptApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,6 +53,7 @@ async function start() {
   // ── Public routes (no authentication) ──────────────────────────────
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.post('/api/contact', submitContactForm);
+  app.post('/api/auth/session', createSession);
 
   // ── Authenticated routes (any signed-in user) ──────────────────────
   app.get('/api/questions', requireAuth, getQuestions);

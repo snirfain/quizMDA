@@ -36,9 +36,25 @@ export async function loginWithGoogle(credential) {
       };
     }
 
-    // Persist the raw Google ID token so API requests can be authenticated
-    // server-side (the backend re-verifies it against Google's JWKS).
-    setAuthToken(credential);
+    // Exchange the short-lived Google ID token for a long-lived app session
+    // token (30 days). Fall back to the raw credential if the exchange fails
+    // (e.g. server unreachable / not configured), so dev keeps working.
+    try {
+      const sessionRes = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential }),
+      });
+      if (sessionRes.ok) {
+        const { token } = await sessionRes.json();
+        setAuthToken(token || credential);
+      } else {
+        setAuthToken(credential);
+      }
+    } catch (e) {
+      console.warn('Session token exchange failed, using raw credential:', e?.message);
+      setAuthToken(credential);
+    }
 
     // Check if user exists in our system
     // Try multiple ways to find user
