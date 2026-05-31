@@ -151,6 +151,13 @@ ${typeRules[spec.question_type] || ''}
 - explanation: הסבר רפואי קצר ומדויק לכל שאלה, מבוסס על הפרק.
 - כתוב בעברית תקנית וברורה.
 - כל השאלות חייבות להיות ייחודיות וללא חזרות.
+
+כללי אקראיות חובה (קריטי — אסור דפוס שמסגיר את התשובה):
+- מיקום התשובה הנכונה חייב להיות אקראי לחלוטין — לא תמיד הראשונה, לא תמיד האחרונה, ולא תמיד באותו מקום בין השאלות.
+- אורך התשובה הנכונה לא יסגיר אותה: הקפד שכל האפשרויות (כולל המסיחים) יהיו באורך, סגנון ורמת פירוט דומים. אסור שהתשובה הנכונה תהיה הארוכה/המפורטת ביותר.
+- המסיחים חייבים להיות סבירים ומבוססי-הקשר, לא אבסורדיים.
+- אין ליצור שום דפוס קבוע בין שאלות (למשל אותה אות/מיקום של התשובה הנכונה).
+
 - החזר בדיוק ${n} שאלות במערך questions.`
   );
 }
@@ -172,6 +179,15 @@ let _genId = 0;
 function nextId() {
   _genId += 1;
   return `gen_${Date.now()}_${_genId}`;
+}
+
+/** Fisher–Yates in-place shuffle — guarantees no positional pattern. */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 function normalizeGenerated(raw, spec) {
@@ -218,7 +234,14 @@ function normalizeGenerated(raw, spec) {
   }
 
   const correctSet = new Set(correctIdx);
-  const options = labels.map((label, idx) => ({ label, isCorrect: correctSet.has(idx) }));
+  let options = labels.map((label, idx) => ({ label, isCorrect: correctSet.has(idx) }));
+
+  // Shuffle option order so the correct answer's position is random and never
+  // betrayed by being first/last. true_false keeps its natural נכון/לא נכון order.
+  // isCorrect travels with each option, so correctness is preserved.
+  if (spec.question_type !== 'true_false') {
+    options = shuffle(options);
+  }
 
   return {
     id: nextId(),
