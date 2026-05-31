@@ -57,6 +57,11 @@ export default function MediaBankManager() {
   const [mergeTargetName, setMergeTargetName] = useState('');
   const [merging, setMerging] = useState(false);
 
+  // ── Tag rename state ─────────────────────────────────────
+  const [renameSource, setRenameSource] = useState(null); // tag being renamed
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
   // ── Load tags ────────────────────────────────────────────
   const loadTags = async () => {
     const allTags = await entities.Media_Bank.distinctTags();
@@ -247,6 +252,54 @@ export default function MediaBankManager() {
     }
   };
 
+  // ── Tag rename ────────────────────────────────────────────
+  const openRenameTag = (tag, e) => {
+    if (e) e.stopPropagation();
+    setRenameSource(tag);
+    setRenameValue(tag);
+  };
+
+  const handleRenameTag = async () => {
+    const oldTag = renameSource;
+    const newTag = renameValue.trim();
+    if (!oldTag) return;
+    if (!newTag) { showToast('יש להזין שם תג חדש', 'error'); return; }
+    if (newTag === oldTag) { setRenameSource(null); return; }
+
+    setRenaming(true);
+    try {
+      const res = await fetch('/api/media/merge-tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldTags: [oldTag], newTagName: newTag }),
+      });
+      if (!res.ok) {
+        const ed = await res.json().catch(() => ({}));
+        throw new Error(ed.error || 'שינוי שם התג נכשל');
+      }
+      const data = await res.json();
+      await renameLocalMediaTags([oldTag], newTag);
+
+      showToast(`התג "${oldTag}" שונה ל-"${newTag}" — עודכנו ${data.modified ?? 0} שאלות`, 'success');
+
+      const wasSelected = selectedTag === oldTag;
+      setSelectedTagsForMerge(prev => prev.map(t => (t === oldTag ? newTag : t)));
+      setRenameSource(null);
+      setRenameValue('');
+      await loadTags();
+      if (wasSelected) {
+        setSelectedTag(newTag);
+        setDraft(d => ({ ...d, tag: newTag }));
+        await loadItems(newTag, filterStatus);
+      }
+    } catch (err) {
+      console.error('שינוי שם תג נכשל:', err);
+      showToast(err.message || 'שגיאה בשינוי שם התג', 'error');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   // ── Status actions ───────────────────────────────────────
   const handleAction = async (item, action) => {
     let update = {};
@@ -368,6 +421,19 @@ export default function MediaBankManager() {
                 onClick={() => { setSelectedTag(tag); setDraft(d => ({ ...d, tag })); }}
               >
                 {tag}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => openRenameTag(tag, e)}
+                title={`שנה שם לתג "${tag}"`}
+                aria-label={`שנה שם לתג ${tag}`}
+                style={{
+                  flexShrink: 0, marginInlineEnd: '8px', padding: '4px 6px',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: '#888', fontSize: '14px', lineHeight: 1, borderRadius: '4px',
+                }}
+              >
+                ✏️
               </button>
             </div>
           ))}
@@ -581,6 +647,37 @@ export default function MediaBankManager() {
                 {merging ? <><LoadingSpinner size="sm" /> מאחד…</> : 'אחד תגים'}
               </button>
               <button style={s.btnGhost} onClick={() => { setShowMergeModal(false); setMergeTargetName(''); }} disabled={merging}>
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Rename tag modal ── */}
+      {renameSource && (
+        <div style={s.overlay} role="dialog" aria-modal="true" dir="rtl">
+          <div style={s.modalCard}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '18px', fontWeight: 800, color: '#1a1a2e' }}>שינוי שם תג</h3>
+            <p style={{ fontSize: '14px', color: '#555', lineHeight: 1.6, marginBottom: '14px' }}>
+              שם התג <span style={{ ...s.badge, background: '#FFF0F0', color: '#CC0000' }}>{renameSource}</span> ישתנה,
+              וכל השאלות והמדיה המשויכות אליו יעודכנו.
+            </p>
+            <label style={{ ...s.formLabel, display: 'block', marginBottom: '4px' }}>שם התג החדש *</label>
+            <input
+              type="text"
+              value={renameValue}
+              onChange={e => setRenameValue(e.target.value)}
+              placeholder="לדוגמה: פרק 4 החייאת מבוגר"
+              style={s.input}
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter' && !renaming) handleRenameTag(); }}
+            />
+            <div style={{ display: 'flex', gap: '10px', marginTop: '18px', justifyContent: 'flex-start' }}>
+              <button style={s.btn} onClick={handleRenameTag} disabled={renaming}>
+                {renaming ? <><LoadingSpinner size="sm" /> משנה…</> : 'שנה שם'}
+              </button>
+              <button style={s.btnGhost} onClick={() => { setRenameSource(null); setRenameValue(''); }} disabled={renaming}>
                 ביטול
               </button>
             </div>

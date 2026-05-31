@@ -105,6 +105,12 @@ const PATHS = {
       <polygon points="12 21 2.5 5 21.5 5" />
     </>
   ),
+  sparkles: (
+    <>
+      <path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z" />
+      <path d="M19 14l.8 1.9 1.9.8-1.9.8L19 19.4 18.2 17.5l-1.9-.8 1.9-.8L19 14z" />
+    </>
+  ),
 };
 
 export default function Icon({ name, size = 20, strokeWidth = 2, style, className, title }) {
