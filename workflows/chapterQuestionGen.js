@@ -275,17 +275,21 @@ export async function generateQuestionsFromChapter({
 
     const collected = [];
     const seen = new Set();
-    // Allow a few top-up attempts beyond the minimum number of batches so we
+    // Allow generous top-up attempts beyond the minimum number of batches so we
     // can recover from duplicates / short responses and still hit the target.
     const minBatches = Math.ceil(target / BATCH_SIZE);
-    const maxAttempts = minBatches + 4;
+    const maxAttempts = minBatches * 3 + 6;
     let attempts = 0;
+    let emptyRounds = 0; // consecutive rounds that added nothing new
 
     while (collected.length < target && attempts < maxAttempts) {
       attempts += 1;
       const need = Math.min(BATCH_SIZE, target - collected.length);
-      // Send a bounded list of already-created stems so the model diversifies.
-      const avoidList = collected.slice(-30).map((q) => q.question_text);
+      // Send the most recent already-created stems so the model keeps
+      // producing genuinely new questions instead of repeating itself.
+      const avoidList = collected.slice(-60).map((q) => q.question_text);
+      // Escalate temperature on dry rounds to push the model off repetition.
+      const temperature = Math.min(0.9, 0.5 + emptyRounds * 0.2);
 
       const userPrompt = buildUserPrompt({
         chapterText: text,
@@ -299,7 +303,7 @@ export async function generateQuestionsFromChapter({
       let content;
       try {
         const res = await callLlmWithFallback(
-          { systemPrompt: SYSTEM_PROMPT, userPrompt, temperature: 0.55, maxTokens: 9000 },
+          { systemPrompt: SYSTEM_PROMPT, userPrompt, temperature, maxTokens: 9000 },
           onProviderEvent
         );
         content = res.content;
@@ -331,12 +335,22 @@ export async function generateQuestionsFromChapter({
         target,
       });
 
-      // Nothing new this round — stop to avoid spinning on a dry chapter.
-      if (added === 0) break;
+      // A single unproductive round (parse hiccup or all-duplicates) may be
+      // transient — only give up after several consecutive dry rounds.
+      if (added === 0) {
+        emptyRounds += 1;
+        if (emptyRounds >= 3) break;
+      } else {
+        emptyRounds = 0;
+      }
     }
 
     if (collected.length < target) {
-      warnings.push(`שורה ${i + 1}: התקבלו ${collected.length} מתוך ${target} שאלות מבוקשות.`);
+      warnings.push(
+        `שורה ${i + 1} (${typeLabel}): נוצרו ${collected.length} מתוך ${target} — ` +
+          `כנראה שאין בפרק מספיק תוכן ייחודי ל-${target} שאלות שונות מסוג זה. ` +
+          `נסו פרק ארוך/עשיר יותר, פצלו לרמות חשיבה/סוגים נוספים, או בקשו פחות.`
+      );
     }
     allQuestions.push(...collected.slice(0, target));
     onProgress?.({
