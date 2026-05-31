@@ -55,11 +55,9 @@ pre, code {
 }
 .nav-desktop-links::-webkit-scrollbar { display: none; }
 
-/* ── Icon-only nav tier (small desktops / large tablets) ──
-   Between the hamburger breakpoint (1024) and where full labels
-   comfortably fit (1200), show icons only to avoid crowding. */
-@media (min-width: 1024px) and (max-width: 1199px) {
-  .nav-link-label { display: none !important; }
+/* Tighten link padding on smaller desktops so labels stay readable
+   without crowding (labels are ALWAYS shown — never icon-only). */
+@media (min-width: 1300px) and (max-width: 1439px) {
   .nav-desktop-links a[role="menuitem"] { padding: 8px 10px !important; }
 }
 

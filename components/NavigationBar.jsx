@@ -21,9 +21,9 @@ export default function NavigationBar({ onMenuToggle }) {
   const [isMobile, setIsMobile] = useState(false);
 
   // Collapse the horizontal nav into a hamburger drawer below this width.
-  // Above it, the desktop links stay overflow-safe (see responsive.css) so
-  // they can never be clipped regardless of how many items a role has.
-  const checkMobile = () => setIsMobile(window.innerWidth < 1024);
+  // The drawer shows every item with its full text label, so labels are
+  // never hidden or clipped. Above this width the labeled links fit inline.
+  const checkMobile = () => setIsMobile(window.innerWidth < 1300);
   const updatePath = () => setCurrentPath(getCurrentPath());
 
   const loadNavigation = async () => {
@@ -302,6 +302,9 @@ const styles = {
     lineHeight: 1,
     display: 'flex',
     alignItems: 'center',
+    // Render the (colored) emoji glyph as a solid white silhouette so it
+    // keeps strong contrast against the red header bar.
+    filter: 'brightness(0) invert(1)',
   },
   logoText: {
     fontSize: '22px',
@@ -350,6 +353,7 @@ const styles = {
   navIcon: {
     fontSize: 'var(--font-size-lg)',
     lineHeight: 1,
+    filter: 'brightness(0) invert(1)',
   },
   actions: {
     display: 'flex',
@@ -373,6 +377,7 @@ const styles = {
   },
   icon: {
     display: 'block',
+    filter: 'brightness(0) invert(1)',
   },
   badge: {
     position: 'absolute',
@@ -414,6 +419,7 @@ const styles = {
   },
   userIcon: {
     fontSize: '17px',
+    filter: 'brightness(0) invert(1)',
   },
   userMenu: {
     position: 'absolute',
