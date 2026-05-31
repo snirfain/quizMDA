@@ -19,6 +19,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -26,6 +27,16 @@ jobs:
       - name: Run server & DAG engine unit tests
         run: node --test workflows/rollingCaseEngine.test.mjs
 
+      # Render auto-deploys on push to main; this hook is an optional explicit
+      # trigger. Guarded so a missing/empty secret never fails the pipeline.
       - name: Trigger Render deploy
         if: success()
-        run: curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "Triggering Render deploy hook..."
+            curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+          else
+            echo "RENDER_DEPLOY_HOOK_URL not set — skipping (Render auto-deploys on push)."
+          fi

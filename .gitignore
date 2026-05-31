@@ -1,7 +1,7 @@
 # Dependencies
 node_modules/
-package-lock.json
 yarn.lock
+# NOTE: package-lock.json MUST be committed — `npm ci` and CI caching require it.
 
 # Environment variables
 .env
@@ -23,6 +23,12 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+# macOS AppleDouble / resource-fork files (created on exFAT/non-HFS drives)
+._*
+**/._*
+.AppleDouble
+.Spotlight-V100
+.Trashes
 
 # Base44 specific
 .base44/
