@@ -10,6 +10,7 @@ import { navigateTo } from '../utils/router';
 import { getCurrentUser, logout } from '../utils/auth';
 import { getUserNotifications } from '../workflows/notifications';
 import NotificationsPanel from './NotificationsPanel';
+import Icon from './Icon';
 
 export default function NavigationBar({ onMenuToggle }) {
   const [navItems, setNavItems] = useState([]);
@@ -115,7 +116,9 @@ export default function NavigationBar({ onMenuToggle }) {
             style={styles.logo}
             aria-label="דף הבית"
           >
-            <span style={styles.logoStar} aria-hidden="true">✡</span>
+            <span style={styles.logoStar} aria-hidden="true">
+              <Icon name="logo" size={26} strokeWidth={1.8} />
+            </span>
             <span className="nav-brand-text">
               <span style={styles.logoText}>מד"א</span>
               <span style={styles.logoSub} className="nav-brand-sub">מגן דוד אדום</span>
@@ -143,7 +146,7 @@ export default function NavigationBar({ onMenuToggle }) {
                     title={item.label}
                   >
                     <span style={styles.navIcon} aria-hidden="true">
-                      {item.icon}
+                      <Icon name={item.icon} size={18} />
                     </span>
                     <span className="nav-link-label">{item.label}</span>
                   </a>
@@ -163,7 +166,9 @@ export default function NavigationBar({ onMenuToggle }) {
             aria-expanded={showNotifications}
             aria-haspopup="true"
           >
-            <span style={styles.icon} aria-hidden="true">🔔</span>
+            <span style={styles.icon} aria-hidden="true">
+              <Icon name="bell" size={20} />
+            </span>
             {unreadCount > 0 && (
               <span style={styles.badge} aria-label={`${unreadCount} התראות לא נקראו`}>
                 {unreadCount > 9 ? '9+' : unreadCount}
@@ -182,7 +187,9 @@ export default function NavigationBar({ onMenuToggle }) {
               aria-haspopup="true"
             >
               <span style={styles.userName} className="nav-user-name">{user.full_name}</span>
-              <span style={styles.userIcon} aria-hidden="true">👤</span>
+              <span style={styles.userIcon} aria-hidden="true">
+                <Icon name="user" size={18} />
+              </span>
             </button>
 
             {showUserMenu && (
@@ -235,12 +242,19 @@ export default function NavigationBar({ onMenuToggle }) {
           {/* Mobile Menu Toggle */}
           {isMobile && (
             <button
+              type="button"
               style={styles.menuToggle}
-              onClick={() => onMenuToggle?.()}
+              data-menu-toggle
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onMenuToggle?.();
+              }}
               aria-label="תפריט"
-              aria-expanded="false"
             >
-              <span style={styles.menuIcon} aria-hidden="true">☰</span>
+              <span style={styles.menuIcon} aria-hidden="true">
+                <Icon name="menu" size={24} />
+              </span>
             </button>
           )}
         </div>
@@ -298,13 +312,9 @@ const styles = {
     gap: 'var(--space-2)',
   },
   logoStar: {
-    fontSize: '28px',
     lineHeight: 1,
     display: 'flex',
     alignItems: 'center',
-    // Render the (colored) emoji glyph as a solid white silhouette so it
-    // keeps strong contrast against the red header bar.
-    filter: 'brightness(0) invert(1)',
   },
   logoText: {
     fontSize: '22px',
@@ -351,9 +361,9 @@ const styles = {
     fontWeight: 700,
   },
   navIcon: {
-    fontSize: 'var(--font-size-lg)',
+    display: 'flex',
+    alignItems: 'center',
     lineHeight: 1,
-    filter: 'brightness(0) invert(1)',
   },
   actions: {
     display: 'flex',
@@ -376,8 +386,8 @@ const styles = {
     transition: 'background var(--transition)',
   },
   icon: {
-    display: 'block',
-    filter: 'brightness(0) invert(1)',
+    display: 'flex',
+    alignItems: 'center',
   },
   badge: {
     position: 'absolute',
@@ -418,8 +428,8 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   userIcon: {
-    fontSize: '17px',
-    filter: 'brightness(0) invert(1)',
+    display: 'flex',
+    alignItems: 'center',
   },
   userMenu: {
     position: 'absolute',

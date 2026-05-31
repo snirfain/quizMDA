@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import NavigationBar from './NavigationBar';
+import Icon from './Icon';
 import Breadcrumbs from './Breadcrumbs';
 import ErrorBoundary from './ErrorBoundary';
 import SkipLink from './SkipLink';
@@ -58,7 +59,11 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
   // Close mobile menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (mobileMenuOpen && !e.target.closest('[data-mobile-menu]')) {
+      if (
+        mobileMenuOpen &&
+        !e.target.closest('[data-mobile-menu]') &&
+        !e.target.closest('[data-menu-toggle]')
+      ) {
         setMobileMenuOpen(false);
       }
     };
@@ -82,7 +87,7 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
         </header>
 
         {/* Mobile Menu Overlay */}
-        {mobileMenuOpen && isMobile && (
+        {mobileMenuOpen && (
           <div 
             style={styles.mobileOverlay}
             onClick={() => setMobileMenuOpen(false)}
@@ -90,8 +95,9 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
           />
         )}
 
-        {/* Mobile Sidebar */}
-        {isMobile && mobileMenuOpen && (
+        {/* Mobile Sidebar — rendered whenever open (the toggle only appears
+            below the collapse breakpoint, so this can't show on desktop). */}
+        {mobileMenuOpen && (
           <aside
             style={styles.mobileSidebar}
             data-mobile-menu
@@ -107,7 +113,7 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
                     className="nav-mobile-link"
                     style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
                   >
-                    <span aria-hidden="true">{item.icon}</span>
+                    <Icon name={item.icon} size={20} />
                     {item.label}
                   </a>
                 </li>

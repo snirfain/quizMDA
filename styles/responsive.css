@@ -11,16 +11,18 @@ img, svg, video, canvas, iframe, embed, object {
 }
 img, video, canvas { height: auto; }
 
-/* Long words / URLs / Hebrew strings must wrap, never overflow.
-   `break-word` only breaks a word when it would otherwise overflow, so it is
-   safe to inherit site-wide (unlike the more aggressive `anywhere`). */
-body {
+/* Long words / URLs that would otherwise overflow are allowed to break, but
+   ONLY for prose blocks — never table cells (which must keep their words
+   intact and scroll horizontally instead) and never with `word-break`, which
+   shatters short Hebrew words like "מדיה" into vertical stacks and forces
+   expensive per-character relayout on large tables. */
+body, p, li, h1, h2, h3, h4, h5, h6, .card, .list-card {
   overflow-wrap: break-word;
 }
-p, li, td, th, h1, h2, h3, h4, h5, h6, .card, .list-card {
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
+/* Keep table headers/cells on natural word boundaries; tables scroll inside
+   their own containers (.table-wrap / overflow-x:auto) when space is tight. */
+th { white-space: nowrap; }
+td { overflow-wrap: normal; }
 
 pre, code {
   white-space: pre-wrap;
