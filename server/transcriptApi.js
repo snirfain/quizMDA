@@ -7,6 +7,7 @@ import multer from 'multer';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 import Transcript from '../models/Transcript.js';
+import Job from '../models/Job.js';
 import { TRANSCRIPT_QUESTION_SYSTEM_PROMPT, buildTranscriptQuestionUserPrompt } from './transcriptQuestionPrompt.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
 
@@ -359,47 +360,127 @@ function splitIntoChunks(text, maxLen) {
   return chunks;
 }
 
-const spellingJobs = new Map();
+// ── DB-backed job state helpers ─────────────────────────────────────────────
+//
+// Canonical statuses live in MongoDB (models/Job.js): pending → processing →
+// completed | failed. The client wire format is mapped via toWireStatus().
+
+async function createJob(type, params) {
+  const job_id = crypto.randomUUID();
+  await Job.create({ job_id, type, status: 'pending', params, progress: { done: 0, total: 0 } });
+  return job_id;
+}
+
+async function markJobProcessing(jobId, total = 0) {
+  await Job.updateOne(
+    { job_id: jobId },
+    { $set: { status: 'processing', startedAt: new Date(), 'progress.total': total } },
+  );
+}
+
+async function setJobProgress(jobId, done) {
+  await Job.updateOne({ job_id: jobId }, { $set: { 'progress.done': done } });
+}
+
+async function completeJob(jobId, result) {
+  await Job.updateOne(
+    { job_id: jobId },
+    { $set: { status: 'completed', result, error: null, finishedAt: new Date() } },
+  );
+}
+
+async function failJob(jobId, message) {
+  await Job.updateOne(
+    { job_id: jobId },
+    { $set: { status: 'failed', error: String(message || 'שגיאה לא ידועה'), finishedAt: new Date() } },
+  );
+}
+
+/** Map the canonical DB status to the wire format the client already expects. */
+function toWireStatus(status) {
+  if (status === 'completed') return 'done';
+  if (status === 'failed') return 'error';
+  return 'pending'; // 'pending' or 'processing'
+}
+
+/**
+ * On server boot, any job left in pending/processing is from a crashed/restarted
+ * worker — mark it failed so it never stays stuck forever.
+ */
+export async function recoverStuckJobs() {
+  try {
+    if (!isDbConnected()) return;
+    const r = await Job.updateMany(
+      { status: { $in: ['pending', 'processing'] } },
+      {
+        $set: {
+          status: 'failed',
+          error: 'השרת אותחל באמצע התהליך. יש להריץ את הפעולה מחדש.',
+          finishedAt: new Date(),
+        },
+      },
+    );
+    if (r.modifiedCount) console.log(`[jobs] recovered ${r.modifiedCount} stuck job(s) → failed`);
+  } catch (err) {
+    console.error('[jobs] recoverStuckJobs error:', err.message);
+  }
+}
 
 /**
  * POST /api/transcripts/fix-spelling
  * Starts an async job that corrects spelling in all transcripts (or specific IDs).
  */
-export function startFixSpelling(req, res) {
-  const { transcriptIds } = req.body || {};
-  const jobId = crypto.randomUUID();
-  const job = { id: jobId, status: 'pending', params: { transcriptIds }, progress: { done: 0, total: 0 } };
-  spellingJobs.set(jobId, job);
-  runSpellingJob(job);
-  res.json({ jobId });
-}
-
-async function runSpellingJob(job) {
+export async function startFixSpelling(req, res) {
   try {
     await ensureDbConnection();
     if (!isDbConnected()) {
-      job.status = 'error'; job.error = 'Database not connected'; return;
+      return res.status(503).json({ error: 'מסד הנתונים אינו מחובר' });
+    }
+    const { transcriptIds } = req.body || {};
+    const jobId = await createJob('fix-spelling', { transcriptIds });
+    // Fire and forget — the worker persists every state change to the DB.
+    runSpellingJob(jobId).catch((err) => {
+      console.error('[fix-spelling] worker crashed:', err);
+      failJob(jobId, err.message).catch(() => {});
+    });
+    res.json({ jobId });
+  } catch (err) {
+    console.error('POST /api/transcripts/fix-spelling error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function runSpellingJob(jobId) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      await failJob(jobId, 'מסד הנתונים אינו מחובר');
+      return;
     }
     const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
     if (!apiKey) {
-      job.status = 'error'; job.error = 'OPENAI_API_KEY לא מוגדר'; return;
+      await failJob(jobId, 'OPENAI_API_KEY לא מוגדר בסביבת השרת');
+      return;
     }
 
-    const { transcriptIds } = job.params;
+    const job = await Job.findOne({ job_id: jobId }).lean();
+    const transcriptIds = job?.params?.transcriptIds;
     const query = Array.isArray(transcriptIds) && transcriptIds.length > 0
       ? { _id: { $in: transcriptIds } } : {};
     const transcripts = await Transcript.find(query).lean();
 
     if (transcripts.length === 0) {
-      job.status = 'error'; job.error = 'לא נמצאו תמלולים'; return;
+      await failJob(jobId, 'לא נמצאו תמלולים');
+      return;
     }
 
-    job.progress.total = transcripts.length;
+    await markJobProcessing(jobId, transcripts.length);
     let fixed = 0;
+    let done = 0;
 
     for (const t of transcripts) {
       if (!t.fullText || t.fullText.trim().length < 10) {
-        job.progress.done++;
+        await setJobProgress(jobId, ++done);
         continue;
       }
       try {
@@ -417,51 +498,43 @@ async function runSpellingJob(job) {
       } catch (e) {
         console.error(`[fix-spelling] error on transcript ${t.name}:`, e.message);
       }
-      job.progress.done++;
+      await setJobProgress(jobId, ++done);
     }
 
-    job.status = 'done';
-    job.result = { total: transcripts.length, fixed };
+    await completeJob(jobId, { total: transcripts.length, fixed });
     console.log(`[fix-spelling] done: ${fixed}/${transcripts.length} transcripts corrected`);
   } catch (err) {
     console.error('[fix-spelling] fatal error:', err);
-    job.status = 'error';
-    job.error = err.message;
+    await failJob(jobId, err.message);
   }
 }
 
 /**
  * GET /api/transcripts/fix-spelling/status/:jobId
+ * Returns the real status from the DB: { status: 'pending'|'done'|'error', ... }.
  */
-export function getFixSpellingStatus(req, res) {
-  const { jobId } = req.params;
-  const job = spellingJobs.get(jobId);
-  if (!job) return res.status(404).json({ error: 'Job not found' });
+export async function getFixSpellingStatus(req, res) {
+  try {
+    await ensureDbConnection();
+    const { jobId } = req.params;
+    const job = await Job.findOne({ job_id: jobId, type: 'fix-spelling' }).lean();
+    if (!job) return res.status(404).json({ status: 'error', error: 'הג׳וב לא נמצא' });
 
-  if (job.status === 'pending') {
-    return res.json({ status: 'pending', progress: job.progress });
-  }
-  if (job.status === 'done') {
-    const result = job.result;
-    spellingJobs.delete(jobId);
-    return res.json({ status: 'done', ...result });
-  }
-  const error = job.error;
-  spellingJobs.delete(jobId);
-  return res.json({ status: 'error', error });
-}
-
-// ── Async question generation with in-memory job store ──────────────────────
-
-const jobs = new Map();
-const JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes
-
-function cleanupOldJobs() {
-  const now = Date.now();
-  for (const [id, job] of jobs) {
-    if (now - job.createdAt > JOB_TTL_MS) jobs.delete(id);
+    const wire = toWireStatus(job.status);
+    if (wire === 'done') {
+      return res.json({ status: 'done', state: job.status, ...(job.result || {}) });
+    }
+    if (wire === 'error') {
+      return res.json({ status: 'error', state: job.status, error: job.error });
+    }
+    return res.json({ status: 'pending', state: job.status, progress: job.progress });
+  } catch (err) {
+    console.error('GET /api/transcripts/fix-spelling/status error:', err);
+    res.status(500).json({ status: 'error', error: err.message });
   }
 }
+
+// ── Async question generation (DB-backed job store) ─────────────────────────
 
 function parseQuestionsJsonFromAI(content) {
   if (!content || typeof content !== 'string') return [];
@@ -508,10 +581,10 @@ async function normalizeGeneratedQuestion(q) {
 }
 
 /**
- * Background worker: runs the actual OpenAI call for a job.
- * Updates the job object in-place so the status endpoint can return results.
+ * Background worker: runs the actual OpenAI call for a generation job.
+ * Persists every state transition to MongoDB (models/Job.js).
  */
-async function runGenerationJob(job) {
+async function runGenerationJob(jobId) {
   try {
     await ensureDbConnection();
     if (!isDbConnected()) {
@@ -519,17 +592,20 @@ async function runGenerationJob(job) {
       await ensureDbConnection();
     }
     if (!isDbConnected()) {
-      job.status = 'error';
-      job.error = 'Database not connected';
+      await failJob(jobId, 'מסד הנתונים אינו מחובר');
       return;
     }
     const apiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
     if (!apiKey) {
-      job.status = 'error';
-      job.error = 'OPENAI_API_KEY לא מוגדר בסביבת השרת';
+      await failJob(jobId, 'OPENAI_API_KEY לא מוגדר בסביבת השרת');
       return;
     }
-    const { transcriptId, transcriptName, transcriptIds, count, excludeQuestionTexts: excludeFromBody } = job.params;
+
+    const jobDoc = await Job.findOne({ job_id: jobId }).lean();
+    const { transcriptId, transcriptName, transcriptIds, count, excludeQuestionTexts: excludeFromBody } =
+      jobDoc?.params || {};
+
+    await markJobProcessing(jobId, count || 0);
 
     let transcripts = [];
     if (Array.isArray(transcriptIds) && transcriptIds.length > 0) {
@@ -542,8 +618,7 @@ async function runGenerationJob(job) {
       if (one) transcripts = [one];
     }
     if (transcripts.length === 0) {
-      job.status = 'error';
-      job.error = 'לא נמצאו תמלילים';
+      await failJob(jobId, 'לא נמצאו תמלילים');
       return;
     }
 
@@ -552,8 +627,7 @@ async function runGenerationJob(job) {
       .filter(Boolean)
       .join('\n\n---\n\n');
     if (!combinedText) {
-      job.status = 'error';
-      job.error = 'התמלילים ריקים';
+      await failJob(jobId, 'התמלילים ריקים');
       return;
     }
 
@@ -590,8 +664,7 @@ async function runGenerationJob(job) {
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       console.error('OpenAI error:', response.status, errText.slice(0, 300));
-      job.status = 'error';
-      job.error = 'שגיאה מ-OpenAI: ' + (errText.slice(0, 200) || response.statusText);
+      await failJob(jobId, 'שגיאה מ-OpenAI: ' + (errText.slice(0, 200) || response.statusText));
       return;
     }
 
@@ -606,14 +679,16 @@ async function runGenerationJob(job) {
     const filteredQuestions = questions.filter((q) => q.question_text);
 
     const transcriptNameLabel = transcriptNames.length === 1 ? transcriptNames[0] : transcriptNames.join(', ');
-    console.log('[generate-questions job]', job.id, transcriptNameLabel, 'requested', count, 'got', filteredQuestions.length);
+    console.log('[generate-questions job]', jobId, transcriptNameLabel, 'requested', count, 'got', filteredQuestions.length);
 
-    job.status = 'done';
-    job.result = { questions: filteredQuestions, transcriptName: transcriptNameLabel, transcriptNames };
+    await completeJob(jobId, {
+      questions: filteredQuestions,
+      transcriptName: transcriptNameLabel,
+      transcriptNames,
+    });
   } catch (err) {
-    console.error('[generate-questions job error]', job.id, err);
-    job.status = 'error';
-    job.error = err.message || 'שגיאה בלתי צפויה';
+    console.error('[generate-questions job error]', jobId, err);
+    await failJob(jobId, err.message || 'שגיאה בלתי צפויה');
   }
 }
 
@@ -622,27 +697,29 @@ async function runGenerationJob(job) {
  * Returns { jobId } immediately. The actual generation runs in background.
  * Client polls GET /api/transcripts/generate-questions/status/:jobId for results.
  */
-export function generateQuestionsFromTranscript(req, res) {
+export async function generateQuestionsFromTranscript(req, res) {
   try {
-    cleanupOldJobs();
-
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      return res.status(503).json({ error: 'מסד הנתונים אינו מחובר' });
+    }
     const body = req.body || {};
     const { transcriptId, transcriptName, transcriptIds, count: requestedCount, excludeQuestionTexts } = body;
     const count = Math.min(Math.max(1, parseInt(requestedCount, 10) || 10), 100);
 
-    const jobId = crypto.randomUUID();
-    const job = {
-      id: jobId,
-      status: 'pending',
-      createdAt: Date.now(),
-      params: { transcriptId, transcriptName, transcriptIds, count, excludeQuestionTexts },
-      result: null,
-      error: null,
-    };
-    jobs.set(jobId, job);
+    const jobId = await createJob('generate-questions', {
+      transcriptId,
+      transcriptName,
+      transcriptIds,
+      count,
+      excludeQuestionTexts,
+    });
 
-    // Fire and forget — runs in background, not blocking the HTTP response
-    runGenerationJob(job);
+    // Fire and forget — worker persists all state to the DB.
+    runGenerationJob(jobId).catch((err) => {
+      console.error('[generate-questions] worker crashed:', err);
+      failJob(jobId, err.message).catch(() => {});
+    });
 
     res.json({ jobId });
   } catch (err) {
@@ -653,24 +730,26 @@ export function generateQuestionsFromTranscript(req, res) {
 
 /**
  * GET /api/transcripts/generate-questions/status/:jobId
- * Returns the job status: { status: "pending" | "done" | "error", questions?, error? }
+ * Returns the real status from the DB: { status: 'pending'|'done'|'error', ... }.
  */
-export function getGenerateQuestionsStatus(req, res) {
-  const { jobId } = req.params;
-  const job = jobs.get(jobId);
-  if (!job) {
-    return res.status(404).json({ status: 'error', error: 'Job not found (may have expired)' });
+export async function getGenerateQuestionsStatus(req, res) {
+  try {
+    await ensureDbConnection();
+    const { jobId } = req.params;
+    const job = await Job.findOne({ job_id: jobId, type: 'generate-questions' }).lean();
+    if (!job) {
+      return res.status(404).json({ status: 'error', error: 'הג׳וב לא נמצא' });
+    }
+    const wire = toWireStatus(job.status);
+    if (wire === 'done') {
+      return res.json({ status: 'done', state: job.status, ...(job.result || {}) });
+    }
+    if (wire === 'error') {
+      return res.json({ status: 'error', state: job.status, error: job.error });
+    }
+    return res.json({ status: 'pending', state: job.status, progress: job.progress });
+  } catch (err) {
+    console.error('GET /api/transcripts/generate-questions/status error:', err);
+    res.status(500).json({ status: 'error', error: err.message });
   }
-  if (job.status === 'pending') {
-    return res.json({ status: 'pending' });
-  }
-  if (job.status === 'done') {
-    const result = job.result;
-    jobs.delete(jobId);
-    return res.json({ status: 'done', ...result });
-  }
-  // error
-  const error = job.error;
-  jobs.delete(jobId);
-  return res.json({ status: 'error', error });
 }

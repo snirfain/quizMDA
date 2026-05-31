@@ -5,7 +5,9 @@
  */
 import mongoose from 'mongoose';
 import Question from '../models/Question.js';
+import QuestionVersion from '../models/QuestionVersion.js';
 import ProtocolChunk from '../models/ProtocolChunk.js';
+import { getActor } from './authMiddleware.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
 import {
   QUESTION_CATEGORIES,
@@ -252,15 +254,21 @@ export async function updateQuestion(req, res) {
     const body = req.body || {};
     const isPartial = !body.question_text;
     let data = isPartial ? normalizePartialUpdate(body) : normalizeQuestionForDb(body);
+
+    // Snapshot the question BEFORE the update for the version history.
+    const current = await Question.findById(id).lean();
+    if (!current) return res.status(404).json({ error: 'Question not found' });
+
     if (isPartial) {
-      const current = await Question.findById(id).lean();
-      if (!current) return res.status(404).json({ error: 'Question not found' });
       const merged = { ...current, ...data };
       data.has_media = computeQuestionHasMedia({
         media_attachment: merged.media_attachment,
         media_bank_tag: merged.media_bank_tag,
       });
     }
+
+    await saveQuestionVersion(id, current, data, req);
+
     const doc = await Question.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: false }).lean();
     if (!doc) return res.status(404).json({ error: 'Question not found' });
 
@@ -270,6 +278,108 @@ export async function updateQuestion(req, res) {
     console.error('PUT /api/questions/:id error:', err);
     const isValidation = err.name === 'ValidationError';
     res.status(isValidation ? 400 : 500).json({ error: err.message || 'Update failed' });
+  }
+}
+
+/**
+ * Persist a snapshot of the question's PRE-update state to the question_versions
+ * collection. Never blocks the update on failure (logs and continues), but any
+ * error is surfaced to the console for observability.
+ */
+async function saveQuestionVersion(questionId, previousDoc, incomingData, req) {
+  try {
+    if (!previousDoc) return;
+    const { _id, __v, createdAt, updatedAt, ...snapshot } = previousDoc;
+
+    // Best-effort diff of which fields are being changed.
+    const changedFields = [];
+    for (const key of Object.keys(incomingData || {})) {
+      const before = JSON.stringify(previousDoc[key] ?? null);
+      const after = JSON.stringify(incomingData[key] ?? null);
+      if (before !== after) changedFields.push(key);
+    }
+
+    const lastVersion = await QuestionVersion.findOne({ question_id: String(questionId) })
+      .sort({ version_number: -1 })
+      .select('version_number')
+      .lean();
+    const nextVersion = (lastVersion?.version_number || 0) + 1;
+
+    const actor = getActor(req);
+    await QuestionVersion.create({
+      question_id: String(questionId),
+      version_number: nextVersion,
+      question_data: snapshot,
+      changed_fields: changedFields,
+      changed_by: actor,
+      changed_at: new Date(),
+    });
+  } catch (err) {
+    console.error('[question-versions] failed to snapshot question', questionId, err.message);
+  }
+}
+
+/**
+ * GET /api/questions/:id/versions
+ * Returns the version history of a question (newest first).
+ */
+export async function listQuestionVersions(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      return res.status(503).json({ error: 'מסד הנתונים אינו מחובר' });
+    }
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'מזהה שאלה אינו תקין' });
+    }
+    const versions = await QuestionVersion.find({ question_id: String(id) })
+      .sort({ version_number: -1 })
+      .lean();
+    res.set('Cache-Control', 'no-store');
+    res.json(versions);
+  } catch (err) {
+    console.error('GET /api/questions/:id/versions error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * POST /api/media/merge-tags
+ * Merge several media_bank_tag values into a single new tag across all questions.
+ * Body: { oldTags: string[], newTagName: string }
+ */
+export async function mergeMediaTags(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) {
+      return res.status(503).json({ error: 'מסד הנתונים אינו מחובר' });
+    }
+    const { oldTags, newTagName } = req.body || {};
+    if (!Array.isArray(oldTags) || oldTags.length === 0) {
+      return res.status(400).json({ error: 'יש לספק רשימת תגים לאיחוד (oldTags)' });
+    }
+    const newTag = String(newTagName || '').trim();
+    if (!newTag) {
+      return res.status(400).json({ error: 'יש לספק שם תג חדש (newTagName)' });
+    }
+    const cleanOld = [...new Set(oldTags.map((t) => String(t || '').trim()).filter(Boolean))];
+    if (cleanOld.length === 0) {
+      return res.status(400).json({ error: 'רשימת התגים לאיחוד ריקה' });
+    }
+
+    const result = await Question.updateMany(
+      { media_bank_tag: { $in: cleanOld } },
+      { $set: { media_bank_tag: newTag } },
+    );
+    const matched = result.matchedCount ?? result.n ?? 0;
+    const modified = result.modifiedCount ?? result.nModified ?? 0;
+
+    console.log(`[media/merge-tags] ${cleanOld.join(', ')} → "${newTag}" | matched ${matched}, modified ${modified}`);
+    res.json({ success: true, newTag, mergedTags: cleanOld, matched, modified });
+  } catch (err) {
+    console.error('POST /api/media/merge-tags error:', err);
+    res.status(500).json({ error: err.message });
   }
 }
 

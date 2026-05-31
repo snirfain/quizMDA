@@ -4,7 +4,7 @@
  * Hebrew: בחינה מדומה
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getPracticeSession } from '../workflows/adaptivePracticeEngine';
 import { generateTraineeExam } from '../workflows/testGenerator';
 import { getCurrentUser } from '../utils/auth';
@@ -14,7 +14,14 @@ import { showToast } from './Toast';
 import { announce } from '../utils/accessibility';
 import QuestionReportModal from './QuestionReportModal';
 import QuestionResolvedMedia from './QuestionResolvedMedia';
+import GoogleSignIn from './GoogleSignIn';
 import { computeRollingCaseTotalScore } from '../workflows/rollingCaseEngine';
+import {
+  secureSubmit,
+  isTokenExpiringSoon,
+  EXAM_EMERGENCY_BACKUP_KEY,
+  TOKEN_CRITICAL_EVENT,
+} from '../utils/apiClient';
 
 const safeParse = (v, fallback = []) => {
   if (Array.isArray(v)) return v;
@@ -45,6 +52,12 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
   const [effectiveQuestionUnits, setEffectiveQuestionUnits] = useState(questionCount);
   const [rollingProgress, setRollingProgress] = useState({});
   const [rollingDraft, setRollingDraft] = useState({});
+  // Emergency recovery + blocking re-auth (token expiration guard)
+  const [recoveryBackup, setRecoveryBackup] = useState(null);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [showReauthModal, setShowReauthModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const pendingSubmitRef = useRef(null); // examResults awaiting a successful (re)submit
   const timerRef = useRef(null);
 
   const hasTimeLimit = timeLimit < 999;
@@ -67,6 +80,64 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
       };
     }
   }, [isStarted, timeRemaining, hasTimeLimit]);
+
+  // ── On mount: detect an emergency backup from a previous interrupted exam ──
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(EXAM_EMERGENCY_BACKUP_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.state) {
+          setRecoveryBackup(parsed);
+          setShowRecoveryModal(true);
+        } else {
+          localStorage.removeItem(EXAM_EMERGENCY_BACKUP_KEY);
+        }
+      }
+    } catch (err) {
+      console.error('שגיאה בקריאת גיבוי החירום:', err);
+      try { localStorage.removeItem(EXAM_EMERGENCY_BACKUP_KEY); } catch (_) { /* ignore */ }
+    }
+  }, []);
+
+  // ── Listen for the global "token critically expired" event ────────────────
+  useEffect(() => {
+    const onCritical = () => {
+      console.error('זוהה אירוע פקיעת טוקן קריטית — פתיחת מודאל התחברות מחדש');
+      setShowReauthModal(true);
+    };
+    window.addEventListener(TOKEN_CRITICAL_EVENT, onCritical);
+    return () => window.removeEventListener(TOKEN_CRITICAL_EVENT, onCritical);
+  }, []);
+
+  // ── Recovery modal actions ────────────────────────────────────────────────
+  const handleRecoveryConfirm = useCallback(() => {
+    try {
+      const state = recoveryBackup?.state || {};
+      if (Array.isArray(state.questions) && state.questions.length) setQuestions(state.questions);
+      if (state.answers && typeof state.answers === 'object') setAnswers(state.answers);
+      if (typeof state.currentIndex === 'number') setCurrentIndex(state.currentIndex);
+      if (state.rollingProgress && typeof state.rollingProgress === 'object') setRollingProgress(state.rollingProgress);
+      if (state.rollingDraft && typeof state.rollingDraft === 'object') setRollingDraft(state.rollingDraft);
+      if (typeof state.effectiveQuestionUnits === 'number') setEffectiveQuestionUnits(state.effectiveQuestionUnits);
+      if (typeof state.timeRemaining === 'number') setTimeRemaining(state.timeRemaining);
+      setIsStarted(true);
+      showToast('המבחן שוחזר בהצלחה — ניתן להמשיך מהנקודה שבה עצרת', 'success');
+    } catch (err) {
+      console.error('שחזור המבחן נכשל:', err);
+      showToast('שחזור המבחן נכשל', 'error');
+    } finally {
+      try { localStorage.removeItem(EXAM_EMERGENCY_BACKUP_KEY); } catch (_) { /* ignore */ }
+      setShowRecoveryModal(false);
+      setRecoveryBackup(null);
+    }
+  }, [recoveryBackup]);
+
+  const handleRecoveryDecline = useCallback(() => {
+    try { localStorage.removeItem(EXAM_EMERGENCY_BACKUP_KEY); } catch (err) { console.error('מחיקת גיבוי נכשלה:', err); }
+    setShowRecoveryModal(false);
+    setRecoveryBackup(null);
+  }, []);
 
   const loadQuestions = async () => {
     setIsLoading(true);
@@ -222,27 +293,84 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
     return false;
   };
 
+  /** Snapshot of everything needed to resume the exam after an interruption. */
+  const buildBackupState = (examResults) => ({
+    questions,
+    answers,
+    currentIndex,
+    rollingProgress,
+    rollingDraft,
+    effectiveQuestionUnits,
+    timeRemaining,
+    results: examResults,
+    isStarted: true,
+  });
+
+  /**
+   * Submit the exam through secureSubmit (token expiration guard). On a token
+   * failure secureSubmit backs up the answers and fires the critical event, so
+   * the blocking re-auth modal opens and we keep the results pending for retry.
+   */
+  const performExamSubmit = async (examResults) => {
+    setIsSubmitting(true);
+    pendingSubmitRef.current = examResults;
+    try {
+      const user = await getCurrentUser();
+      const payload = {
+        user_id: user?.user_id || null,
+        score: examResults.score,
+        totalQuestions: examResults.totalQuestions,
+        scoreUnits: examResults.scoreUnits,
+        questionIds: questions.map((q) => q.id),
+        answers,
+        timeSpent: examResults.timeSpent,
+        submittedAt: new Date().toISOString(),
+      };
+
+      await secureSubmit('/api/exam/submit', payload, buildBackupState(examResults));
+
+      // Success — finalize and clear the pending submit.
+      pendingSubmitRef.current = null;
+      setResults(examResults);
+      setIsSubmitted(true);
+      if (timerRef.current) clearInterval(timerRef.current);
+      announce('בחינה הוגשה');
+      return true;
+    } catch (err) {
+      console.error('הגשת הבחינה נכשלה:', err);
+      // Token issues are handled by the blocking re-auth modal (event already fired).
+      if (!isTokenExpiringSoon()) {
+        showToast(err?.message || 'שגיאה בהגשת הבחינה', 'error');
+      }
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  /** After a successful Google re-auth, close the modal and retry the failed submit. */
+  const handleReauthSuccess = useCallback(async () => {
+    setShowReauthModal(false);
+    showToast('התחברת מחדש — מגיש את המבחן באופן אוטומטי', 'success');
+    const pending = pendingSubmitRef.current;
+    if (pending) {
+      await performExamSubmit(pending);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions, answers, currentIndex, rollingProgress, rollingDraft, effectiveQuestionUnits, timeRemaining]);
+
   const handleSubmit = async () => {
     if (window.confirm('האם אתה בטוח שברצונך להגיש את הבחינה?')) {
       const examResults = await calculateResults();
-      setResults(examResults);
-      setIsSubmitted(true);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      announce('בחינה הוגשה');
+      await performExamSubmit(examResults);
     }
   };
 
   const handleAutoSubmit = async () => {
     const examResults = await calculateResults();
-    setResults(examResults);
-    setIsSubmitted(true);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    showToast('הזמן נגמר - הבחינה הוגשה אוטומטית', 'warning');
-    announce('הזמן נגמר - הבחינה הוגשה אוטומטית');
+    showToast('הזמן נגמר - מגיש את הבחינה', 'warning');
+    announce('הזמן נגמר - הבחינה מוגשת');
+    await performExamSubmit(examResults);
   };
 
   const formatTime = (seconds) => {
@@ -251,8 +379,61 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // ── Blocking / recovery overlays (rendered in every screen state) ─────────
+  const renderOverlays = () => (
+    <>
+      {showRecoveryModal && (
+        <div style={styles.overlay} role="dialog" aria-modal="true" dir="rtl">
+          <div style={styles.modalCard}>
+            <h3 style={styles.modalTitle}>שחזור מבחן</h3>
+            <p style={styles.modalText}>
+              זיהינו מבחן שהופסק באופן לא צפוי. האם ברצונך לשחזר את התשובות שלך ולהמשיך מהנקודה שבה עצרת?
+            </p>
+            <div style={styles.modalActions}>
+              <button type="button" style={styles.modalPrimaryBtn} onClick={handleRecoveryConfirm}>
+                שחזר והמשך
+              </button>
+              <button type="button" style={styles.modalGhostBtn} onClick={handleRecoveryDecline}>
+                התחל מבחן חדש
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReauthModal && (
+        <div style={styles.overlay} role="dialog" aria-modal="true" dir="rtl">
+          <div style={styles.modalCard}>
+            <h3 style={styles.modalTitle}>נדרשת התחברות מחדש</h3>
+            <p style={styles.modalText}>
+              תוקף החיבור המאובטח פג. כדי למנוע אובדן מידע, אנא התחבר מחדש באמצעות גוגל כדי להגיש את המבחן בבטחה.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+              <GoogleSignIn
+                onSuccess={handleReauthSuccess}
+                onError={(msg) => showToast(msg || 'ההתחברות נכשלה, נסה שוב', 'error')}
+              />
+            </div>
+            {isSubmitting && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8 }}>
+                <LoadingSpinner size="sm" />
+                <span style={{ fontSize: 14, color: '#555' }}>מגיש מחדש…</span>
+              </div>
+            )}
+            <p style={styles.modalHint}>התשובות שלך נשמרו באופן מקומי ולא ייאבדו.</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   if (isLoading) {
-    return <LoadingSpinner fullScreen message="טוען שאלות..." />;
+    return (
+      <>
+        <LoadingSpinner fullScreen message="טוען שאלות..." />
+        {renderOverlays()}
+      </>
+    );
   }
 
   if (isSubmitted && results) {
@@ -267,6 +448,8 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
 
   if (!isStarted) {
     return (
+      <>
+      {renderOverlays()}
       <div style={styles.startScreen}>
           <h1 style={styles.title}>בחינה מדומה</h1>
           <div style={styles.info}>
@@ -297,6 +480,7 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
             התחל בחינה
           </button>
         </div>
+      </>
     );
   }
 
@@ -305,6 +489,7 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
 
   return (
     <div style={styles.examContainer}>
+        {renderOverlays()}
         {/* Header */}
         <div style={styles.header}>
           {hasTimeLimit && (
@@ -824,5 +1009,68 @@ const styles = {
     height: '100%',
     backgroundColor: '#4CAF50',
     transition: 'width 0.3s ease'
-  }
+  },
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10000,
+    direction: 'rtl',
+    padding: '16px',
+  },
+  modalCard: {
+    background: '#FFFFFF',
+    borderRadius: '14px',
+    padding: '28px',
+    maxWidth: '460px',
+    width: '100%',
+    boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+    textAlign: 'center',
+  },
+  modalTitle: {
+    fontSize: '20px',
+    fontWeight: 800,
+    color: '#1a1a2e',
+    marginBottom: '12px',
+  },
+  modalText: {
+    fontSize: '15px',
+    color: '#444',
+    lineHeight: 1.7,
+    marginBottom: '20px',
+  },
+  modalHint: {
+    fontSize: '12px',
+    color: '#888',
+    marginTop: '12px',
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  modalPrimaryBtn: {
+    padding: '11px 22px',
+    background: '#CC0000',
+    color: '#FFFFFF',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '15px',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  modalGhostBtn: {
+    padding: '11px 22px',
+    background: 'transparent',
+    color: '#555',
+    border: '1.5px solid #ccc',
+    borderRadius: '8px',
+    fontSize: '15px',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
 };

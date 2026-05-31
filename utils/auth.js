@@ -5,6 +5,7 @@
 
 import { entities, appConfig } from '../config/appConfig';
 import { setCustomPermissions } from './permissions';
+import { clearAuthToken } from './authToken';
 
 const ADMIN_EMAILS = (appConfig && appConfig.adminEmails) ? appConfig.adminEmails.map(e => e.toLowerCase()) : ['snir@snir-ai.com'];
 
@@ -132,6 +133,7 @@ export async function login(userId, password) {
  */
 export function logout() {
   setCurrentUser(null);
+  clearAuthToken();
   if (typeof window !== 'undefined') {
     localStorage.setItem('userLoggedOut', 'true');
     localStorage.removeItem('currentUser');

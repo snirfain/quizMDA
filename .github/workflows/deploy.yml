@@ -1,0 +1,31 @@
+name: Deploy quizMDA
+
+# Runs automatically on every push to the main branch.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test-and-deploy:
+    name: Test & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 (with npm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run server & DAG engine unit tests
+        run: node --test workflows/rollingCaseEngine.test.mjs
+
+      - name: Trigger Render deploy
+        if: success()
+        run: curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

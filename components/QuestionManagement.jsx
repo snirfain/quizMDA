@@ -14,6 +14,7 @@ import LoadingSpinner from './LoadingSpinner';
 import ConfirmDialog from './ConfirmDialog';
 import Modal from './Modal';
 import QuestionResolvedMedia from './QuestionResolvedMedia';
+import RollingCasePreview from './RollingCasePreview';
 import { showToast } from './Toast';
 import { permissions } from '../utils/permissions';
 import PermissionGate from './PermissionGate';
@@ -1685,28 +1686,7 @@ export default function QuestionManagement() {
                   )}
 
                   {previewQuestion.question_type === 'rolling_case' && (
-                    <div style={styles.previewOptionsList}>
-                      {(previewQuestion.rolling_case?.branches || []).map((branch, idx) => (
-                        <div key={branch?.id || idx} style={styles.previewBranchCard}>
-                          <div style={{ fontSize: 12, color: '#777', marginBottom: 4 }}>ענף {idx + 1}</div>
-                          <div style={{ fontWeight: 600, marginBottom: 8 }}>{branch?.question_text || '—'}</div>
-                          {branch?.question_type === 'true_false' ? (
-                            <div style={{ display: 'flex', gap: 10 }}>
-                              <button type="button" disabled style={styles.previewControlButton}>נכון</button>
-                              <button type="button" disabled style={styles.previewControlButton}>לא נכון</button>
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              {(branch?.options || []).map((opt, optIdx) => (
-                                <button key={`${branch?.id || idx}-${optIdx}`} type="button" disabled style={styles.previewOptionButton}>
-                                  {opt?.label ?? opt?.text ?? String(opt?.value ?? optIdx)}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    <RollingCasePreview rollingCase={previewQuestion.rolling_case} />
                   )}
                 </div>
               </div>

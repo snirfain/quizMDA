@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "start": "vite",
     "serve": "node server.js",
-    "db:reset": "node scripts/resetDatabase.mjs"
+    "db:reset": "node scripts/resetDatabase.mjs",
+    "test": "node --test workflows/*.test.mjs"
   },
   "dependencies": {
     "cloudinary": "^2.9.0",

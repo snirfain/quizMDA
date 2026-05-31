@@ -11,6 +11,10 @@ import './entities/Question_Versions.js';
 import './styles/globalStyles.js';
 import './styles/responsive.css';
 import { initializeAccessibilitySettings } from './utils/accessibility';
+import { installApiInterceptor } from './utils/apiClient';
+
+// Attach auth token + audit tag to all /api requests before anything fetches.
+installApiInterceptor();
 
 // Initialize accessibility settings on page load
 initializeAccessibilitySettings();

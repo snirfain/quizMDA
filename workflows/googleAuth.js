@@ -5,6 +5,7 @@
 
 import { entities } from '../config/appConfig';
 import { setCurrentUser } from '../utils/auth';
+import { setAuthToken } from '../utils/authToken';
 
 /** Sync user to server so admins on other devices see new/updated users. */
 async function syncUserToServer(user) {
@@ -34,6 +35,10 @@ export async function loginWithGoogle(credential) {
         error: 'אימות Google נכשל'
       };
     }
+
+    // Persist the raw Google ID token so API requests can be authenticated
+    // server-side (the backend re-verifies it against Google's JWKS).
+    setAuthToken(credential);
 
     // Check if user exists in our system
     // Try multiple ways to find user

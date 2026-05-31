@@ -45,6 +45,18 @@ export default function MediaBankManager() {
   const fileInputRef = useRef(null);
   const [previewUrl, setPreviewUrl] = useState('');
 
+  // ── Bulk upload state ────────────────────────────────────
+  const bulkInputRef = useRef(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, current: '' });
+  const [bulkResults, setBulkResults] = useState([]); // [{ name, status, tag?, error? }]
+
+  // ── Tag merge state ──────────────────────────────────────
+  const [selectedTagsForMerge, setSelectedTagsForMerge] = useState([]);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeTargetName, setMergeTargetName] = useState('');
+  const [merging, setMerging] = useState(false);
+
   // ── Load tags ────────────────────────────────────────────
   const loadTags = async () => {
     const allTags = await entities.Media_Bank.distinctTags();
@@ -125,6 +137,116 @@ export default function MediaBankManager() {
     }
   };
 
+  // ── Bulk upload (multiple files at once, auto-tagged) ─────
+  const handleBulkFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setBulkUploading(true);
+    setBulkResults([]);
+    setBulkProgress({ done: 0, total: files.length, current: '' });
+
+    let okCount = 0;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setBulkProgress({ done: i, total: files.length, current: file.name });
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload-media', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const ed = await res.json().catch(() => ({}));
+          throw new Error(ed.error || ed.details || 'העלאה נכשלה');
+        }
+        const data = await res.json();
+        // Auto-catalog: use the tag the backend extracted from the filename.
+        const tag = (data.media_bank_tag || selectedTag || 'כללי').trim();
+        const mediaType = file.type.startsWith('video') ? 'video'
+          : file.type.startsWith('audio') ? 'audio'
+          : 'image';
+        const name = (data.original_filename || file.name).replace(/\.[^.]+$/, '');
+        await entities.Media_Bank.create({ name, tag, media_type: mediaType, url: data.url, description: '' });
+        okCount++;
+        setBulkResults(prev => [...prev, { name: file.name, status: 'ok', tag }]);
+      } catch (err) {
+        console.error('שגיאה בהעלאת קובץ בודד:', file.name, err);
+        setBulkResults(prev => [...prev, { name: file.name, status: 'error', error: err.message }]);
+      }
+      setBulkProgress({ done: i + 1, total: files.length, current: '' });
+    }
+
+    setBulkUploading(false);
+    showToast(`הסתיימה העלאה מרובה: ${okCount} מתוך ${files.length} קבצים נוספו`, okCount ? 'success' : 'error');
+    try {
+      await loadTags();
+      if (selectedTag) await loadItems(selectedTag, filterStatus);
+    } catch (err) {
+      console.error('רענון לאחר העלאה מרובה נכשל:', err);
+    }
+    if (bulkInputRef.current) bulkInputRef.current.value = '';
+  };
+
+  // ── Tag merge ─────────────────────────────────────────────
+  const toggleTagForMerge = (tag) => {
+    setSelectedTagsForMerge(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  /** Rename tags locally in the client-side media bank to mirror the server merge. */
+  const renameLocalMediaTags = async (oldTags, newTag) => {
+    try {
+      for (const ot of oldTags) {
+        if (ot === newTag) continue;
+        const itemsWithTag = await entities.Media_Bank.find({ tag: ot });
+        for (const it of itemsWithTag) {
+          await entities.Media_Bank.update(it.id, { tag: newTag });
+        }
+      }
+    } catch (err) {
+      console.error('עדכון תגים מקומי נכשל:', err);
+    }
+  };
+
+  const handleMergeTags = async () => {
+    const newTagName = mergeTargetName.trim();
+    if (!newTagName) { showToast('יש להזין שם תג חדש', 'error'); return; }
+    if (selectedTagsForMerge.length < 2) { showToast('יש לבחור לפחות שני תגים לאיחוד', 'error'); return; }
+
+    setMerging(true);
+    try {
+      const res = await fetch('/api/media/merge-tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldTags: selectedTagsForMerge, newTagName }),
+      });
+      if (!res.ok) {
+        const ed = await res.json().catch(() => ({}));
+        throw new Error(ed.error || 'איחוד התגים נכשל');
+      }
+      const data = await res.json();
+      await renameLocalMediaTags(selectedTagsForMerge, newTagName);
+
+      showToast(`התגים אוחדו לתג "${newTagName}" — עודכנו ${data.modified ?? 0} שאלות`, 'success');
+
+      const mergedInvolvedSelected = selectedTagsForMerge.includes(selectedTag);
+      setShowMergeModal(false);
+      setMergeTargetName('');
+      setSelectedTagsForMerge([]);
+      await loadTags();
+      if (mergedInvolvedSelected) {
+        setSelectedTag(newTagName);
+        await loadItems(newTagName, filterStatus);
+      } else if (selectedTag) {
+        await loadItems(selectedTag, filterStatus);
+      }
+    } catch (err) {
+      console.error('איחוד תגים נכשל:', err);
+      showToast(err.message || 'שגיאה באיחוד תגים', 'error');
+    } finally {
+      setMerging(false);
+    }
+  };
+
   // ── Status actions ───────────────────────────────────────
   const handleAction = async (item, action) => {
     let update = {};
@@ -165,17 +287,89 @@ export default function MediaBankManager() {
               + הוסף
             </button>
           </div>
+
+          {/* ── Bulk upload ── */}
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0' }}>
+            <input
+              ref={bulkInputRef}
+              type="file"
+              multiple
+              accept="image/*,video/*,audio/*"
+              onChange={handleBulkFiles}
+              style={{ display: 'none' }}
+            />
+            <button
+              style={{ ...s.btn, width: '100%', justifyContent: 'center', fontSize: '13px', padding: '8px 12px' }}
+              onClick={() => bulkInputRef.current?.click()}
+              disabled={bulkUploading}
+            >
+              {bulkUploading ? <><LoadingSpinner size="sm" /> מעלה…</> : '⬆️ העלאת קבצים מרובים'}
+            </button>
+            {bulkUploading && (
+              <div style={{ marginTop: '8px' }}>
+                <div style={{ fontSize: '12px', color: '#555', marginBottom: '4px' }}>
+                  {bulkProgress.done} / {bulkProgress.total}
+                  {bulkProgress.current ? ` — ${bulkProgress.current}` : ''}
+                </div>
+                <div style={{ height: '6px', background: '#eee', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${bulkProgress.total ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`,
+                    background: '#4CAF50',
+                    transition: 'width 0.2s ease',
+                  }} />
+                </div>
+              </div>
+            )}
+            {!bulkUploading && bulkResults.length > 0 && (
+              <div style={{ marginTop: '8px', maxHeight: '120px', overflowY: 'auto', fontSize: '11px' }}>
+                {bulkResults.map((r, i) => (
+                  <div key={i} style={{ color: r.status === 'ok' ? '#2E7D32' : '#C62828', lineHeight: 1.5 }}>
+                    {r.status === 'ok' ? '✓' : '✗'} {r.name}{r.tag ? ` → ${r.tag}` : ''}{r.error ? ` (${r.error})` : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Merge action bar ── */}
+          {selectedTagsForMerge.length >= 2 && (
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', background: '#FFF8E1' }}>
+              <button
+                style={{ ...s.btn, width: '100%', justifyContent: 'center', fontSize: '13px', padding: '8px 12px' }}
+                onClick={() => { setMergeTargetName(''); setShowMergeModal(true); }}
+              >
+                🔗 אחד {selectedTagsForMerge.length} תגים נבחרים לתג חדש
+              </button>
+            </div>
+          )}
+
           {tags.length === 0 && (
             <p style={{ fontSize: '13px', color: '#999', padding: '12px 16px' }}>אין תגים עדיין</p>
           )}
           {tags.map(tag => (
-            <button
+            <div
               key={tag}
-              style={{ ...s.tagBtn, ...(selectedTag === tag ? s.tagBtnActive : {}) }}
-              onClick={() => { setSelectedTag(tag); setDraft(d => ({ ...d, tag })); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                borderBottom: '1px solid #f0f0f0',
+                background: selectedTagsForMerge.includes(tag) ? '#FFF8E1' : 'transparent',
+              }}
             >
-              {tag}
-            </button>
+              <input
+                type="checkbox"
+                checked={selectedTagsForMerge.includes(tag)}
+                onChange={() => toggleTagForMerge(tag)}
+                aria-label={`בחר את התג ${tag} לאיחוד`}
+                style={{ marginInlineStart: '12px', cursor: 'pointer', flexShrink: 0 }}
+              />
+              <button
+                style={{ ...s.tagBtn, borderBottom: 'none', flex: 1, ...(selectedTag === tag ? s.tagBtnActive : {}) }}
+                onClick={() => { setSelectedTag(tag); setDraft(d => ({ ...d, tag })); }}
+              >
+                {tag}
+              </button>
+            </div>
           ))}
 
           {/* Quick new tag input */}
@@ -359,6 +553,40 @@ export default function MediaBankManager() {
           )}
         </main>
       </div>
+
+      {/* ── Merge tags modal ── */}
+      {showMergeModal && (
+        <div style={s.overlay} role="dialog" aria-modal="true" dir="rtl">
+          <div style={s.modalCard}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '18px', fontWeight: 800, color: '#1a1a2e' }}>איחוד תגים</h3>
+            <p style={{ fontSize: '14px', color: '#555', lineHeight: 1.6, marginBottom: '14px' }}>
+              התגים הבאים יאוחדו לתג אחד חדש, וכל השאלות המשויכות אליהם יעודכנו:
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+              {selectedTagsForMerge.map(t => (
+                <span key={t} style={{ ...s.badge, background: '#FFF0F0', color: '#CC0000' }}>{t}</span>
+              ))}
+            </div>
+            <label style={{ ...s.formLabel, display: 'block', marginBottom: '4px' }}>שם התג החדש *</label>
+            <input
+              type="text"
+              value={mergeTargetName}
+              onChange={e => setMergeTargetName(e.target.value)}
+              placeholder="לדוגמה: פרק 4 החייאת מבוגר"
+              style={s.input}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '10px', marginTop: '18px', justifyContent: 'flex-start' }}>
+              <button style={s.btn} onClick={handleMergeTags} disabled={merging}>
+                {merging ? <><LoadingSpinner size="sm" /> מאחד…</> : 'אחד תגים'}
+              </button>
+              <button style={s.btnGhost} onClick={() => { setShowMergeModal(false); setMergeTargetName(''); }} disabled={merging}>
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -544,5 +772,15 @@ const s = {
   emptyState: {
     textAlign: 'center', padding: '60px 20px', color: '#999', fontSize: '15px',
     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
+  },
+  overlay: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 10000, direction: 'rtl', padding: '16px',
+  },
+  modalCard: {
+    background: '#fff', borderRadius: '14px', padding: '24px',
+    maxWidth: '440px', width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+    fontFamily: 'inherit',
   },
 };
