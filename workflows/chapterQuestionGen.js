@@ -41,6 +41,13 @@ export const GENERATOR_QUESTION_TYPES = QUESTION_TYPES_UI.filter((t) =>
   ['single_choice', 'multi_choice', 'true_false', 'open_ended'].includes(t.value)
 );
 
+// Max questions requested per LLM call. Large counts are split into several
+// calls ("chunks") and aggregated so we can reliably reach any requested total.
+const BATCH_SIZE = 12;
+
+// Hard ceiling per spec row to keep cost/latency sane.
+export const MAX_PER_ROW = 100;
+
 // ── Robust JSON parsing (mirrors questionImport's salvage logic) ──
 
 function parseQuestionsJson(content) {
@@ -93,11 +100,19 @@ const SYSTEM_PROMPT =
   `אתה כותב שאלות איכותיות, מדויקות וברורות, המבוססות אך ורק על תוכן הפרק שסופק. ` +
   `אסור להמציא עובדות שאינן מופיעות בפרק. החזר JSON תקין בלבד, ללא טקסט נוסף וללא markdown.`;
 
-function buildUserPrompt({ chapterText, spec, category, subCategory }) {
+function buildUserPrompt({ chapterText, spec, category, subCategory, count, avoidList }) {
   const typeLabel = TYPE_LABEL[spec.question_type] || spec.question_type;
   const thinkingLabel = THINKING_LABEL[spec.thinking_level] || spec.thinking_level;
   const trainingLabel = TRAINING_LABEL[spec.training_level] || spec.training_level;
   const guidance = THINKING_GUIDANCE[spec.thinking_level] || '';
+  const n = count ?? spec.count;
+
+  const avoidBlock =
+    avoidList && avoidList.length
+      ? `\nכבר נוצרו השאלות הבאות — אל תחזור עליהן וצור שאלות חדשות ושונות לחלוטין:\n${avoidList
+          .map((t, i) => `${i + 1}. ${t}`)
+          .join('\n')}\n`
+      : '';
 
   const typeRules = {
     single_choice:
@@ -114,7 +129,7 @@ function buildUserPrompt({ chapterText, spec, category, subCategory }) {
   };
 
   return (
-`צור בדיוק ${spec.count} שאלות מסוג "${typeLabel}".
+`צור בדיוק ${n} שאלות מסוג "${typeLabel}".
 רמת הכשרה: ${trainingLabel}.
 רמת חשיבה (טקסונומיית בלום): ${thinkingLabel} — ${guidance}
 נושא: ${category}${subCategory ? ` / ${subCategory}` : ''}.
@@ -123,7 +138,7 @@ function buildUserPrompt({ chapterText, spec, category, subCategory }) {
 <<<תוכן הפרק
 ${chapterText}
 תוכן הפרק>>>
-
+${avoidBlock}
 פורמט פלט — JSON בלבד:
 {"questions":[{"question_text":"...","options":["...","..."],"correct_indices":[0],"explanation":"...","model_answer":""}]}
 
@@ -135,8 +150,20 @@ ${typeRules[spec.question_type] || ''}
 - אל תכלול מספור בתחילת question_text.
 - explanation: הסבר רפואי קצר ומדויק לכל שאלה, מבוסס על הפרק.
 - כתוב בעברית תקנית וברורה.
-- החזר בדיוק ${spec.count} שאלות במערך questions.`
+- כל השאלות חייבות להיות ייחודיות וללא חזרות.
+- החזר בדיוק ${n} שאלות במערך questions.`
   );
+}
+
+// ── Dedup helper (normalises text for comparison) ─────────────
+
+function normaliseText(t) {
+  return (t || '')
+    .replace(/\s+/g, ' ')
+    .replace(/[^\u0590-\u05FFa-zA-Z0-9 ]/g, '')
+    .trim()
+    .slice(0, 120)
+    .toLowerCase();
 }
 
 // ── Map a raw LLM question into a UI-friendly intermediate ─────
@@ -241,34 +268,85 @@ export async function generateQuestionsFromChapter({
 
   for (let i = 0; i < cleanSpecs.length; i++) {
     const spec = cleanSpecs[i];
-    onProgress?.({ stage: 'spec', current: i + 1, total: cleanSpecs.length, spec });
+    const typeLabel = TYPE_LABEL[spec.question_type] || spec.question_type;
+    const target = spec.count;
 
-    const userPrompt = buildUserPrompt({ chapterText: text, spec, category, subCategory });
-    let content;
-    try {
-      const res = await callLlmWithFallback(
-        { systemPrompt: SYSTEM_PROMPT, userPrompt, temperature: 0.45, maxTokens: 9000 },
-        onProviderEvent
-      );
-      content = res.content;
-    } catch (err) {
-      warnings.push(`שורה ${i + 1} (${TYPE_LABEL[spec.question_type] || spec.question_type}): ${err.message}`);
-      continue;
+    onProgress?.({ stage: 'spec', current: i + 1, total: cleanSpecs.length, spec, collected: 0, target });
+
+    const collected = [];
+    const seen = new Set();
+    // Allow a few top-up attempts beyond the minimum number of batches so we
+    // can recover from duplicates / short responses and still hit the target.
+    const minBatches = Math.ceil(target / BATCH_SIZE);
+    const maxAttempts = minBatches + 4;
+    let attempts = 0;
+
+    while (collected.length < target && attempts < maxAttempts) {
+      attempts += 1;
+      const need = Math.min(BATCH_SIZE, target - collected.length);
+      // Send a bounded list of already-created stems so the model diversifies.
+      const avoidList = collected.slice(-30).map((q) => q.question_text);
+
+      const userPrompt = buildUserPrompt({
+        chapterText: text,
+        spec,
+        category,
+        subCategory,
+        count: need,
+        avoidList,
+      });
+
+      let content;
+      try {
+        const res = await callLlmWithFallback(
+          { systemPrompt: SYSTEM_PROMPT, userPrompt, temperature: 0.55, maxTokens: 9000 },
+          onProviderEvent
+        );
+        content = res.content;
+      } catch (err) {
+        warnings.push(`שורה ${i + 1} (${typeLabel}): ${err.message}`);
+        break;
+      }
+
+      const parsed = parseQuestionsJson(content)
+        .map((q) => normalizeGenerated(q, spec))
+        .filter(Boolean);
+
+      let added = 0;
+      for (const q of parsed) {
+        if (collected.length >= target) break;
+        const key = normaliseText(q.question_text);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        collected.push(q);
+        added += 1;
+      }
+
+      onProgress?.({
+        stage: 'batch',
+        current: i + 1,
+        total: cleanSpecs.length,
+        spec,
+        collected: collected.length,
+        target,
+      });
+
+      // Nothing new this round — stop to avoid spinning on a dry chapter.
+      if (added === 0) break;
     }
 
-    const parsed = parseQuestionsJson(content);
-    const mapped = parsed
-      .map((q) => normalizeGenerated(q, spec))
-      .filter(Boolean)
-      .slice(0, spec.count);
-
-    if (mapped.length < spec.count) {
-      warnings.push(
-        `שורה ${i + 1}: התקבלו ${mapped.length} מתוך ${spec.count} שאלות מבוקשות.`
-      );
+    if (collected.length < target) {
+      warnings.push(`שורה ${i + 1}: התקבלו ${collected.length} מתוך ${target} שאלות מבוקשות.`);
     }
-    allQuestions.push(...mapped);
-    onProgress?.({ stage: 'spec-done', current: i + 1, total: cleanSpecs.length, spec, produced: mapped.length });
+    allQuestions.push(...collected.slice(0, target));
+    onProgress?.({
+      stage: 'spec-done',
+      current: i + 1,
+      total: cleanSpecs.length,
+      spec,
+      produced: Math.min(collected.length, target),
+      target,
+    });
   }
 
   if (!allQuestions.length) {

@@ -24,6 +24,7 @@ import {
   generateQuestionsFromChapter,
   toCanonicalQuestionPayload,
   GENERATOR_QUESTION_TYPES,
+  MAX_PER_ROW,
 } from '../workflows/chapterQuestionGen';
 
 const C = {
@@ -109,7 +110,7 @@ export default function ChapterQuestionGenerator() {
 
     try {
       const cleanSpecs = specs.map((r) => ({
-        count: Math.max(1, Math.min(20, Number(r.count) || 1)),
+        count: Math.max(1, Math.min(MAX_PER_ROW, Number(r.count) || 1)),
         question_type: r.question_type,
         training_level: r.training_level,
         thinking_level: r.thinking_level,
@@ -121,12 +122,13 @@ export default function ChapterQuestionGenerator() {
         category,
         subCategory,
         onProgress: (p) => {
+          const typeName = TYPE_LABEL[p.spec.question_type] || p.spec.question_type;
           if (p.stage === 'spec') {
-            setProgress(
-              `מייצר ${p.spec.count} שאלות (${TYPE_LABEL[p.spec.question_type] || p.spec.question_type}) — ${p.current}/${p.total}…`
-            );
+            setProgress(`שורה ${p.current}/${p.total} — ${typeName}: מייצר ${p.target} שאלות…`);
+          } else if (p.stage === 'batch') {
+            setProgress(`שורה ${p.current}/${p.total} — ${typeName}: ${p.collected}/${p.target} שאלות…`);
           } else if (p.stage === 'spec-done') {
-            setProgress(`הופקו ${p.produced} שאלות בשורה ${p.current}/${p.total}.`);
+            setProgress(`שורה ${p.current}/${p.total} — ${typeName}: הופקו ${p.produced}/${p.target}.`);
           }
         },
         onProviderEvent: (e) => {
@@ -290,7 +292,7 @@ export default function ChapterQuestionGenerator() {
             <input
               type="number"
               min={1}
-              max={20}
+              max={MAX_PER_ROW}
               value={row.count}
               onChange={(e) => updateRow(row.rowId, { count: e.target.value })}
               style={{ ...styles.select, flex: '0 0 80px' }}
