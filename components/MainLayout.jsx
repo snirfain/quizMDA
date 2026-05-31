@@ -17,26 +17,16 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
   const [user, setUser] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     loadUser();
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    
-    return () => {
-      window.removeEventListener('resize', checkMobile);
-    };
   }, []);
 
-  const checkMobile = () => {
-    // Must match NavigationBar's hamburger breakpoint so the toggle button
-    // and the slide-out drawer appear/disappear together.
-    const mobile = window.innerWidth < 1300;
-    setIsMobile(mobile);
-    if (!mobile) {
-      setMobileMenuOpen(false);
-    }
+  // The NavigationBar measures whether its inline links fit and reports the
+  // collapse state here. When the links are shown inline (not collapsed) the
+  // hamburger is gone, so any open drawer must close to stay consistent.
+  const handleCollapsedChange = (collapsed) => {
+    if (!collapsed) setMobileMenuOpen(false);
   };
 
   const loadUser = async () => {
@@ -83,6 +73,7 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
         <header style={styles.header} role="banner">
           <NavigationBar 
             onMenuToggle={handleMenuToggle}
+            onCollapsedChange={handleCollapsedChange}
           />
         </header>
 

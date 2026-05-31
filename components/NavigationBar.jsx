@@ -4,7 +4,7 @@
  * Hebrew: סרגל ניווט
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { getNavigationItems, getCurrentPath } from '../utils/router';
 import { navigateTo } from '../utils/router';
 import { getCurrentUser, logout } from '../utils/auth';
@@ -12,19 +12,22 @@ import { getUserNotifications } from '../workflows/notifications';
 import NotificationsPanel from './NotificationsPanel';
 import Icon from './Icon';
 
-export default function NavigationBar({ onMenuToggle }) {
+export default function NavigationBar({ onMenuToggle, onCollapsedChange }) {
   const [navItems, setNavItems] = useState([]);
   const [user, setUser] = useState(null);
   const [currentPath, setCurrentPath] = useState('/');
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
 
-  // Collapse the horizontal nav into a hamburger drawer below this width.
-  // The drawer shows every item with its full text label, so labels are
-  // never hidden or clipped. Above this width the labeled links fit inline.
-  const checkMobile = () => setIsMobile(window.innerWidth < 1300);
+  // Collapse the inline links into a hamburger drawer ONLY when they would not
+  // fit in the available space. This is measured live (below) instead of using
+  // a fixed width breakpoint, so labels can never be clipped regardless of how
+  // many items the user's role has or how wide the window is.
+  const [isMobile, setIsMobile] = useState(false);
+  const slotRef = useRef(null);     // available horizontal space for the links
+  const measureRef = useRef(null);  // hidden copy at natural (uncollapsed) size
+
   const updatePath = () => setCurrentPath(getCurrentPath());
 
   const loadNavigation = async () => {
@@ -41,11 +44,41 @@ export default function NavigationBar({ onMenuToggle }) {
     }
   };
 
+  // Measure whether the full-width labeled links fit; collapse if not.
+  const measureFit = useCallback(() => {
+    const slot = slotRef.current;
+    const meas = measureRef.current;
+    if (!slot || !meas) return;
+    const available = slot.clientWidth;
+    const needed = meas.scrollWidth;
+    // Small buffer to avoid edge flicker; collapse when links would overflow.
+    const next = needed > available - 2;
+    setIsMobile((prev) => (prev === next ? prev : next));
+  }, []);
+
+  useLayoutEffect(() => {
+    measureFit();
+    const slot = slotRef.current;
+    let ro;
+    if (typeof ResizeObserver !== 'undefined' && slot) {
+      ro = new ResizeObserver(() => measureFit());
+      ro.observe(slot);
+    }
+    window.addEventListener('resize', measureFit);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measureFit);
+    };
+  }, [measureFit, navItems]);
+
+  // Keep the layout (drawer) in sync with the measured collapse state.
+  useEffect(() => {
+    onCollapsedChange?.(isMobile);
+  }, [isMobile, onCollapsedChange]);
+
   useEffect(() => {
     updatePath();
     loadNavigation();
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
     window.addEventListener('popstate', updatePath);
     const handleUserUpdate = async (e) => {
       const updatedUser = e.detail || await getCurrentUser();
@@ -63,7 +96,6 @@ export default function NavigationBar({ onMenuToggle }) {
     window.addEventListener('userUpdated', handleUserUpdate);
     window.addEventListener('userLogin', handleUserUpdate);
     return () => {
-      window.removeEventListener('resize', checkMobile);
       window.removeEventListener('popstate', updatePath);
       window.removeEventListener('userUpdated', handleUserUpdate);
       window.removeEventListener('userLogin', handleUserUpdate);
@@ -126,35 +158,56 @@ export default function NavigationBar({ onMenuToggle }) {
           </a>
         </div>
 
-        {/* Desktop Navigation */}
-        {!isMobile && (
-          <ul style={styles.navList} className="nav-desktop-links" role="menubar">
-            {navItems.map((item) => {
-              const isActive = currentPath === item.path;
-              return (
-                <li key={item.path} role="none">
-                  <a
-                    href={item.path}
-                    onClick={(e) => handleNavClick(e, item.path)}
-                    style={{
-                      ...styles.navLink,
-                      ...(isActive ? styles.navLinkActive : {})
-                    }}
-                    role="menuitem"
-                    aria-current={isActive ? 'page' : undefined}
-                    aria-label={item.label}
-                    title={item.label}
-                  >
-                    <span style={styles.navIcon} aria-hidden="true">
-                      <Icon name={item.icon} size={18} />
-                    </span>
-                    <span className="nav-link-label">{item.label}</span>
-                  </a>
-                </li>
-              );
-            })}
+        {/* Desktop Navigation — lives in a flexible slot we can measure.
+            The slot always occupies the central space (whether or not the
+            links are shown), so its width is a stable measure of the room
+            available for the inline links. */}
+        <div ref={slotRef} style={styles.navSlot}>
+          {!isMobile && (
+            <ul style={styles.navList} className="nav-desktop-links" role="menubar">
+              {navItems.map((item) => {
+                const isActive = currentPath === item.path;
+                return (
+                  <li key={item.path} role="none">
+                    <a
+                      href={item.path}
+                      onClick={(e) => handleNavClick(e, item.path)}
+                      style={{
+                        ...styles.navLink,
+                        ...(isActive ? styles.navLinkActive : {})
+                      }}
+                      role="menuitem"
+                      aria-current={isActive ? 'page' : undefined}
+                      aria-label={item.label}
+                      title={item.label}
+                    >
+                      <span style={styles.navIcon} aria-hidden="true">
+                        <Icon name={item.icon} size={18} />
+                      </span>
+                      <span className="nav-link-label">{item.label}</span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {/* Hidden measurer: every item at its natural (bold, full-padding)
+              size. We compare its width to the slot to decide if we must
+              collapse. Aria-hidden + off-flow so it never affects layout. */}
+          <ul ref={measureRef} style={styles.navMeasure} aria-hidden="true">
+            {navItems.map((item) => (
+              <li key={`m-${item.path}`}>
+                <span style={{ ...styles.navLink, ...styles.navLinkActive }}>
+                  <span style={styles.navIcon}>
+                    <Icon name={item.icon} size={18} />
+                  </span>
+                  <span>{item.label}</span>
+                </span>
+              </li>
+            ))}
           </ul>
-        )}
+        </div>
 
         {/* Right side actions */}
         <div style={styles.actions}>
@@ -330,17 +383,39 @@ const styles = {
     display: 'block',
     marginTop: '1px',
   },
+  navSlot: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    position: 'relative',
+  },
   navList: {
     display: 'flex',
     listStyle: 'none',
     margin: 0,
     padding: 0,
     gap: '2px',
-    flex: 1,
+    width: '100%',
     minWidth: 0,
     justifyContent: 'center',
     overflowX: 'auto',
     overflowY: 'hidden',
+  },
+  navMeasure: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    height: 0,
+    overflow: 'hidden',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    display: 'flex',
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    gap: '2px',
+    whiteSpace: 'nowrap',
   },
   navLink: {
     display: 'flex',
