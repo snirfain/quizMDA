@@ -3,6 +3,66 @@
  * Hebrew: עיצוב רספונסיבי
  */
 
+/* ═══ Universal overflow guards (all screen sizes) ═══════
+   Goal: no element may ever be clipped or force horizontal
+   scrolling of the page on any viewport width. */
+img, svg, video, canvas, iframe, embed, object {
+  max-width: 100%;
+}
+img, video, canvas { height: auto; }
+
+/* Long words / URLs / Hebrew strings must wrap, never overflow.
+   `break-word` only breaks a word when it would otherwise overflow, so it is
+   safe to inherit site-wide (unlike the more aggressive `anywhere`). */
+body {
+  overflow-wrap: break-word;
+}
+p, li, td, th, h1, h2, h3, h4, h5, h6, .card, .list-card {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+pre, code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Any dialog/modal inner panel must fit the viewport with a small gutter. */
+[role="dialog"] > div,
+.modal-content,
+.modal-panel {
+  max-width: min(100%, calc(100vw - 16px));
+  box-sizing: border-box;
+}
+
+/* Wrappers that should scroll their own overflow instead of the page. */
+.table-wrap,
+.overflow-x-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+/* Desktop nav links: overflow-safe so they can NEVER be clipped.
+   When they don't fit they scroll horizontally (hidden scrollbar) and
+   `safe center` falls back to start-alignment so no item is hidden. */
+.nav-desktop-links {
+  justify-content: safe center !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.nav-desktop-links::-webkit-scrollbar { display: none; }
+
+/* ── Icon-only nav tier (small desktops / large tablets) ──
+   Between the hamburger breakpoint (1024) and where full labels
+   comfortably fit (1200), show icons only to avoid crowding. */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .nav-link-label { display: none !important; }
+  .nav-desktop-links a[role="menuitem"] { padding: 8px 10px !important; }
+}
+
 /* ═══ Global mobile resets ═══════════════════════════════ */
 @media (max-width: 767px) {
   :root {

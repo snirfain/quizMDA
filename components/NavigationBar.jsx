@@ -20,7 +20,10 @@ export default function NavigationBar({ onMenuToggle }) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const checkMobile = () => setIsMobile(window.innerWidth < 768);
+  // Collapse the horizontal nav into a hamburger drawer below this width.
+  // Above it, the desktop links stay overflow-safe (see responsive.css) so
+  // they can never be clipped regardless of how many items a role has.
+  const checkMobile = () => setIsMobile(window.innerWidth < 1024);
   const updatePath = () => setCurrentPath(getCurrentPath());
 
   const loadNavigation = async () => {
@@ -137,11 +140,12 @@ export default function NavigationBar({ onMenuToggle }) {
                     role="menuitem"
                     aria-current={isActive ? 'page' : undefined}
                     aria-label={item.label}
+                    title={item.label}
                   >
                     <span style={styles.navIcon} aria-hidden="true">
                       {item.icon}
                     </span>
-                    <span>{item.label}</span>
+                    <span className="nav-link-label">{item.label}</span>
                   </a>
                 </li>
               );
@@ -320,7 +324,10 @@ const styles = {
     padding: 0,
     gap: '2px',
     flex: 1,
+    minWidth: 0,
     justifyContent: 'center',
+    overflowX: 'auto',
+    overflowY: 'hidden',
   },
   navLink: {
     display: 'flex',

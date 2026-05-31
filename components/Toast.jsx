@@ -115,7 +115,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '12px',
-    maxWidth: '400px',
+    maxWidth: 'min(400px, calc(100vw - 32px))',
     direction: 'rtl'
   },
   toast: {
@@ -126,7 +126,8 @@ const styles = {
     borderRadius: '4px',
     boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
     color: '#FFFFFF',
-    minWidth: '300px',
+    minWidth: 0,
+    maxWidth: '100%',
     animation: 'slideIn 0.3s ease'
   },
   icon: {

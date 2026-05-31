@@ -29,7 +29,9 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
   }, []);
 
   const checkMobile = () => {
-    const mobile = window.innerWidth < 768;
+    // Must match NavigationBar's hamburger breakpoint so the toggle button
+    // and the slide-out drawer appear/disappear together.
+    const mobile = window.innerWidth < 1024;
     setIsMobile(mobile);
     if (!mobile) {
       setMobileMenuOpen(false);

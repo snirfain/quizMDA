@@ -144,8 +144,9 @@ const styles = {
     backgroundColor: '#FFFFFF',
     borderRadius: '8px',
     boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-    minWidth: '280px',
-    maxWidth: '320px',
+    minWidth: 0,
+    width: '280px',
+    maxWidth: 'min(320px, calc(100vw - 32px))',
     direction: 'rtl',
     overflow: 'hidden'
   },
