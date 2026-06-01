@@ -27,6 +27,7 @@ import {
   getReviewStatistics
 } from '../workflows/questionReview';
 import { reclassifyUnanalyzedQuestionsWithAI } from '../workflows/questionClassification';
+import { catalogQuestionsAgainstBook } from '../workflows/bookCatalog';
 import { MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { fixQuestionWithAI } from '../workflows/questionEnrich';
 import {
@@ -210,6 +211,7 @@ export default function QuestionManagement() {
   const [pendingReportCount, setPendingReportCount] = useState(0);
   const [isReclassifying, setIsReclassifying] = useState(false);
   const [aiReclassifyProgress, setAiReclassifyProgress] = useState({ running: false, current: 0, total: 0, updated: 0 });
+  const [bookCatalogProgress, setBookCatalogProgress] = useState({ running: false, current: 0, total: 0, updated: 0 });
   const [isSyncingToServer, setIsSyncingToServer] = useState(false);
   const [isDeduping, setIsDeduping] = useState(false);
   const [loadSource, setLoadSource] = useState({ fromApi: false, count: 0 });
@@ -782,6 +784,33 @@ export default function QuestionManagement() {
     }
   };
 
+  const handleCatalogByBook = async () => {
+    const apiKey = appConfig?.openai?.getApiKey?.();
+    if (!apiKey) {
+      showToast('הגדר VITE_OPENAI_API_KEY ב-.env', 'error');
+      return;
+    }
+    setBookCatalogProgress({ running: true, current: 0, total: 0, updated: 0 });
+    try {
+      const result = await catalogQuestionsAgainstBook(entities, {
+        onProgress: (p) => setBookCatalogProgress((s) => ({ ...s, ...p })),
+      });
+      await loadQuestions();
+      if (result.totalProcessed === 0) {
+        showToast('אין שאלות לקטלוג (כולן כבר קוטלגו לפי הספר).', 'info');
+      } else {
+        const parts = [`קוטלגו ${result.updated} שאלות לפי הספר`];
+        if (result.notFound) parts.push(`לא נמצאו בספר: ${result.notFound}`);
+        if (result.errors) parts.push(`שגיאות: ${result.errors}`);
+        showToast(parts.join(' · '), result.updated > 0 ? 'success' : 'info');
+      }
+    } catch (error) {
+      showToast('שגיאה בקטלוג לפי הספר: ' + (error?.message || 'unknown'), 'error');
+    } finally {
+      setBookCatalogProgress({ running: false, current: 0, total: 0, updated: 0 });
+    }
+  };
+
   const handleReclassifyUnanalyzedWithAI = async () => {
     const apiKey = appConfig?.openai?.getApiKey?.();
     if (!apiKey) {
@@ -1099,6 +1128,27 @@ export default function QuestionManagement() {
                     ? `סיווג עם AI ${aiReclassifyProgress.current}/${aiReclassifyProgress.total} (עודכנו ${aiReclassifyProgress.updated})`
                     : '🤖 סווג קטגוריות עם AI (רק חדשות)'}
                 </button>
+                <PermissionGate permission={permissions.BOOK_CATALOG_QUESTIONS}>
+                  <button
+                    style={{
+                      padding: '10px 18px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: bookCatalogProgress.running ? '#9e9e9e' : '#00897b',
+                      color: '#fff',
+                      cursor: bookCatalogProgress.running ? 'not-allowed' : 'pointer',
+                      fontWeight: 600,
+                      fontSize: '14px',
+                    }}
+                    disabled={bookCatalogProgress.running || !questions.length}
+                    onClick={handleCatalogByBook}
+                    title="מקטלג ומתייג לפי הספר את כל השאלות שעדיין לא קוטלגו מולו"
+                  >
+                    {bookCatalogProgress.running
+                      ? `קטלוג לפי הספר ${bookCatalogProgress.current}/${bookCatalogProgress.total} (עודכנו ${bookCatalogProgress.updated})`
+                      : '📖 קטלוג ותיוג לפי הספר'}
+                  </button>
+                </PermissionGate>
                 <button
                   style={{
                     padding: '10px 18px',

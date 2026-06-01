@@ -248,7 +248,7 @@ export default function PermissionManagement() {
               </div>
 
               <div style={styles.permissionGroups}>
-                {['question', 'ai', 'media', 'transcript', 'content', 'activity', 'progress', 'note', 'plan', 'user', 'analytics', 'stats', 'system', 'test', 'notification', 'report'].map(group => {
+                {['question', 'ai', 'book', 'media', 'transcript', 'content', 'activity', 'progress', 'note', 'plan', 'user', 'analytics', 'stats', 'system', 'test', 'notification', 'report'].map(group => {
                   const groupPerms = filteredPermissions.filter(p => p.key.startsWith(`${group}:`));
                   if (groupPerms.length === 0) return null;
 
@@ -257,6 +257,7 @@ export default function PermissionManagement() {
                       <h3 style={styles.groupTitle}>
                         {group === 'question' ? 'שאלות' :
                          group === 'ai' ? 'כלי AI (יצירה וקליטה)' :
+                         group === 'book' ? 'מאגר תוכן הספר' :
                          group === 'media' ? 'מאגר מדיה' :
                          group === 'transcript' ? 'תמלילים' :
                          group === 'content' ? 'תוכן' :

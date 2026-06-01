@@ -67,6 +67,8 @@ const questionSchema = new mongoose.Schema(
     total_attempts: { type: Number, default: 0 },
     total_success: { type: Number, default: 0 },
     success_rate: { type: Number, default: 0 },
+    /** ISO timestamp set when the question was catalogued against the book; '' = not yet. */
+    book_classified_at: { type: String, default: '' },
   },
   { timestamps: true }
 );
@@ -88,6 +90,7 @@ questionSchema.index({ status: 1 });
 questionSchema.index({ has_media: 1 });
 questionSchema.index({ media_bank_tag: 1 });
 questionSchema.index({ medical_levels: 1 });
+questionSchema.index({ book_classified_at: 1 });
 questionSchema.index({ createdAt: -1 });
 questionSchema.index({ question_text: 'text' });
 

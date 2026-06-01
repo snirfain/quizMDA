@@ -414,6 +414,7 @@ const styles = {
     color: 'var(--color-footer-text)',
     padding: '22px var(--space-6)',
     marginTop: 'auto',
+    borderTop: '1px solid var(--color-border)',
   },
   footerContent: {
     maxWidth: '1400px',

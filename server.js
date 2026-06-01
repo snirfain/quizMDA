@@ -19,6 +19,13 @@ import {
   listProtocolVersions,
   retrieveProtocolContext,
 } from './server/protocolContextApi.js';
+import {
+  classifyAgainstBook,
+  clearBookCategory,
+  getBookSummary,
+  ingestBookContent,
+  searchBookContent,
+} from './server/bookContentApi.js';
 import { listQuestionVersions, mergeMediaTags } from './server/questionApi.js';
 import { submitExam } from './server/examApi.js';
 import { requireAuth, requireRole, isAuthEnforced, createSession } from './server/authMiddleware.js';
@@ -84,6 +91,11 @@ async function start() {
   app.post('/api/protocol-context/activate', requireRole('instructor'), activateProtocolVersion);
   app.post('/api/protocol-context/retrieve', requireRole('instructor'), retrieveProtocolContext);
 
+  // Book content knowledge base
+  app.get('/api/book-content/summary', requireRole('instructor'), getBookSummary);
+  app.post('/api/book-content/search', requireRole('instructor'), searchBookContent);
+  app.post('/api/book-content/classify', requireRole('instructor'), classifyAgainstBook);
+
   // ── School staff and above ─────────────────────────────────────────
   app.delete('/api/questions/:id', requireRole('school_staff'), deleteQuestion);
   app.get('/api/transcripts', requireRole('school_staff'), listTranscripts);
@@ -92,6 +104,7 @@ async function start() {
   app.post('/api/transcripts/fix-spelling', requireRole('school_staff'), startFixSpelling);
   app.get('/api/transcripts/fix-spelling/status/:jobId', requireRole('school_staff'), getFixSpellingStatus);
   app.post('/api/transcripts/generate-questions', requireRole('school_staff'), generateQuestionsFromTranscript);
+  app.post('/api/book-content/ingest', requireRole('school_staff'), ingestBookContent);
   app.get('/api/transcripts/generate-questions/status/:jobId', requireRole('school_staff'), getGenerateQuestionsStatus);
   app.get('/api/transcripts/:id', requireRole('school_staff'), getTranscript);
   app.put('/api/transcripts/:id', requireRole('school_staff'), updateTranscript);
@@ -100,6 +113,7 @@ async function start() {
   // ── Manager and above ──────────────────────────────────────────────
   app.post('/api/questions/dedupe', requireRole('manager'), dedupeQuestions);
   app.post('/api/questions/recatalog', requireRole('manager'), recatalogAllQuestions);
+  app.delete('/api/book-content/category', requireRole('manager'), clearBookCategory);
   app.put('/api/users/:userId/role', requireRole('manager'), changeUserRole);
   app.put('/api/users/:userId/courses', requireRole('manager'), setInstructorCourses);
 

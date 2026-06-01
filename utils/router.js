@@ -97,6 +97,12 @@ export const routes = {
     public: false,
     roles: ['instructor', 'school_staff', 'manager', 'admin']
   },
+  bookContent: {
+    path: '/instructor/book-content',
+    component: 'BookContentLibrary',
+    public: false,
+    roles: ['instructor', 'school_staff', 'manager', 'admin']
+  },
   instructorTranscripts: {
     path: '/instructor/transcripts',
     component: 'TranscriptUpload',
@@ -220,6 +226,7 @@ export function getNavigationItems(userRole) {
       { path: routes.instructor.path,            label: 'בניית מבחנים',     icon: 'edit' },
       { path: routes.instructorImport.path,      label: 'ייבוא שאלות',      icon: 'import' },
       { path: routes.instructorQuestions.path,   label: 'ניהול מאגר שאלות', icon: 'help' },
+      { path: routes.bookContent.path,           label: 'מאגר תוכן הספר',   icon: 'book' },
       { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',        icon: 'media' },
       { path: routes.instructorStudyPlans.path,  label: 'תוכניות לימוד',    icon: 'clipboard' },
       { path: routes.instructorAnalytics.path,   label: 'ניתוח ביצועים',    icon: 'chart' },
@@ -229,6 +236,7 @@ export function getNavigationItems(userRole) {
       { path: routes.instructor.path,            label: 'בניית מבחנים',     icon: 'edit' },
       { path: routes.instructorImport.path,      label: 'ייבוא שאלות',      icon: 'import' },
       { path: routes.instructorQuestions.path,   label: 'ניהול מאגר שאלות', icon: 'help' },
+      { path: routes.bookContent.path,           label: 'מאגר תוכן הספר',   icon: 'book' },
       { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',        icon: 'media' },
       { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',    icon: 'file' },
       { path: routes.instructorStudyPlans.path,  label: 'תוכניות לימוד',    icon: 'clipboard' },
@@ -240,6 +248,7 @@ export function getNavigationItems(userRole) {
       { path: routes.instructor.path,            label: 'בניית מבחנים',       icon: 'edit' },
       { path: routes.instructorImport.path,      label: 'ייבוא שאלות',        icon: 'import' },
       { path: routes.instructorQuestions.path,   label: 'ניהול מאגר שאלות',   icon: 'help' },
+      { path: routes.bookContent.path,           label: 'מאגר תוכן הספר',     icon: 'book' },
       { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',          icon: 'media' },
       { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',      icon: 'file' },
       { path: routes.dataImportExport.path,      label: 'ייבוא/ייצוא נתונים', icon: 'import' },
@@ -251,6 +260,7 @@ export function getNavigationItems(userRole) {
       { path: routes.instructor.path,            label: 'בניית מבחנים',       icon: 'edit' },
       { path: routes.instructorImport.path,      label: 'ייבוא שאלות',        icon: 'import' },
       { path: routes.instructorQuestions.path,   label: 'ניהול מאגר שאלות',   icon: 'help' },
+      { path: routes.bookContent.path,           label: 'מאגר תוכן הספר',     icon: 'book' },
       { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',          icon: 'media' },
       { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',      icon: 'file' },
       { path: routes.dataImportExport.path,      label: 'ייבוא/ייצוא נתונים', icon: 'import' },
@@ -301,6 +311,7 @@ export function getBreadcrumbs(path, userRole) {
         'data-import-export': 'ייבוא/ייצוא נתונים',
         'question-stats': 'סטטיסטיקות שאלות',
         'media-bank': 'מאגר מדיה',
+        'book-content': 'מאגר תוכן הספר',
         'transcripts': 'תמלילים',
         'settings': 'הגדרות',
         'profile': 'פרופיל',

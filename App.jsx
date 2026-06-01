@@ -46,6 +46,7 @@ const AdminStatistics = React.lazy(() => import('./components/AdminStatistics'))
 const QuestionStatsDashboard = React.lazy(() => import('./components/QuestionStatsDashboard'));
 const PermissionManagement = React.lazy(() => import('./components/PermissionManagement'));
 const MediaBankManager = React.lazy(() => import('./components/MediaBankManager'));
+const BookContentLibrary = React.lazy(() => import('./components/BookContentLibrary'));
 const TranscriptUpload = React.lazy(() => import('./components/TranscriptUpload'));
 const CourseSetup = React.lazy(() => import('./components/CourseSetup'));
 
@@ -188,6 +189,8 @@ export default function App() {
         return <InstructorAnalytics instructorId={userId} />;
       case '/instructor/media-bank':
         return <MediaBankManager />;
+      case '/instructor/book-content':
+        return <BookContentLibrary />;
       case '/instructor/transcripts':
         return <TranscriptUpload />;
       case '/manager':

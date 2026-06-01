@@ -98,9 +98,9 @@ export default function LoginPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <img
-            src="/mda-logo.png"
+            src="/mda-logo-transparent.png"
             alt='מגן דוד אדום בישראל — ארגון ההצלה הלאומי'
-            style={{ height: isMobile ? '64px' : '80px', width: 'auto', maxWidth: '100%', borderRadius: '12px', boxShadow: '0 6px 24px rgba(0,0,0,0.45)' }}
+            style={{ height: isMobile ? '64px' : '80px', width: 'auto', maxWidth: '100%', background: '#FFFFFF', padding: '10px 16px', borderRadius: '16px', boxShadow: '0 6px 24px rgba(0,0,0,0.35)' }}
           />
         </div>
 

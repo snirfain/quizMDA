@@ -149,7 +149,7 @@ export default function NavigationBar({ onMenuToggle, onCollapsedChange }) {
             style={styles.logo}
             aria-label="דף הבית"
           >
-            <img src="/mda-logo.png" alt='מגן דוד אדום בישראל' style={styles.logoImg} />
+            <img src="/mda-logo-transparent.png" alt='מגן דוד אדום בישראל' style={styles.logoImg} />
           </a>
         </div>
 
@@ -362,10 +362,12 @@ const styles = {
     gap: 'var(--space-2)',
   },
   logoImg: {
-    height: '42px',
+    height: '38px',
     width: 'auto',
     display: 'block',
-    borderRadius: '6px',
+    background: '#FFFFFF',
+    borderRadius: '8px',
+    padding: '4px 10px',
   },
   navSlot: {
     flex: 1,

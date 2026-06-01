@@ -134,6 +134,7 @@ export function normalizeQuestionForDb(q) {
     total_attempts: typeof q.total_attempts === 'number' ? q.total_attempts : 0,
     total_success: typeof q.total_success === 'number' ? q.total_success : 0,
     success_rate: typeof q.success_rate === 'number' ? q.success_rate : 0,
+    book_classified_at: typeof q.book_classified_at === 'string' ? q.book_classified_at : '',
   };
 }
 
@@ -193,6 +194,9 @@ function normalizePartialUpdate(body) {
   if (body.total_attempts !== undefined) update.total_attempts = body.total_attempts;
   if (body.total_success !== undefined) update.total_success = body.total_success;
   if (body.success_rate !== undefined) update.success_rate = body.success_rate;
+  if (body.book_classified_at !== undefined) {
+    update.book_classified_at = typeof body.book_classified_at === 'string' ? body.book_classified_at : '';
+  }
   return update;
 }
 

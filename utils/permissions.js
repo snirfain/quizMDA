@@ -35,6 +35,12 @@ export const permissions = {
   // Statistics dashboards (new feature)
   STATS_QUESTIONS_VIEW: 'stats:questions',
 
+  // Book knowledge base (new feature)
+  BOOK_CONTENT_VIEW: 'book:view',
+  BOOK_CONTENT_MANAGE: 'book:manage',
+  BOOK_CONTENT_DELETE: 'book:delete',
+  BOOK_CATALOG_QUESTIONS: 'book:catalog',
+
   // Content permissions
   CONTENT_READ: 'content:read',
   CONTENT_CREATE: 'content:create',
@@ -164,6 +170,7 @@ const rolePermissions = {
     permissions.QUESTION_ROLLING_CASE,
     permissions.AI_CHAPTER_GENERATE,
     permissions.AI_FILE_INGEST,
+    permissions.BOOK_CONTENT_VIEW,
     permissions.MEDIA_READ,
     permissions.MEDIA_UPLOAD,
     permissions.MEDIA_MANAGE,
@@ -220,6 +227,9 @@ const rolePermissions = {
     permissions.TRANSCRIPT_UPLOAD,
     permissions.TRANSCRIPT_PROCESS,
     permissions.STATS_QUESTIONS_VIEW,
+    permissions.BOOK_CONTENT_VIEW,
+    permissions.BOOK_CONTENT_MANAGE,
+    permissions.BOOK_CATALOG_QUESTIONS,
     permissions.CONTENT_READ,
     permissions.CONTENT_CREATE,
     permissions.CONTENT_UPDATE,
@@ -399,6 +409,7 @@ export function canAccessRoute(userRole, route, userId = null) {
     '/instructor/chapter-generator': permissions.AI_CHAPTER_GENERATE,
     '/instructor/file-ingest': permissions.AI_FILE_INGEST,
     '/instructor/media-bank': permissions.MEDIA_READ,
+    '/instructor/book-content': permissions.BOOK_CONTENT_VIEW,
     '/instructor/transcripts': permissions.TRANSCRIPT_UPLOAD,
     '/instructor/analytics': permissions.ANALYTICS_VIEW,
     '/manager': permissions.SYSTEM_SETTINGS,
@@ -463,6 +474,10 @@ export function getPermissionDescription(permission) {
     [permissions.TRANSCRIPT_UPLOAD]: 'העלאת תמלילים',
     [permissions.TRANSCRIPT_PROCESS]: 'עיבוד תמלילים ל-שאלות',
     [permissions.STATS_QUESTIONS_VIEW]: 'צפייה בסטטיסטיקות שאלות ותיוגים',
+    [permissions.BOOK_CONTENT_VIEW]: 'צפייה וחיפוש במאגר תוכן הספר',
+    [permissions.BOOK_CONTENT_MANAGE]: 'הוספת תוכן למאגר הספר',
+    [permissions.BOOK_CONTENT_DELETE]: 'מחיקת תוכן ממאגר הספר',
+    [permissions.BOOK_CATALOG_QUESTIONS]: 'קטלוג ותיוג שאלות לפי הספר',
     [permissions.CONTENT_READ]: 'צפייה בתוכן',
     [permissions.CONTENT_CREATE]: 'יצירת תוכן',
     [permissions.CONTENT_UPDATE]: 'עדכון תוכן',

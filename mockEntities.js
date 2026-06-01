@@ -384,6 +384,7 @@ function serverToLocal(sq) {
     total_attempts: sq.total_attempts ?? 0,
     total_success: sq.total_success ?? 0,
     success_rate: sq.success_rate ?? 0,
+    book_classified_at: sq.book_classified_at ?? '',
     createdAt: sq.createdAt,
     updatedAt: sq.updatedAt,
   };
