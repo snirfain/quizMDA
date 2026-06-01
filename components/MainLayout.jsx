@@ -6,12 +6,14 @@
 
 import React, { useState, useEffect } from 'react';
 import NavigationBar from './NavigationBar';
+import AppSidebar from './AppSidebar';
+import BottomNav, { getBottomNavItems } from './BottomNav';
 import Icon from './Icon';
 import Breadcrumbs from './Breadcrumbs';
 import ErrorBoundary from './ErrorBoundary';
 import SkipLink from './SkipLink';
-import { getCurrentUser } from '../utils/auth';
-import { getNavigationItems, navigateTo } from '../utils/router';
+import { getCurrentUser, logout } from '../utils/auth';
+import { getNavigationItems, navigateTo, getCurrentPath } from '../utils/router';
 
 export default function MainLayout({ children, showBreadcrumbs = true, currentPath = null }) {
   const [user, setUser] = useState(null);
@@ -39,11 +41,33 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
   };
 
   const navItems = user ? getNavigationItems(user.role) : [];
+  const activePath = currentPath || getCurrentPath();
+
+  // Account / personal pages — always available from the drawer so the menu
+  // covers every destination in the app, not just the role's primary links.
+  const accountItems = [
+    { path: '/profile', label: 'הפרופיל שלי', icon: 'user' },
+    { path: '/settings', label: 'הגדרות', icon: 'settings' },
+    { path: '/help', label: 'עזרה ותמיכה', icon: 'help' },
+  ];
 
   const handleNavClick = (e, path) => {
     e.preventDefault();
     navigateTo(path);
     setMobileMenuOpen(false);
+  };
+
+  const handleLogout = (e) => {
+    e.preventDefault();
+    setMobileMenuOpen(false);
+    try {
+      logout();
+      window.dispatchEvent(new CustomEvent('userLogout'));
+      navigateTo('/login');
+      setTimeout(() => { window.location.href = '/login'; }, 50);
+    } catch {
+      window.location.href = '/login';
+    }
   };
 
   // Close mobile menu when clicking outside
@@ -64,14 +88,15 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
     }
   }, [mobileMenuOpen]);
 
+  const bottomItems = user ? getBottomNavItems(navItems, user.role) : [];
+
   return (
     <ErrorBoundary>
-      <div style={styles.layout} dir="rtl">
+      <div className="app-shell" style={styles.layout} dir="rtl">
         <SkipLink />
-        
-        {/* Header */}
-        <header style={styles.header} role="banner">
-          <NavigationBar 
+
+        <header className="app-topbar" style={styles.header} role="banner">
+          <NavigationBar
             onMenuToggle={handleMenuToggle}
             onCollapsedChange={handleCollapsedChange}
           />
@@ -86,8 +111,10 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
           />
         )}
 
-        {/* Mobile Sidebar — rendered whenever open (the toggle only appears
-            below the collapse breakpoint, so this can't show on desktop). */}
+        {/* Mobile Sidebar — opens from the same side as the hamburger icon
+            (start/left in this RTL layout) so the icon and the panel match.
+            Rendered whenever open; the toggle only appears below the collapse
+            breakpoint, so this can't show on desktop. */}
         {mobileMenuOpen && (
           <aside
             style={styles.mobileSidebar}
@@ -95,42 +122,106 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
             role="navigation"
             aria-label="תפריט ניווט"
           >
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {navItems.map((item) => (
-                <li key={item.path} style={{ marginBottom: 'var(--space-2)' }}>
-                  <a
-                    href={item.path}
-                    onClick={(e) => handleNavClick(e, item.path)}
-                    className="nav-mobile-link"
-                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+            <div style={styles.drawerHeader}>
+              <span style={styles.drawerTitle}>תפריט ניווט</span>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                style={styles.drawerClose}
+                aria-label="סגור תפריט"
+              >
+                <Icon name="close" size={22} />
+              </button>
+            </div>
+
+            {user && (
+              <div style={styles.drawerUser}>
+                <span style={styles.drawerAvatar} aria-hidden="true">
+                  <Icon name="user" size={18} />
+                </span>
+                <span style={styles.drawerUserName}>{user.full_name}</span>
+              </div>
+            )}
+
+            <nav style={styles.drawerSection} aria-label="עמודים ראשיים">
+              <p style={styles.drawerSectionLabel}>ניווט</p>
+              <ul style={styles.drawerList}>
+                {navItems.map((item) => {
+                  const isActive = activePath === item.path;
+                  return (
+                    <li key={item.path}>
+                      <a
+                        href={item.path}
+                        onClick={(e) => handleNavClick(e, item.path)}
+                        className="nav-mobile-link"
+                        aria-current={isActive ? 'page' : undefined}
+                        style={{ ...styles.drawerLink, ...(isActive ? styles.drawerLinkActive : {}) }}
+                      >
+                        <Icon name={item.icon} size={20} />
+                        {item.label}
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+
+            <nav style={styles.drawerSection} aria-label="החשבון שלי">
+              <p style={styles.drawerSectionLabel}>החשבון שלי</p>
+              <ul style={styles.drawerList}>
+                {accountItems.map((item) => {
+                  const isActive = activePath === item.path;
+                  return (
+                    <li key={item.path}>
+                      <a
+                        href={item.path}
+                        onClick={(e) => handleNavClick(e, item.path)}
+                        className="nav-mobile-link"
+                        aria-current={isActive ? 'page' : undefined}
+                        style={{ ...styles.drawerLink, ...(isActive ? styles.drawerLinkActive : {}) }}
+                      >
+                        <Icon name={item.icon} size={20} />
+                        {item.label}
+                      </a>
+                    </li>
+                  );
+                })}
+                <li>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    style={{ ...styles.drawerLink, ...styles.drawerLogout }}
                   >
-                    <Icon name={item.icon} size={20} />
-                    {item.label}
-                  </a>
+                    <Icon name="logout" size={20} />
+                    התנתקות
+                  </button>
                 </li>
-              ))}
-            </ul>
+              </ul>
+            </nav>
           </aside>
         )}
 
-        {/* Main Content */}
-        <main 
-          style={styles.main}
-          id="main-content"
-          role="main"
-          aria-label="תוכן ראשי"
-        >
-          {/* Breadcrumbs */}
-          {showBreadcrumbs && <Breadcrumbs currentPath={currentPath} />}
+        <div className="app-body">
+          {user && (
+            <AppSidebar
+              navItems={navItems}
+              accountItems={accountItems}
+              onNavClick={handleNavClick}
+            />
+          )}
 
-          {/* Page Content */}
-          <div style={styles.content}>
-            {children}
-          </div>
-        </main>
+          <div className="app-main-with-sidebar app-main-pad-bottom">
+            <main
+              style={styles.main}
+              id="main-content"
+              role="main"
+              aria-label="תוכן ראשי"
+            >
+              {showBreadcrumbs && <Breadcrumbs currentPath={currentPath} />}
+              <div style={styles.content}>{children}</div>
+            </main>
 
-        {/* Footer */}
-        <footer style={styles.footer} role="contentinfo">
+            <footer className="app-footer" style={styles.footer} role="contentinfo">
           <div style={styles.footerContent}>
             <p style={styles.footerText}>
               מערכת למידה ותרגול מד"א © {new Date().getFullYear()}
@@ -155,7 +246,17 @@ export default function MainLayout({ children, showBreadcrumbs = true, currentPa
               </button>
             </nav>
           </div>
-        </footer>
+            </footer>
+          </div>
+        </div>
+
+        {user && (
+          <BottomNav
+            items={bottomItems}
+            onMore={() => handleMenuToggle(true)}
+            onNav={handleNavClick}
+          />
+        )}
       </div>
     </ErrorBoundary>
   );
@@ -186,14 +287,112 @@ const styles = {
   mobileSidebar: {
     position: 'fixed',
     top: 0,
-    right: 0,
+    left: 0,
     bottom: 0,
-    width: '280px',
-    backgroundColor: 'var(--color-white)',
+    width: '300px',
+    maxWidth: '85vw',
+    backgroundColor: 'var(--color-bg-card)',
     boxShadow: 'var(--shadow-lg)',
     zIndex: 1001,
-    padding: 'var(--space-6) var(--space-4)',
+    padding: 'var(--space-4) var(--space-4) var(--space-6)',
     overflowY: 'auto',
+    animation: 'drawerSlideInLeft 0.22s ease-out',
+  },
+  drawerHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 'var(--space-3)',
+    borderBottom: '1px solid var(--color-border)',
+    marginBottom: 'var(--space-3)',
+  },
+  drawerTitle: {
+    fontSize: 'var(--font-size-lg)',
+    fontWeight: 800,
+    color: 'var(--color-text)',
+  },
+  drawerClose: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    color: 'var(--color-text-muted)',
+    padding: 'var(--space-1)',
+    borderRadius: 'var(--radius-md)',
+  },
+  drawerUser: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--space-2)',
+    padding: 'var(--space-2) var(--space-3)',
+    backgroundColor: 'var(--color-bg)',
+    borderRadius: 'var(--radius-md)',
+    marginBottom: 'var(--space-4)',
+  },
+  drawerAvatar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '30px',
+    height: '30px',
+    borderRadius: 'var(--radius-full)',
+    backgroundColor: 'var(--mda-red)',
+    color: 'var(--color-white)',
+    flexShrink: 0,
+  },
+  drawerUserName: {
+    fontWeight: 700,
+    fontSize: 'var(--font-size-base)',
+    color: 'var(--color-text)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  drawerSection: {
+    marginBottom: 'var(--space-4)',
+  },
+  drawerSectionLabel: {
+    margin: '0 0 var(--space-2)',
+    fontSize: 'var(--font-size-xs)',
+    fontWeight: 700,
+    color: 'var(--color-text-muted)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
+  drawerList: {
+    listStyle: 'none',
+    padding: 0,
+    margin: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  },
+  drawerLink: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--space-3)',
+    width: '100%',
+    padding: '11px var(--space-3)',
+    borderRadius: 'var(--radius-md)',
+    color: 'var(--color-text)',
+    textDecoration: 'none',
+    fontSize: 'var(--font-size-base)',
+    fontWeight: 500,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    textAlign: 'right',
+    fontFamily: 'inherit',
+  },
+  drawerLinkActive: {
+    backgroundColor: 'var(--color-primary-bg)',
+    color: 'var(--color-primary)',
+    fontWeight: 700,
+  },
+  drawerLogout: {
+    color: 'var(--mda-red)',
   },
   main: {
     flex: 1,

@@ -16,6 +16,7 @@ import {
   setAccessibilitySettings,
   applyAccessibilitySettings 
 } from '../utils/accessibility';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function SettingsPage() {
   const [user, setUser] = useState(null);
@@ -495,6 +496,9 @@ function AccessibilitySettings({ user }) {
   return (
     <div>
       <h2 style={styles.sectionTitle}>הגדרות נגישות</h2>
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <ThemeToggle />
+      </div>
       <div style={styles.form}>
         <label style={styles.checkboxLabel}>
           <input

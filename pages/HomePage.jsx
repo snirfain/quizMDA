@@ -85,11 +85,11 @@ export default function HomePage() {
         <div style={{ position: 'absolute', bottom: '-80px', right: '30%', width: '260px', height: '260px', borderRadius: '50%', background: 'rgba(229,57,53,0.08)', pointerEvents: 'none' }} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '64px', height: '64px', background: 'linear-gradient(135deg, #e53935, #b71c1c)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '30px', boxShadow: '0 6px 24px rgba(229,57,53,0.45)', flexShrink: 0 }}>✡</div>
-          <div>
-            <div style={{ fontSize: '26px', fontWeight: '800', letterSpacing: '1px', lineHeight: '1' }}>מד"א</div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)', marginTop: '4px', letterSpacing: '0.5px' }}>Magen David Adom</div>
-          </div>
+          <img
+            src="/mda-logo.png"
+            alt='מגן דוד אדום בישראל — ארגון ההצלה הלאומי'
+            style={{ height: isMobile ? '64px' : '80px', width: 'auto', maxWidth: '100%', borderRadius: '12px', boxShadow: '0 6px 24px rgba(0,0,0,0.45)' }}
+          />
         </div>
 
         <div>

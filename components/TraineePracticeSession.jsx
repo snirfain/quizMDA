@@ -11,10 +11,14 @@ import { entities } from '../config/appConfig';
 import { announce } from '../utils/accessibility';
 import { savePracticeSession, loadQuestions, addToSyncQueue } from '../utils/offlineStorage';
 import { MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
-import LoadingSpinner from './LoadingSpinner';
+import { SkeletonCard } from './Skeleton';
+import FeedbackSheet from './FeedbackSheet';
 import QuestionReportModal from './QuestionReportModal';
 import QuestionResolvedMedia from './QuestionResolvedMedia';
 import { sanitizeHtml } from '../utils/sanitize';
+import { setZenMode } from '../utils/zenMode';
+import { createNote } from '../workflows/userNotes';
+import { showToast } from './Toast';
 
 const safeParse = (v, fallback = {}) => {
   if (v != null && typeof v === 'object') return v;
@@ -37,6 +41,13 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineAnswers, setOfflineAnswers] = useState([]);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [bookmarked, setBookmarked] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  useEffect(() => {
+    setZenMode(true);
+    return () => setZenMode(false);
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -181,6 +192,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
       }
 
       setShowResult(true);
+      if (currentQuestion.question_type !== 'open_ended') setSheetOpen(true);
     } catch (error) {
       console.error('Error submitting answer:', error);
       alert('שגיאה בשליחת התשובה. נסה שוב.');
@@ -233,6 +245,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
   const handleNextQuestion = () => {
     const justAnsweredId = currentQuestion?.id;
     setShowResult(false);
+    setSheetOpen(false);
     loadNextQuestion(justAnsweredId);
   };
 
@@ -240,10 +253,21 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
     setReportModalOpen(false);
   };
 
+  const handleBookmark = async () => {
+    if (!currentQuestion?.id || !userId) return;
+    try {
+      await createNote(userId, currentQuestion.id, '', true);
+      setBookmarked(true);
+      showToast('השאלה נוספה לסימניות', 'success');
+    } catch (e) {
+      showToast('לא ניתן לשמור סימנייה', 'error');
+    }
+  };
+
   if (isLoading && !currentQuestion) {
     return (
       <div style={styles.container}>
-        <div style={styles.loading}>טוען שאלה...</div>
+        <SkeletonCard height={320} />
       </div>
     );
   }
@@ -390,105 +414,71 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
           </div>
         )}
 
-        {/* Result Display */}
-        {showResult && (
-          <div style={styles.resultSection} role="region" aria-live="polite" aria-atomic="true">
-            <div 
-              style={{
-                ...styles.resultIndicator,
-                backgroundColor: isCorrect ? '#4CAF50' : '#f44336',
-                color: 'white'
+        {/* Action bar shown when the feedback sheet was dismissed */}
+        {showResult && !sheetOpen && currentQuestion.question_type !== 'open_ended' && (
+          <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-ghost" onClick={() => setSheetOpen(true)}>
+              הצג משוב
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ flex: 1 }}
+              onClick={() => {
+                handleNextQuestion();
+                announce('טוען שאלה הבאה');
               }}
-              role="status"
-              aria-label={isCorrect ? 'תשובה נכונה' : 'תשובה שגויה'}
             >
-              {isCorrect ? '✓ תשובה נכונה!' : '✗ תשובה שגויה'}
-            </div>
+              שאלה הבאה
+            </button>
+          </div>
+        )}
 
-            {/* Explanation - Show automatically for wrong answers, optional for correct */}
-            {currentQuestion.explanation && (
-              <div style={styles.explanationSection}>
-                {!isCorrect && (
-                  <div style={styles.explanationBox}>
-                    <h3 style={styles.explanationTitle}>הסבר:</h3>
-                    <div 
-                      style={styles.explanationText}
-                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentQuestion.explanation) }}
-                    />
-                  </div>
-                )}
-                {isCorrect && !showExplanation && (
+        {currentQuestion.question_type === 'open_ended' && showResult && (
+          <div style={styles.botFeedback}>
+            <h3>משוב מערכת:</h3>
+            {botFeedback ? (
+              <div>
+                <p style={styles.feedbackText}>{botFeedback}</p>
+                <div style={styles.selfAssessment}>
                   <button
-                    style={styles.explanationButton}
-                    onClick={() => setShowExplanation(true)}
+                    style={{ ...styles.assessmentButton, ...styles.assessmentButtonSuccess }}
+                    onClick={() => handleSelfAssessment(true)}
+                    aria-label="הבנתי את התשובה"
                   >
-                    📖 למה זה נכון?
+                    הבנתי
                   </button>
-                )}
-                {isCorrect && showExplanation && (
-                  <div style={styles.explanationBox}>
-                    <h3 style={styles.explanationTitle}>הסבר:</h3>
-                    <div 
-                      style={styles.explanationText}
-                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentQuestion.explanation) }}
-                    />
-                  </div>
-                )}
+                  <button
+                    style={{ ...styles.assessmentButton, ...styles.assessmentButtonError }}
+                    onClick={() => handleSelfAssessment(false)}
+                    aria-label="לא הבנתי את התשובה"
+                  >
+                    לא הבנתי
+                  </button>
+                </div>
               </div>
-            )}
-
-            {currentQuestion.question_type === 'open_ended' && (
-              <div style={styles.botFeedback}>
-                <h3>משוב מערכת:</h3>
-                {botFeedback ? (
-                  <div>
-                    <p style={styles.feedbackText}>{botFeedback}</p>
-                    <div style={styles.selfAssessment}>
-                      <button
-                        style={{
-                          ...styles.assessmentButton,
-                          ...styles.assessmentButtonSuccess
-                        }}
-                        onClick={() => handleSelfAssessment(true)}
-                        aria-label="הבנתי את התשובה"
-                      >
-                        הבנתי ✓
-                      </button>
-                      <button
-                        style={{
-                          ...styles.assessmentButton,
-                          ...styles.assessmentButtonError
-                        }}
-                        onClick={() => handleSelfAssessment(false)}
-                        aria-label="לא הבנתי את התשובה"
-                      >
-                        לא הבנתי ✗
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={styles.loadingFeedback}>
-                    <LoadingSpinner size="sm" />
-                    <span>ממתין למשוב מהמערכת...</span>
-                  </div>
-                )}
+            ) : (
+              <div style={styles.loadingFeedback}>
+                <span>ממתין למשוב מהמערכת...</span>
               </div>
-            )}
-
-            {currentQuestion.question_type !== 'open_ended' && (
-              <button 
-                style={styles.nextButton}
-                onClick={() => {
-                  handleNextQuestion();
-                  announce('טוען שאלה הבאה');
-                }}
-                aria-label="עבור לשאלה הבאה"
-              >
-                שאלה הבאה →
-              </button>
             )}
           </div>
         )}
+
+        <FeedbackSheet
+          open={sheetOpen && showResult && currentQuestion.question_type !== 'open_ended'}
+          isCorrect={isCorrect}
+          explanation={currentQuestion.explanation}
+          hint={!isCorrect ? currentQuestion.hint : null}
+          onClose={() => setSheetOpen(false)}
+          onNext={() => {
+            setBookmarked(false);
+            handleNextQuestion();
+            announce('טוען שאלה הבאה');
+          }}
+          onBookmark={handleBookmark}
+          bookmarked={bookmarked}
+        />
       </div>
 
       {/* Session Stats */}
@@ -597,14 +587,16 @@ function renderAnswerInput(question, userAnswer, setUserAnswer, selectedOptions,
       return (
         <div style={styles.optionsContainer} role="radiogroup" aria-label="אפשרויות תשובה">
           {correctAnswer.options?.map((option, index) => (
-            <label key={index} style={styles.radioLabel}>
+            <label
+              key={index}
+              className={`option-card ${userAnswer === option.value ? 'selected' : ''}`}
+            >
               <input
                 type="radio"
                 name="answer"
                 value={option.value}
                 checked={userAnswer === option.value}
                 onChange={(e) => setUserAnswer(e.target.value)}
-                style={styles.radioInput}
                 aria-label={option.label}
               />
               <span>{option.label}</span>
@@ -617,7 +609,10 @@ function renderAnswerInput(question, userAnswer, setUserAnswer, selectedOptions,
       return (
         <div style={styles.optionsContainer} role="group" aria-label="אפשרויות תשובה מרובות">
           {correctAnswer.options?.map((option, index) => (
-            <label key={index} style={styles.checkboxLabel}>
+            <label
+              key={index}
+              className={`option-card ${selectedOptions.includes(option.value) ? 'selected' : ''}`}
+            >
               <input
                 type="checkbox"
                 value={option.value}
@@ -629,7 +624,6 @@ function renderAnswerInput(question, userAnswer, setUserAnswer, selectedOptions,
                     setSelectedOptions(selectedOptions.filter(v => v !== option.value));
                   }
                 }}
-                style={styles.checkboxInput}
                 aria-label={option.label}
               />
               <span>{option.label}</span>
@@ -669,11 +663,11 @@ const styles = {
   container: {
     direction: 'rtl',
     textAlign: 'right',
-    fontFamily: 'Arial, Helvetica, sans-serif',
+    fontFamily: 'var(--font-family)',
     padding: 'clamp(10px, 3vw, 20px)',
-    maxWidth: '100%',
+    maxWidth: '720px',
     margin: '0 auto',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'var(--color-bg)',
     boxSizing: 'border-box',
   },
   loading: {
@@ -686,7 +680,7 @@ const styles = {
     padding: '40px'
   },
   questionCard: {
-    backgroundColor: 'white',
+    backgroundColor: 'var(--color-bg-card)',
     borderRadius: '8px',
     padding: '20px',
     marginBottom: '20px',

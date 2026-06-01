@@ -10,6 +10,7 @@
 import React, { useMemo, useState } from 'react';
 import { showToast } from './Toast';
 import LoadingSpinner from './LoadingSpinner';
+import QuestionReviewEditor from './QuestionReviewEditor';
 import { entities, appConfig } from '../config/appConfig';
 import { navigateTo } from '../utils/router';
 import {
@@ -39,8 +40,6 @@ const C = {
 };
 
 const TYPE_LABEL = Object.fromEntries(GENERATOR_QUESTION_TYPES.map((t) => [t.value, t.label]));
-const THINKING_LABEL = Object.fromEntries(THINKING_LEVELS.map((t) => [t.value, t.label]));
-const TRAINING_LABEL = Object.fromEntries(TRAINING_LEVELS.map((t) => [t.value, t.label]));
 
 let _rowSeq = 0;
 function newRow(overrides = {}) {
@@ -75,7 +74,6 @@ export default function ChapterQuestionGenerator() {
   const apiKeyMissing = !appConfig.openai?.getApiKey?.();
 
   const totalRequested = specs.reduce((s, r) => s + (Number(r.count) || 0), 0);
-  const selectedCount = results.filter((r) => r.include).length;
 
   // ── Spec row handlers ──────────────────────────────────────
   const updateRow = (rowId, patch) =>
@@ -137,9 +135,18 @@ export default function ChapterQuestionGenerator() {
         },
       });
 
-      setResults(questions);
+      // Seed per-question tags from the form so each one is fully editable in
+      // the review step (category/sub/medical/status are global defaults here).
+      const seeded = questions.map((q) => ({
+        ...q,
+        category: q.category || category,
+        sub_category: q.sub_category || subCategory,
+        medical_levels: q.medical_levels || medicalLevels,
+        status: q.status || status,
+      }));
+      setResults(seeded);
       setWarnings(warns || []);
-      showToast(`נוצרו ${questions.length} שאלות. סקרו ושמרו את הרצויות.`, 'success');
+      showToast(`נוצרו ${seeded.length} שאלות. סקרו, ערכו ואשרו את הרצויות.`, 'success');
     } catch (err) {
       console.error('[ChapterQuestionGenerator] generate failed:', err);
       showToast(err.message || 'יצירת השאלות נכשלה.', 'error');
@@ -149,9 +156,9 @@ export default function ChapterQuestionGenerator() {
     }
   };
 
-  // ── Save selected ──────────────────────────────────────────
-  const handleSaveSelected = async () => {
-    const chosen = results.filter((r) => r.include);
+  // ── Save selected (manual approval; nothing auto-approves) ──
+  const handleSaveSelected = async (chosenArg) => {
+    const chosen = (chosenArg || results).filter((r) => r.include);
     if (!chosen.length) {
       showToast('בחרו לפחות שאלה אחת לשמירה.', 'error');
       return;
@@ -162,12 +169,8 @@ export default function ChapterQuestionGenerator() {
 
     for (const genQ of chosen) {
       try {
-        const payload = toCanonicalQuestionPayload(genQ, {
-          category,
-          subCategory,
-          status,
-          medicalLevels,
-        });
+        // Per-question fields (edited in the review step) take precedence.
+        const payload = toCanonicalQuestionPayload(genQ, { category, subCategory, status, medicalLevels });
         await entities.Question_Bank.create(payload);
         ok += 1;
       } catch (err) {
@@ -178,18 +181,14 @@ export default function ChapterQuestionGenerator() {
 
     setSaving(false);
     if (ok) {
-      showToast(`${ok} שאלות נשמרו למאגר (${QUESTION_STATUSES.find((s) => s.value === status)?.label || status}).`, 'success');
-      // Remove saved items from the review list.
-      setResults((prev) => prev.filter((r) => !r.include));
+      showToast(`${ok} שאלות נשמרו למאגר.`, 'success');
+      const savedIds = new Set(chosen.map((q) => q.id));
+      setResults((prev) => prev.filter((r) => !savedIds.has(r.id)));
     }
     if (failed.length) {
       showToast(`${failed.length} שאלות לא נשמרו. נסו שוב.`, 'error');
     }
   };
-
-  const setAllInclude = (val) => setResults((prev) => prev.map((r) => ({ ...r, include: val })));
-  const toggleInclude = (id) =>
-    setResults((prev) => prev.map((r) => (r.id === id ? { ...r, include: !r.include } : r)));
 
   // ── Render ─────────────────────────────────────────────────
   return (
@@ -367,77 +366,20 @@ export default function ChapterQuestionGenerator() {
 
       {/* Results */}
       {results.length > 0 && (
-        <section style={styles.card}>
-          <div style={styles.cardHead}>
-            <h2 style={styles.cardTitle}>שאלות שנוצרו ({results.length})</h2>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button type="button" onClick={() => setAllInclude(true)} style={styles.linkBtn}>בחר הכל</button>
-              <button type="button" onClick={() => setAllInclude(false)} style={styles.linkBtn}>נקה</button>
-              <button
-                type="button"
-                onClick={handleSaveSelected}
-                disabled={saving || selectedCount === 0}
-                style={{ ...styles.primaryBtn, padding: '8px 16px', opacity: saving || selectedCount === 0 ? 0.6 : 1 }}
-              >
-                {saving ? 'שומר…' : `שמור נבחרות (${selectedCount})`}
-              </button>
-            </div>
-          </div>
-
-          <div style={styles.resultsList}>
-            {results.map((q, idx) => (
-              <article key={q.id} style={{ ...styles.qCard, borderColor: q.include ? C.primary : C.border }}>
-                <div style={styles.qHead}>
-                  <label style={styles.includeLabel}>
-                    <input type="checkbox" checked={q.include} onChange={() => toggleInclude(q.id)} />
-                    <span style={styles.qNum}>#{idx + 1}</span>
-                  </label>
-                  <div style={styles.badges}>
-                    <span style={styles.badge}>{TYPE_LABEL[q.question_type] || q.question_type}</span>
-                    <span style={{ ...styles.badge, background: '#ede7f6', color: '#5e35b1' }}>
-                      חשיבה: {THINKING_LABEL[q.thinking_level] || q.thinking_level}
-                    </span>
-                    <span style={{ ...styles.badge, background: '#e8f5e9', color: '#2e7d32' }}>
-                      רמה: {TRAINING_LABEL[q.training_level] || q.training_level}
-                    </span>
-                  </div>
-                </div>
-
-                <p style={styles.qText}>{q.question_text}</p>
-
-                {q.question_type === 'open_ended' ? (
-                  q.model_answer && (
-                    <div style={styles.modelAnswer}>
-                      <strong>תשובת מופת:</strong> {q.model_answer}
-                    </div>
-                  )
-                ) : (
-                  <ul style={styles.optList}>
-                    {q.options.map((o, i) => (
-                      <li
-                        key={i}
-                        style={{
-                          ...styles.optItem,
-                          ...(o.isCorrect ? styles.optCorrect : {}),
-                        }}
-                      >
-                        {o.isCorrect ? '✓ ' : ''}{o.label}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {q.explanation && <div style={styles.explanation}>הסבר: {q.explanation}</div>}
-              </article>
-            ))}
-          </div>
-
+        <>
+          <QuestionReviewEditor
+            questions={results}
+            onChange={setResults}
+            onSave={handleSaveSelected}
+            saving={saving}
+            title="שאלות שנוצרו — ערכו ואשרו"
+          />
           <div style={{ marginTop: 16, textAlign: 'center' }}>
             <button type="button" onClick={() => navigateTo('/instructor/questions')} style={styles.linkBtn}>
               מעבר לניהול שאלות ←
             </button>
           </div>
-        </section>
+        </>
       )}
     </div>
   );

@@ -10,6 +10,7 @@ import { navigateTo } from '../utils/router';
 import { getCurrentUser, logout } from '../utils/auth';
 import { getUserNotifications } from '../workflows/notifications';
 import NotificationsPanel from './NotificationsPanel';
+import ThemeToggle from './ThemeToggle';
 import Icon from './Icon';
 
 export default function NavigationBar({ onMenuToggle, onCollapsedChange }) {
@@ -148,13 +149,7 @@ export default function NavigationBar({ onMenuToggle, onCollapsedChange }) {
             style={styles.logo}
             aria-label="דף הבית"
           >
-            <span style={styles.logoStar} aria-hidden="true">
-              <Icon name="logo" size={26} strokeWidth={1.8} />
-            </span>
-            <span className="nav-brand-text">
-              <span style={styles.logoText}>מד"א</span>
-              <span style={styles.logoSub} className="nav-brand-sub">מגן דוד אדום</span>
-            </span>
+            <img src="/mda-logo.png" alt='מגן דוד אדום בישראל' style={styles.logoImg} />
           </a>
         </div>
 
@@ -162,7 +157,7 @@ export default function NavigationBar({ onMenuToggle, onCollapsedChange }) {
             The slot always occupies the central space (whether or not the
             links are shown), so its width is a stable measure of the room
             available for the inline links. */}
-        <div ref={slotRef} style={styles.navSlot}>
+        <div ref={slotRef} style={styles.navSlot} className="app-topbar-brand-links">
           {!isMobile && (
             <ul style={styles.navList} className="nav-desktop-links" role="menubar">
               {navItems.map((item) => {
@@ -211,6 +206,7 @@ export default function NavigationBar({ onMenuToggle, onCollapsedChange }) {
 
         {/* Right side actions */}
         <div style={styles.actions}>
+          <ThemeToggle compact />
           {/* Notifications */}
           <button
             style={styles.iconButton}
@@ -298,6 +294,7 @@ export default function NavigationBar({ onMenuToggle, onCollapsedChange }) {
               type="button"
               style={styles.menuToggle}
               data-menu-toggle
+              data-nav-hamburger
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -364,24 +361,11 @@ const styles = {
     alignItems: 'center',
     gap: 'var(--space-2)',
   },
-  logoStar: {
-    lineHeight: 1,
-    display: 'flex',
-    alignItems: 'center',
-  },
-  logoText: {
-    fontSize: '22px',
-    fontWeight: 900,
-    letterSpacing: '0.5px',
-    lineHeight: 1,
-  },
-  logoSub: {
-    fontSize: '11px',
-    fontWeight: 400,
-    opacity: 0.85,
-    lineHeight: 1,
+  logoImg: {
+    height: '42px',
+    width: 'auto',
     display: 'block',
-    marginTop: '1px',
+    borderRadius: '6px',
   },
   navSlot: {
     flex: 1,

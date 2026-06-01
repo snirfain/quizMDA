@@ -406,12 +406,14 @@ export async function generateQuestionsFromChapter({
  * @param {Object} meta - { category, subCategory, status, medicalLevels }
  */
 export function toCanonicalQuestionPayload(genQ, meta = {}) {
-  const {
-    category = '',
-    subCategory = '',
-    status = 'under_review',
-    medicalLevels = [],
-  } = meta;
+  // Per-question values (set in the review editor) take precedence; the meta
+  // values are only fallbacks for callers that don't edit per question.
+  const category = genQ.category || meta.category || '';
+  const subCategory = genQ.sub_category || meta.subCategory || '';
+  const status = genQ.status || meta.status || 'under_review';
+  const medicalLevels = Array.isArray(genQ.medical_levels) && genQ.medical_levels.length
+    ? genQ.medical_levels
+    : (Array.isArray(meta.medicalLevels) ? meta.medicalLevels : []);
 
   const common = {
     question_text: genQ.question_text,
@@ -420,7 +422,7 @@ export function toCanonicalQuestionPayload(genQ, meta = {}) {
     sub_category: subCategory,
     thinking_level: genQ.thinking_level,
     training_level: genQ.training_level,
-    medical_levels: Array.isArray(medicalLevels) ? medicalLevels : [],
+    medical_levels: medicalLevels,
     explanation: genQ.explanation || '',
     hint: '',
     status,

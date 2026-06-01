@@ -11,6 +11,7 @@
  */
 import React, { useMemo, useState, useCallback } from 'react';
 import { scoreBranchAnswer, resolveNextBranch } from '../workflows/rollingCaseEngine';
+import RollingCaseStepper from './RollingCaseStepper';
 
 const BRANCH_TYPE_LABELS = {
   single_choice: 'בחירה יחידה',
@@ -112,8 +113,13 @@ export default function RollingCasePreview({ rollingCase }) {
 
   return (
     <div style={styles.wrap} dir="rtl">
+      <RollingCaseStepper
+        caseName={rollingCase?.case_name || 'תצוגה מקדימה — מקרה מתגלגל'}
+        currentStep={stepIndex - 1}
+        totalSteps={branches.length}
+        branchLabels={branches.map((b) => String(b.id))}
+      />
       <div style={styles.header}>
-        <span style={styles.stepBadge}>שלב {stepIndex}</span>
         <span style={styles.branchId}>ענף: {String(currentBranch.id)}</span>
         <span style={styles.typeBadge}>{BRANCH_TYPE_LABELS[branchType] || branchType}</span>
       </div>

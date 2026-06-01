@@ -11,10 +11,14 @@ import './entities/Question_Versions.js';
 import './styles/globalStyles.js';
 import './styles/responsive.css';
 import { initializeAccessibilitySettings } from './utils/accessibility';
+import { initTheme } from './utils/theme';
 import { installApiInterceptor } from './utils/apiClient';
 
 // Attach auth token + audit tag to all /api requests before anything fetches.
 installApiInterceptor();
+
+// Theme before paint to avoid flash
+initTheme();
 
 // Initialize accessibility settings on page load
 initializeAccessibilitySettings();
@@ -24,7 +28,7 @@ const globalStyles = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   #root { min-height: 100vh; }
   *:focus-visible {
-    outline: 2px solid var(--mda-red);
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
   .sr-only {

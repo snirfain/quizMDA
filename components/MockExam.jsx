@@ -10,6 +10,9 @@ import { generateTraineeExam } from '../workflows/testGenerator';
 import { getCurrentUser } from '../utils/auth';
 import ExamResults from './ExamResults';
 import LoadingSpinner from './LoadingSpinner';
+import { SkeletonCard } from './Skeleton';
+import RollingCaseStepper from './RollingCaseStepper';
+import { setZenMode } from '../utils/zenMode';
 import { showToast } from './Toast';
 import { announce } from '../utils/accessibility';
 import QuestionReportModal from './QuestionReportModal';
@@ -61,6 +64,14 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
   const timerRef = useRef(null);
 
   const hasTimeLimit = timeLimit < 999;
+
+  // Zen mode only during the live exam — keep global nav on the start screen
+  // and the results screen so the user can navigate away normally.
+  useEffect(() => {
+    setZenMode(isStarted && !isSubmitted);
+    return () => setZenMode(false);
+  }, [isStarted, isSubmitted]);
+
   useEffect(() => {
     if (isStarted && hasTimeLimit && timeRemaining > 0) {
       timerRef.current = setInterval(() => {
@@ -430,7 +441,9 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
   if (isLoading) {
     return (
       <>
-        <LoadingSpinner fullScreen message="טוען שאלות..." />
+        <div style={{ maxWidth: 720, margin: '40px auto', padding: 16 }}>
+          <SkeletonCard height={400} />
+        </div>
         {renderOverlays()}
       </>
     );
@@ -541,12 +554,12 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
           </div>
           <h2 style={styles.questionText}>{currentQuestion.question_text}</h2>
           {currentQuestion.question_type === 'rolling_case' && (
-            <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, border: '1px solid #ddd', background: '#fff' }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>{currentQuestion.case_name || 'מקרה מתגלגל'}</div>
-              <div style={{ fontSize: 13, color: '#555' }}>
-                ענף {(rollingProgress[currentQuestion.id] || 0) + 1} מתוך {(currentQuestion.rolling_case?.branches || []).length}
-              </div>
-            </div>
+            <RollingCaseStepper
+              caseName={currentQuestion.case_name}
+              currentStep={rollingProgress[currentQuestion.id] || 0}
+              totalSteps={(currentQuestion.rolling_case?.branches || []).length || 1}
+              branchLabels={(currentQuestion.rolling_case?.branches || []).map((b) => b.label || b.title || '')}
+            />
           )}
           <button
             type="button"
@@ -566,14 +579,16 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
             {currentQuestion.question_type === 'single_choice' && (
               <div style={styles.optionsList}>
                 {safeParse(currentQuestion.options).map((option, index) => (
-                  <label key={index} style={styles.optionLabel}>
+                  <label
+                    key={index}
+                    className={`option-card ${answers[currentQuestion.id] === index.toString() ? 'selected' : ''}`}
+                  >
                     <input
                       type="radio"
                       name={`question-${currentQuestion.id}`}
                       value={index}
                       checked={answers[currentQuestion.id] === index.toString()}
                       onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
-                      style={styles.radio}
                     />
                     <span>{option.label ?? option.text}</span>
                   </label>
@@ -584,7 +599,10 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
             {currentQuestion.question_type === 'multi_choice' && (
               <div style={styles.optionsList}>
                 {safeParse(currentQuestion.options).map((option, index) => (
-                  <label key={index} style={styles.optionLabel}>
+                  <label
+                    key={index}
+                    className={`option-card ${(answers[currentQuestion.id] || []).includes(index.toString()) ? 'selected' : ''}`}
+                  >
                     <input
                       type="checkbox"
                       value={index}
@@ -596,7 +614,6 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
                           : current.filter(a => a !== index.toString());
                         handleAnswerChange(currentQuestion.id, newAnswers);
                       }}
-                      style={styles.checkbox}
                     />
                     <span>{option.label ?? option.text}</span>
                   </label>
@@ -606,25 +623,23 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
 
             {currentQuestion.question_type === 'true_false' && (
               <div style={styles.optionsList}>
-                <label style={styles.optionLabel}>
+                <label className={`option-card ${answers[currentQuestion.id] === 'true' ? 'selected' : ''}`}>
                   <input
                     type="radio"
                     name={`question-${currentQuestion.id}`}
                     value="true"
                     checked={answers[currentQuestion.id] === 'true'}
                     onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
-                    style={styles.radio}
                   />
                   <span>נכון</span>
                 </label>
-                <label style={styles.optionLabel}>
+                <label className={`option-card ${answers[currentQuestion.id] === 'false' ? 'selected' : ''}`}>
                   <input
                     type="radio"
                     name={`question-${currentQuestion.id}`}
                     value="false"
                     checked={answers[currentQuestion.id] === 'false'}
                     onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
-                    style={styles.radio}
                   />
                   <span>לא נכון</span>
                 </label>

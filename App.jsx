@@ -38,12 +38,12 @@ const StudyPlanViewer = React.lazy(() => import('./components/StudyPlanViewer'))
 const BookmarksList = React.lazy(() => import('./components/BookmarksList'));
 const MockExam = React.lazy(() => import('./components/MockExam'));
 const QuestionManagement = React.lazy(() => import('./components/QuestionManagement'));
-const ChapterQuestionGenerator = React.lazy(() => import('./components/ChapterQuestionGenerator'));
-const AiFileIngest = React.lazy(() => import('./components/AiFileIngest'));
+const QuestionImportHub = React.lazy(() => import('./components/QuestionImportHub'));
 const StudyPlanManager = React.lazy(() => import('./components/StudyPlanManager'));
 const InstructorAnalytics = React.lazy(() => import('./components/InstructorAnalytics'));
 const DataImportExport = React.lazy(() => import('./components/DataImportExport'));
 const AdminStatistics = React.lazy(() => import('./components/AdminStatistics'));
+const QuestionStatsDashboard = React.lazy(() => import('./components/QuestionStatsDashboard'));
 const PermissionManagement = React.lazy(() => import('./components/PermissionManagement'));
 const MediaBankManager = React.lazy(() => import('./components/MediaBankManager'));
 const TranscriptUpload = React.lazy(() => import('./components/TranscriptUpload'));
@@ -176,10 +176,12 @@ export default function App() {
         return <InstructorDashboard instructorId={userId} />;
       case '/instructor/questions':
         return <QuestionManagement />;
+      case '/instructor/import':
+        return <QuestionImportHub initialTab="manual" />;
       case '/instructor/chapter-generator':
-        return <ChapterQuestionGenerator />;
+        return <QuestionImportHub initialTab="chapter" />;
       case '/instructor/file-ingest':
-        return <AiFileIngest />;
+        return <QuestionImportHub initialTab="file" />;
       case '/instructor/study-plans':
         return <StudyPlanManager />;
       case '/instructor/analytics':
@@ -192,6 +194,8 @@ export default function App() {
         return <ManagerDashboardPage />;
       case '/admin/data-import-export':
         return <DataImportExport />;
+      case '/admin/question-stats':
+        return <QuestionStatsDashboard />;
       case '/setup':
         return <CourseSetup user={user} onComplete={(updatedUser) => {
           setUser(updatedUser);

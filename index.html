@@ -16,15 +16,37 @@
   <link rel="stylesheet" href="/styles/accessibility.css" />
   <link rel="stylesheet" href="/styles/global.css" />
 
+  <script>
+    try {
+      var t = localStorage.getItem('mda-theme');
+      var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (e) {}
+  </script>
+
   <style>
     /* ── MDA Design System — CSS Custom Properties ──────── */
     :root {
-      /* Brand */
+      /* Brand — MDA red (chrome, alerts, emergency) */
       --mda-red:          #CC0000;
       --mda-red-dark:     #A50000;
       --mda-red-light:    #E63333;
       --mda-red-bg:       #FFF5F5;
       --mda-red-border:   #F5C2C2;
+
+      /* Learning primary — deep medical blue */
+      --mda-blue:         #0D47A1;
+      --mda-blue-dark:    #0A3A82;
+      --mda-blue-light:   #1976D2;
+      --mda-blue-bg:      #E3F2FD;
+      --mda-blue-border:  #90CAF9;
+
+      /* Semantic primary (actions on learning surfaces) */
+      --color-primary:       var(--mda-blue);
+      --color-primary-dark:  var(--mda-blue-dark);
+      --color-primary-light: var(--mda-blue-light);
+      --color-primary-bg:    var(--mda-blue-bg);
+      --color-on-primary:    #FFFFFF;
 
       /* Neutrals */
       --color-white:      #FFFFFF;
@@ -69,7 +91,8 @@
       --font-size-xl:     20px;
       --font-size-2xl:    24px;
       --font-size-3xl:    30px;
-      --line-height:      1.6;
+      --line-height:      1.7;
+      --line-height-tight: 1.35;
       --font-weight-normal: 400;
       --font-weight-medium: 500;
       --font-weight-semibold: 600;
@@ -102,6 +125,46 @@
       /* Transitions */
       --transition: 0.18s ease;
       --transition-fast: 0.12s ease;
+
+      /* Layout */
+      --sidebar-width:    260px;
+      --topbar-height:    56px;
+      --bottomnav-height: 64px;
+    }
+
+    /* Dark theme */
+    :root[data-theme="dark"] {
+      --color-white:      #1e2433;
+      --color-bg:         #12151f;
+      --color-bg-card:    #1a1f2e;
+      --color-bg-hover:   #252b3d;
+      --color-border:     #2e3648;
+      --color-border-mid: #3d4659;
+
+      --color-text:       #e8eaef;
+      --color-text-2:     #b8bec9;
+      --color-text-muted: #8b93a3;
+
+      --mda-red-bg:       #2a1515;
+      --mda-red-border:   #5c2020;
+      --mda-blue-bg:      #0d2137;
+      --mda-blue-border:  #1e4a6e;
+
+      --color-success-bg: #1a2e1f;
+      --color-warning-bg: #2e2210;
+      --color-info-bg:    #0d2137;
+      --color-danger-bg:  #2a1515;
+
+      --color-footer-bg:  #0a0c12;
+      --color-footer-text:#9aa3b5;
+
+      --panel-bg:         #12151f;
+      --hero-bg:          linear-gradient(145deg, #060810 0%, #12151f 50%, #1a2540 100%);
+
+      --shadow-sm:  0 1px 4px rgba(0,0,0,0.35);
+      --shadow-md:  0 3px 12px rgba(0,0,0,0.45);
+      --shadow-lg:  0 8px 28px rgba(0,0,0,0.55);
+      --shadow-nav: 0 2px 12px rgba(0,0,0,0.5);
     }
 
     /* ── Reset & Base ──────────────────────────────────── */

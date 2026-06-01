@@ -8,7 +8,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { entities, appConfig } from '../config/appConfig';
 import { getCurrentUser } from '../utils/auth';
 import QuestionEditor from './QuestionEditor';
-import QuestionImport from './QuestionImport';
 import SearchBar from './SearchBar';
 import LoadingSpinner from './LoadingSpinner';
 import ConfirmDialog from './ConfirmDialog';
@@ -17,6 +16,7 @@ import QuestionResolvedMedia from './QuestionResolvedMedia';
 import RollingCasePreview from './RollingCasePreview';
 import { showToast } from './Toast';
 import { permissions } from '../utils/permissions';
+import { navigateTo } from '../utils/router';
 import PermissionGate from './PermissionGate';
 import {
   getPendingQuestions,
@@ -845,17 +845,14 @@ export default function QuestionManagement() {
             </button>
             <PermissionGate permission={permissions.QUESTION_CREATE}>
               <button
-                style={{
-                  ...styles.tab,
-                  ...(activeTab === 'import' ? styles.tabActive : {})
-                }}
-                onClick={() => setActiveTab('import')}
+                style={styles.tab}
+                onClick={() => navigateTo('/instructor/import')}
                 role="tab"
-                aria-selected={activeTab === 'import'}
-                aria-controls="import-panel"
+                aria-selected={false}
                 id="import-tab"
+                title="מעבר לעמוד ייבוא שאלות"
               >
-                ייבוא שאלות
+                ייבוא שאלות ↗
               </button>
             </PermissionGate>
             <PermissionGate permission={permissions.QUESTION_APPROVE}>
@@ -1959,19 +1956,6 @@ export default function QuestionManagement() {
               </div>
             </div>
           )}
-            </div>
-          )}
-
-          {activeTab === 'import' && (
-            <div role="tabpanel" aria-labelledby="import-tab" id="import-panel">
-              <QuestionImport
-                onImportComplete={(results) => {
-                  loadQuestions();
-                  if (results.successful > 0) {
-                    setActiveTab('list');
-                  }
-                }}
-              />
             </div>
           )}
 

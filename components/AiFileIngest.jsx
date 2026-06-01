@@ -8,9 +8,10 @@
  * adds explanations, randomizes option order, and saves to the bank.
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { showToast } from './Toast';
 import LoadingSpinner from './LoadingSpinner';
+import QuestionReviewEditor from './QuestionReviewEditor';
 import { entities, appConfig } from '../config/appConfig';
 import { navigateTo } from '../utils/router';
 import {
@@ -18,7 +19,6 @@ import {
   MEDICAL_LEVELS,
   QUESTION_STATUSES,
   QUESTION_CATEGORIES,
-  THINKING_LEVELS,
 } from '../shared/questionBankMetadata.js';
 import { parseIngestFile, buildRawQuestions, tagAndCorrectQuestions } from '../workflows/aiFileIngest';
 import { toCanonicalQuestionPayload } from '../workflows/chapterQuestionGen';
@@ -32,13 +32,6 @@ const C = {
   ok: '#4CAF50',
   err: '#f44336',
 };
-
-const TYPE_LABEL = {
-  single_choice: 'תשובה אחת נכונה',
-  multi_choice: 'כמה תשובות נכונות',
-};
-const THINKING_LABEL = Object.fromEntries(THINKING_LEVELS.map((t) => [t.value, t.label]));
-const PREVIEW_LIMIT = 60;
 
 export default function AiFileIngest() {
   const [fileName, setFileName] = useState('');
@@ -62,8 +55,6 @@ export default function AiFileIngest() {
 
   const fileRef = useRef(null);
   const apiKeyMissing = !appConfig.openai?.getApiKey?.();
-
-  const selectedCount = useMemo(() => results.filter((r) => r.include).length, [results]);
 
   const toggleMedicalLevel = (val) =>
     setMedicalLevels((prev) => (prev.includes(val) ? prev.filter((v) => v !== val) : [...prev, val]));
@@ -131,9 +122,16 @@ export default function AiFileIngest() {
           if (ev.stage === 'failure') setProviderNote(`שגיאת ${ev.provider}: ${ev.message}`);
         },
       });
-      setResults(questions);
+      // Seed per-question medical levels + status (global defaults) so every
+      // field is editable in the review step.
+      const seeded = questions.map((q) => ({
+        ...q,
+        medical_levels: q.medical_levels && q.medical_levels.length ? q.medical_levels : medicalLevels,
+        status: q.status || status,
+      }));
+      setResults(seeded);
       setWarnings(warns || []);
-      showToast(`${questions.length} שאלות תוקנו ותויגו. סקרו ושמרו.`, 'success');
+      showToast(`${seeded.length} שאלות תוקנו ותויגו. סקרו, ערכו ואשרו.`, 'success');
     } catch (err) {
       console.error('[AiFileIngest] tagging failed:', err);
       showToast(err.message || 'התיוג נכשל.', 'error');
@@ -143,9 +141,9 @@ export default function AiFileIngest() {
     }
   };
 
-  // ── Save to bank ───────────────────────────────────────────
-  const handleSave = async () => {
-    const chosen = results.filter((r) => r.include);
+  // ── Save to bank (manual approval) ─────────────────────────
+  const handleSave = async (chosenArg) => {
+    const chosen = (chosenArg || results).filter((r) => r.include);
     if (!chosen.length) {
       showToast('בחרו לפחות שאלה אחת לשמירה.', 'error');
       return;
@@ -180,12 +178,6 @@ export default function AiFileIngest() {
     }
     if (failed) showToast(`${failed} שאלות לא נשמרו.`, 'error');
   };
-
-  const setAllInclude = (val) => setResults((prev) => prev.map((r) => ({ ...r, include: val })));
-  const toggleInclude = (id) =>
-    setResults((prev) => prev.map((r) => (r.id === id ? { ...r, include: !r.include } : r)));
-
-  const visible = results.slice(0, PREVIEW_LIMIT);
 
   // ── Render ─────────────────────────────────────────────────
   return (
@@ -305,65 +297,23 @@ export default function AiFileIngest() {
         </div>
       )}
 
-      {/* Results */}
+      {/* Results — fully editable review; nothing saves until you approve */}
       {results.length > 0 && (
-        <section style={styles.card}>
-          <div style={styles.cardHead}>
-            <h2 style={styles.cardTitle}>שאלות מוכנות ({results.length})</h2>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => setAllInclude(true)} style={styles.linkBtn}>בחר הכל</button>
-              <button type="button" onClick={() => setAllInclude(false)} style={styles.linkBtn}>נקה</button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving || selectedCount === 0}
-                style={{ ...styles.primaryBtn, padding: '8px 16px', opacity: saving || selectedCount === 0 ? 0.6 : 1 }}
-              >
-                {saving ? (saveProgress || 'שומר…') : `שמור נבחרות (${selectedCount})`}
-              </button>
-            </div>
-          </div>
-
-          {results.length > PREVIEW_LIMIT && (
-            <div style={styles.note}>מוצגות {PREVIEW_LIMIT} שאלות ראשונות לתצוגה מקדימה; הכפתור שומר את כל הנבחרות.</div>
-          )}
-
-          <div style={styles.resultsList}>
-            {visible.map((q, idx) => (
-              <article key={q.id} style={{ ...styles.qCard, borderColor: q.include ? C.primary : C.border }}>
-                <div style={styles.qHead}>
-                  <label style={styles.includeLabel}>
-                    <input type="checkbox" checked={q.include} onChange={() => toggleInclude(q.id)} />
-                    <span style={styles.qNum}>#{idx + 1}</span>
-                  </label>
-                  <div style={styles.badges}>
-                    <span style={styles.badge}>{TYPE_LABEL[q.question_type] || q.question_type}</span>
-                    <span style={{ ...styles.badge, background: '#e8f5e9', color: '#2e7d32' }}>{q.category}</span>
-                    <span style={{ ...styles.badge, background: '#ede7f6', color: '#5e35b1' }}>
-                      חשיבה: {THINKING_LABEL[q.thinking_level] || q.thinking_level}
-                    </span>
-                  </div>
-                </div>
-                <p style={styles.qText}>{q.question_text}</p>
-                <ul style={styles.optList}>
-                  {q.options.map((o, i) => (
-                    <li key={i} style={{ ...styles.optItem, ...(o.isCorrect ? styles.optCorrect : {}) }}>
-                      {o.isCorrect ? '✓ ' : ''}{o.label}
-                    </li>
-                  ))}
-                </ul>
-                {q.sub_category && <div style={styles.subTag}>תת-נושא: {q.sub_category}</div>}
-                {q.explanation && <div style={styles.explanation}>הסבר: {q.explanation}</div>}
-              </article>
-            ))}
-          </div>
-
+        <>
+          <QuestionReviewEditor
+            questions={results}
+            onChange={setResults}
+            onSave={handleSave}
+            saving={saving}
+            saveLabel={saving ? (saveProgress || 'שומר…') : undefined}
+            title="שאלות מוכנות — ערכו ואשרו"
+          />
           <div style={{ marginTop: 16, textAlign: 'center' }}>
             <button type="button" onClick={() => navigateTo('/instructor/questions')} style={styles.linkBtn}>
               מעבר לניהול שאלות ←
             </button>
           </div>
-        </section>
+        </>
       )}
     </div>
   );

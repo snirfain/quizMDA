@@ -8,7 +8,11 @@ import React, { useState, useEffect } from 'react';
 import TraineePracticeSession from '../components/TraineePracticeSession';
 import UserProgressDashboard from '../components/UserProgressDashboard';
 import TagFilter from '../components/TagFilter';
+import StreakBadge from '../components/StreakBadge';
+import ProgressRing from '../components/ProgressRing';
+import { SkeletonCard } from '../components/Skeleton';
 import { getFilterOptions, generateTraineeExam } from '../workflows/testGenerator';
+import { getUserProgress } from '../workflows/userProgress';
 import { entities } from '../config/appConfig';
 import { navigateTo } from '../utils/router';
 import { showToast } from '../components/Toast';
@@ -33,11 +37,34 @@ export default function TraineeDashboard({ userId }) {
     tagFilters: [],
   });
   const [isStartingExam, setIsStartingExam] = useState(false);
+  const [progressStats, setProgressStats] = useState(null);
+  const [progressLoading, setProgressLoading] = useState(true);
 
   React.useEffect(() => {
     loadFilterOptions();
     loadAvailableTags();
-  }, []);
+    if (userId) loadProgress();
+  }, [userId]);
+
+  const loadProgress = async () => {
+    setProgressLoading(true);
+    try {
+      const data = await getUserProgress(userId);
+      setProgressStats(data);
+    } catch (e) {
+      console.error('Progress load error:', e);
+    } finally {
+      setProgressLoading(false);
+    }
+  };
+
+  const handleQuickAdaptive = () => {
+    setHierarchyFilters({});
+    setSelectedTags([]);
+    setPracticeMode('free');
+    setActiveTab('practice');
+    showToast('מתחילים תרגול אדפטיבי', 'info');
+  };
 
   const loadAvailableTags = async () => {
     try {
@@ -180,6 +207,45 @@ export default function TraineeDashboard({ userId }) {
 
   return (
     <div style={styles.container} aria-label="לוח בקרה מתאמן">
+      {progressLoading ? (
+        <div style={{ marginBottom: 'var(--space-5)' }}>
+          <SkeletonCard height={140} />
+        </div>
+      ) : progressStats && (
+        <div className="card card-elevated animate-fade-in" style={styles.heroStrip}>
+          <div style={styles.heroTop}>
+            <div>
+              <h2 style={styles.heroGreeting}>שלום, מוכנים לתרגל?</h2>
+              <p style={styles.heroSub}>המשיכו את הרצף והתקדמות השבועית</p>
+            </div>
+            <StreakBadge days={progressStats.streak?.current ?? 0} size="lg" />
+          </div>
+          <div style={styles.heroRings}>
+            <ProgressRing
+              value={progressStats.overall?.successRate ?? 0}
+              label="הצלחה שבועית"
+              size={96}
+            />
+            <ProgressRing
+              value={progressStats.overall?.completionRate ?? 0}
+              label="כיסוי מאגר"
+              sublabel={`${progressStats.overall?.questionsAnswered ?? 0} / ${progressStats.overall?.totalQuestions ?? 0} שאלות`}
+              size={96}
+              color="var(--color-success)"
+            />
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-lg"
+            style={styles.quickActionBtn}
+            onClick={handleQuickAdaptive}
+            aria-label="המשך תרגול אדפטיבי"
+          >
+            המשך תרגול אדפטיבי
+          </button>
+        </div>
+      )}
+
       <div className="card card-elevated" style={styles.pageTop}>
         <h1 style={styles.pageTitle}>תרגול</h1>
         <div style={styles.headerActions}>
@@ -226,7 +292,11 @@ export default function TraineeDashboard({ userId }) {
               <h2 id="create-exam-heading" style={styles.createTitle}>צור מבחן</h2>
               <p style={styles.createSubtitle}>בחר קטגוריות וכמות שאלות לכל אחת, ואפשר גם להתאים לפי רמת קושי.</p>
 
-              {filterOptions && (
+              {!filterOptions ? (
+                <div style={{ padding: 'var(--space-4) 0' }}>
+                  <SkeletonCard height={280} />
+                </div>
+              ) : (
                 <>
                   <div style={styles.formSection}>
                     <h3 style={styles.sectionTitle}>קטגוריות (ניתן לבחור כמה)</h3>
@@ -322,6 +392,7 @@ export default function TraineeDashboard({ userId }) {
                 </>
               )}
 
+              {filterOptions && (
               <div style={styles.buttonRow}>
                 <button
                   type="button"
@@ -341,6 +412,7 @@ export default function TraineeDashboard({ userId }) {
                   תרגול חופשי
                 </button>
               </div>
+              )}
             </div>
           ) : (
             <>
@@ -401,6 +473,44 @@ const styles = {
     textAlign: 'right',
     backgroundColor: 'var(--color-bg)',
     minHeight: '100vh',
+  },
+  heroStrip: {
+    margin: '0 0 var(--space-5)',
+    padding: 'var(--space-6)',
+    background: 'linear-gradient(135deg, var(--color-primary-bg) 0%, var(--color-bg-card) 60%)',
+    border: '1px solid var(--mda-blue-border)',
+  },
+  heroTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 'var(--space-4)',
+    marginBottom: 'var(--space-5)',
+  },
+  heroGreeting: {
+    margin: 0,
+    fontSize: 'var(--font-size-xl)',
+    fontWeight: 800,
+    color: 'var(--color-text)',
+  },
+  heroSub: {
+    margin: 'var(--space-2) 0 0',
+    color: 'var(--color-text-muted)',
+    fontSize: 'var(--font-size-base)',
+  },
+  heroRings: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: 'var(--space-8)',
+    flexWrap: 'wrap',
+    marginBottom: 'var(--space-5)',
+  },
+  quickActionBtn: {
+    width: '100%',
+    maxWidth: 420,
+    margin: '0 auto',
+    display: 'flex',
   },
   pageTop: {
     padding: 'var(--space-6) var(--space-6) var(--space-4)',

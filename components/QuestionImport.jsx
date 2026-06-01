@@ -4,31 +4,91 @@
  * Hebrew: ייבוא שאלות חכם
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
-  importQuestionsFromCSV,
-  importQuestionsFromJSON,
-  importQuestionsFromMoodleExcel,
   previewQuestions,
   parseCSV,
   parseJSON,
   parseMoodleExcel,
   extractTextFromFile,
   parseQuestionsWithAI,
-  normalizeQuestionsWithLLM,
-  bulkCreateQuestions,
 } from '../workflows/questionImport';
-import {
-  detectEnrichmentType,
-  ENRICH_GENERATE,
-  ENRICH_IDENTIFY_ANSWER,
-  ENRICH_NONE,
-} from '../workflows/questionEnrich';
-import { parseTextQuestions, getTypeLabel, getTypeColor } from '../utils/questionParser';
+import { parseTextQuestions } from '../utils/questionParser';
 import { showToast } from './Toast';
 import LoadingSpinner from './LoadingSpinner';
+import QuestionReviewEditor from './QuestionReviewEditor';
 import { entities, appConfig } from '../config/appConfig';
+import { toCanonicalQuestionPayload } from '../workflows/chapterQuestionGen';
 import { QUESTION_CATEGORIES, THINKING_LEVELS, TRAINING_LEVELS } from '../shared/questionBankMetadata.js';
+
+const DEFAULT_THINKING = THINKING_LEVELS[0]?.value || 'remember_understand';
+const DEFAULT_TRAINING = TRAINING_LEVELS[0]?.value || 'A';
+
+/**
+ * Convert a parsed/AI question (native import shape) into the editable draft
+ * shape consumed by QuestionReviewEditor. Tags identified by the AI during
+ * analysis are carried through; missing ones fall back to sane defaults so the
+ * user can review and approve every field.
+ */
+function toReviewDraft(q, idx) {
+  let parsed = {};
+  try {
+    const raw = q.correct_answer ?? '{}';
+    parsed = typeof raw === 'object' && raw !== null ? raw : JSON.parse(raw);
+  } catch { /* not JSON */ }
+
+  const type = q.question_type || 'single_choice';
+  let options = [];
+  let model_answer = '';
+
+  if (type === 'open_ended') {
+    const v = parsed.value ?? q.model_answer ?? q.correct_answer ?? '';
+    model_answer = typeof v === 'string' ? v : '';
+  } else if (type === 'true_false') {
+    const cv = parsed.values
+      ? parsed.values.map(String)
+      : (parsed.value != null ? [String(parsed.value)] : []);
+    const trueCorrect = cv.length
+      ? cv.some((v) => v === 'true' || v === '0' || v === 'נכון')
+      : true;
+    options = [
+      { label: 'נכון', isCorrect: trueCorrect },
+      { label: 'לא נכון', isCorrect: !trueCorrect },
+    ];
+  } else {
+    const rawOptions = parsed.options || q.options || [];
+    const norm = rawOptions.map((o, i) => ({
+      value: String(o?.value ?? i),
+      label: o?.label ?? o?.text ?? String(o ?? ''),
+    }));
+    const correctVal = parsed.value != null ? String(parsed.value) : null;
+    const correctVals = parsed.values
+      ? parsed.values.map(String)
+      : (correctVal != null ? [correctVal] : []);
+    const isCorrect = (opt, i) => {
+      if (!correctVals.length) return false;
+      if (correctVals.includes(opt.value) || correctVals.includes(String(i))) return true;
+      return correctVals.some((cv) => opt.label.includes(cv) || cv.includes(opt.label));
+    };
+    options = norm.map((o, i) => ({ label: o.label, isCorrect: !!isCorrect(o, i) }));
+  }
+
+  return {
+    id: q.id || `imp-${idx}-${Math.random().toString(36).slice(2, 8)}`,
+    include: true,
+    question_type: type,
+    question_text: q.question_text || '',
+    options,
+    model_answer,
+    category: q.category || '',
+    sub_category: q.sub_category || '',
+    thinking_level: q.thinking_level || DEFAULT_THINKING,
+    training_level: q.training_level || DEFAULT_TRAINING,
+    medical_levels: Array.isArray(q.medical_levels) ? q.medical_levels : [],
+    explanation: q.explanation || q.hint || '',
+    status: q.status || 'under_review',
+  };
+}
 
 const TABS = [
   { id: 'text',    label: '📋 הדבקת טקסט',      desc: 'הדבק שאלות בפורמט חופשי' },
@@ -44,14 +104,12 @@ export default function QuestionImport({ onImportComplete }) {
   const [aiProgress, setAiProgress]         = useState(null);   // { done, total } during AI analysis
   const [isImporting, setImporting]         = useState(false);
   const [importProgress, setProgress]       = useState(null);
-  const [enrichProgress, setEnrichProgress] = useState(null);
-  const [skipDuplicates, setSkipDuplicates] = useState(false);
   const [dragOver, setDragOver]             = useState(false);
   // Multi-file upload
   const [uploadedFiles, setUploadedFiles]   = useState([]);   // [{id,name,status,text,questions,progress,error}]
   const [isAnalyzingFiles, setAnalyzingFiles] = useState(false);
-  const [editingIdx, setEditingIdx]         = useState(null);
-  const [editDraft, setEditDraft]           = useState({});
+  // Editable review drafts (derived from parsedQuestions; nothing auto-saves)
+  const [reviewDrafts, setReviewDrafts]     = useState([]);
 
   // CSV/JSON/Excel state (kept from original; Excel added without replacing)
   const [csvType, setCsvType]           = useState('csv');
@@ -236,79 +294,65 @@ export default function QuestionImport({ onImportComplete }) {
     }
   };
 
-  // ── Editing a question in preview ────────────────────
-  const startEdit = (idx) => {
-    setEditingIdx(idx);
-    setEditDraft({ ...parsedQuestions[idx] });
-  };
-  const cancelEdit = () => { setEditingIdx(null); setEditDraft({}); };
-  const saveEdit = () => {
-    const updated = [...parsedQuestions];
-    updated[editingIdx] = { ...editDraft };
-    setParsed(updated);
-    setEditingIdx(null);
-    setEditDraft({});
-  };
-  const removeQuestion = (idx) => {
-    setParsed(parsedQuestions.filter((_, i) => i !== idx));
-  };
+  // ── Build editable drafts whenever a fresh analysis lands ──
+  useEffect(() => {
+    if (Array.isArray(parsedQuestions)) {
+      setReviewDrafts(parsedQuestions.map(toReviewDraft));
+    } else {
+      setReviewDrafts([]);
+    }
+  }, [parsedQuestions]);
 
-  // ── Import ────────────────────────────────────────────
-  const handleImportParsed = async () => {
-    if (!parsedQuestions?.length) return;
+  // ── Save reviewed questions (manual approval; no auto-save) ──
+  const handleSaveReviewed = async (chosenArg) => {
+    const chosen = (chosenArg || reviewDrafts).filter((q) => q.include);
+    if (!chosen.length) {
+      showToast('בחרו לפחות שאלה אחת לשמירה.', 'error');
+      return;
+    }
     setImporting(true);
-    setProgress(null);
-    setEnrichProgress(null);
+    setProgress({ current: 0, total: chosen.length, success: 0, failed: 0 });
+    let success = 0;
+    let failed = 0;
 
-    const needsEnrichment = parsedQuestions.some((q) => detectEnrichmentType(q) !== ENRICH_NONE);
-    if (needsEnrichment) {
-      showToast('מעשיר שאלות חסרות מסיחים / תשובות עם AI...', 'info');
-    }
-
-    try {
-      const normalized = await normalizeQuestionsWithLLM(parsedQuestions, undefined, handleProviderEvent);
-      const llmQuestions = normalized.questions || [];
-      if (!llmQuestions.length) {
-        throw new Error('ה-LLM לא החזיר שאלות תקינות לייבוא');
+    for (let i = 0; i < chosen.length; i++) {
+      try {
+        const payload = toCanonicalQuestionPayload(chosen[i], { category: defaultCategory });
+        await entities.Question_Bank.create(payload);
+        success += 1;
+      } catch (err) {
+        console.error('[QuestionImport] save failed:', err);
+        failed += 1;
       }
-
-      const results = await bulkCreateQuestions(llmQuestions, {
-        validate: false,
-        skipInvalid: true,
-        enrich: true,
-        skipDuplicates,
-        defaultCategory: defaultCategory || undefined,
-        onProgress: (p) => setProgress({ ...p, total: p.total }),
-        onEnrichProgress: (p) => setEnrichProgress(p),
-      });
-
-      const splitMsg = results.split > 0
-        ? ` (${results.split} פוצלו ל-2 יישויות)`
-        : '';
-      const enrichMsg = results.enriched > 0
-        ? ` | ${results.enriched} הועשרו ע"י AI`
-        : '';
-      const dupMsg = results.duplicates > 0
-        ? ` | ${results.duplicates} דומות דולגו`
-        : '';
-      const providerMsg = normalized.providersTried?.length
-        ? ` | LLM: ${normalized.providersTried.join(' -> ')}`
-        : '';
-
-      showToast(`יובאו ${results.successful} שאלות בהצלחה${splitMsg}${enrichMsg}${dupMsg}${providerMsg}`, 'success');
-      if (results.failed > 0) showToast(`${results.failed} נכשלו`, 'warning');
-
-      setParsed(null);
-      setRawText('');
-      setUploadedFiles([]);
-      if (onImportComplete) onImportComplete(results);
-    } catch (err) {
-      showToast(`שגיאה בייבוא: ${err.message}`, 'error');
-    } finally {
-      setImporting(false);
-      setProgress(null);
-      setEnrichProgress(null);
+      setProgress({ current: i + 1, total: chosen.length, success, failed });
     }
+
+    setImporting(false);
+    setProgress(null);
+    if (success) {
+      showToast(`יובאו ${success} שאלות בהצלחה.`, 'success');
+      const savedIds = new Set(chosen.map((q) => q.id));
+      const remaining = reviewDrafts.filter((q) => !savedIds.has(q.id));
+      setReviewDrafts(remaining);
+      if (!remaining.length) {
+        setParsed(null);
+        setRawText('');
+        setUploadedFiles([]);
+      }
+      if (onImportComplete) onImportComplete({ successful: success, failed });
+    }
+    if (failed) showToast(`${failed} שאלות לא נשמרו.`, 'warning');
+  };
+
+  // ── Load CSV/JSON/Excel parse results into the editable review ──
+  const loadCsvToReview = () => {
+    const qs = csvPreview?.details?.map((d) => d.question) || [];
+    if (!qs.length) {
+      showToast('אין שאלות תקינות לטעינה.', 'error');
+      return;
+    }
+    setParsed(qs);
+    showToast('השאלות נטענו לעריכה — ערכו ואשרו לפני שמירה.', 'info');
   };
 
   // ── CSV/JSON/Excel Import (Excel added without replacing CSV/JSON) ─────────────────
@@ -349,57 +393,6 @@ export default function QuestionImport({ onImportComplete }) {
       }
     };
     reader.readAsText(file, 'utf-8');
-  };
-
-  const handleCsvImport = async () => {
-    if (csvType === 'xlsx') {
-      if (!csvXlsxBuffer) return;
-      setImporting(true);
-      try {
-        const results = await importQuestionsFromMoodleExcel(csvXlsxBuffer, {
-          validate: true,
-          skipInvalid: true,
-          onProgress: setProgress,
-          defaultCategory: defaultCategory || undefined,
-          onProviderEvent: handleProviderEvent,
-        });
-        const via = Array.isArray(results.providersTried) && results.providersTried.length
-          ? ` (LLM: ${results.providersTried.join(' -> ')})`
-          : '';
-        showToast(`יובאו ${results.successful} שאלות${via}`, 'success');
-        setCsvXlsxBuffer(null);
-        setCsvPreview(null);
-        if (onImportComplete) onImportComplete(results);
-      } catch (err) {
-        showToast(`שגיאה: ${err.message}`, 'error');
-      } finally {
-        setImporting(false);
-        setProgress(null);
-      }
-      return;
-    }
-
-    if (!csvContent) return;
-    setImporting(true);
-    try {
-      const csvOpts = { validate: true, skipInvalid: true, onProgress: setProgress, defaultCategory: defaultCategory || undefined };
-      const results =
-        csvType === 'csv'
-          ? await importQuestionsFromCSV(csvContent, { ...csvOpts, onProviderEvent: handleProviderEvent })
-          : await importQuestionsFromJSON(csvContent, { ...csvOpts, onProviderEvent: handleProviderEvent });
-      const via = Array.isArray(results.providersTried) && results.providersTried.length
-        ? ` (LLM: ${results.providersTried.join(' -> ')})`
-        : '';
-      showToast(`יובאו ${results.successful} שאלות${via}`, 'success');
-      setCsvContent('');
-      setCsvPreview(null);
-      if (onImportComplete) onImportComplete(results);
-    } catch (err) {
-      showToast(`שגיאה: ${err.message}`, 'error');
-    } finally {
-      setImporting(false);
-      setProgress(null);
-    }
   };
 
   // ─────────────────────────────────────────────────────
@@ -595,156 +588,53 @@ export default function QuestionImport({ onImportComplete }) {
           )}
 
           <button
-            onClick={handleCsvImport}
-            disabled={!csvPreview?.valid || isImporting || (csvType === 'xlsx' && !csvXlsxBuffer)}
-            style={{ ...s.importBtn, ...(!csvPreview?.valid || isImporting || (csvType === 'xlsx' && !csvXlsxBuffer) ? s.btnDisabled : {}) }}
+            onClick={loadCsvToReview}
+            disabled={!csvPreview?.total || isImporting}
+            style={{ ...s.importBtn, ...(!csvPreview?.total || isImporting ? s.btnDisabled : {}) }}
           >
-            {isImporting ? 'מייבא...' : `ייבוא ${csvPreview?.valid || 0} שאלות`}
+            {`טען ${csvPreview?.total || 0} שאלות לעריכה ואישור`}
           </button>
         </div>
       )}
 
-      {/* ══════════ PARSED QUESTIONS PREVIEW ══════════ */}
-      {parsedQuestions && (
+      {/* ══════════ EDITABLE REVIEW (manual approval) ══════════ */}
+      {parsedQuestions && reviewDrafts.length > 0 && (
         <div style={s.previewSection}>
-          {/* ── Duplicate summary banner ───────────────────── */}
-          {(() => {
-            const dupCount   = parsedQuestions.filter(q => q._duplicateFlag).length;
-            const intDupCount = parsedQuestions.filter(q => q._internalDuplicate).length;
-            if (dupCount + intDupCount === 0) return null;
-            return (
-              <div style={{
-                background: '#FFF8E1', border: '1px solid #FFB300', borderRadius: '10px',
-                padding: '12px 16px', marginBottom: '12px',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                flexWrap: 'wrap', gap: '10px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '18px' }}>⚠️</span>
-                  <div>
-                    <strong style={{ color: '#E65100' }}>
-                      {dupCount + intDupCount} שאלות דומות זוהו
-                    </strong>
-                    <div style={{ fontSize: '12px', color: '#777', marginTop: '2px' }}>
-                      {dupCount > 0 && `${dupCount} דומות לשאלות קיימות במערכת · `}
-                      {intDupCount > 0 && `${intDupCount} כפולות בתוך הקובץ`}
-                    </div>
-                  </div>
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={skipDuplicates}
-                    onChange={e => setSkipDuplicates(e.target.checked)}
-                    style={{ accentColor: '#E65100', width: '15px', height: '15px' }}
-                  />
-                  <span style={{ fontWeight: 600, color: '#E65100' }}>דלג על שאלות דומות בייבוא</span>
-                </label>
-              </div>
-            );
-          })()}
-
-          <div style={s.previewHeader}>
-            <h3 style={s.previewTitle}>
-              תצוגה מקדימה — {parsedQuestions.length} שאלות זוהו
-              {(() => {
-                const files = [...new Set(parsedQuestions.map(q => q._sourceFile).filter(Boolean))];
-                return files.length > 1
-                  ? <span style={{ fontSize: '14px', fontWeight: 400, color: '#888', marginRight: '8px' }}>
-                      מ-{files.length} קבצים
-                    </span>
-                  : files.length === 1
-                  ? <span style={{ fontSize: '13px', fontWeight: 400, color: '#888', marginRight: '8px' }}>
-                      מ-{files[0]}
-                    </span>
-                  : null;
-              })()}
-            </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', flexWrap: 'wrap' }}>
-              <span>פרק ברירת מחדל (כשלא צוין בקובץ):</span>
+              <span>פרק ברירת מחדל (כשלא נבחר בשאלה):</span>
               <select
                 value={defaultCategory}
                 onChange={(e) => setDefaultCategory(e.target.value)}
                 style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #e0e0e0', maxWidth: '100%', flex: '1 1 240px' }}
               >
                 {QUESTION_CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
+                  <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
               </select>
             </label>
-            <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-              <strong>חשוב:</strong> לחץ על &quot;ייבוא&quot; כדי לשמור את השאלות. בלי לחיצה — השאלות לא נשמרות ונעלמות ברענון או במכשיר אחר.
-              {typeof window !== 'undefined' && !window.__quizMDA_usingQuestionApi && (
-                <span style={{ display: 'block', marginTop: '4px', color: '#E65100' }}>
-                  כרגע השאלות נשמרות במכשיר זה בלבד. לסינכרון בין מכשירים — הרץ את השרת עם MongoDB (ראה README).
-                </span>
-              )}
-            </p>
-            <button
-              onClick={handleImportParsed}
-              disabled={parsedQuestions.length === 0 || isImporting}
-              style={{ ...s.importBtn, ...(parsedQuestions.length === 0 || isImporting ? s.btnDisabled : {}) }}
-            >
-              {isImporting ? <LoadingSpinner size="sm" /> : `✅ ייבוא ${parsedQuestions.length} שאלות`}
-            </button>
           </div>
 
-          {/* Enrichment progress — phase 1 */}
-          {isImporting && enrichProgress && !importProgress && (
-            <div style={s.enrichBanner}>
-              <div style={s.enrichBannerRow}>
-                <LoadingSpinner size="sm" />
-                <strong>העשרת שאלות ע"י AI</strong>
-                <span style={s.enrichCount}>
-                  {enrichProgress.current}/{enrichProgress.total}
-                </span>
-              </div>
-              <div style={s.enrichDetail}>
-                {enrichProgress.enrichType === ENRICH_GENERATE && (
-                  <span style={s.enrichTagGenerate}>⚡ יוצר מסיחים + שאלה רב-ברירה</span>
-                )}
-                {enrichProgress.enrichType === ENRICH_IDENTIFY_ANSWER && (
-                  <span style={s.enrichTagIdentify}>🎯 מזהה תשובה נכונה</span>
-                )}
-                {enrichProgress.enrichType === 'none' && (
-                  <span style={s.enrichTagOk}>✓ שאלה מלאה</span>
-                )}
-                {enrichProgress.questionText && (
-                  <span style={s.enrichQText}>{enrichProgress.questionText}…</span>
-                )}
-              </div>
-              <div style={s.progressBarTrack}>
-                <div style={{
-                  ...s.progressBarFill,
-                  background: '#CC6600',
-                  width: `${Math.round((enrichProgress.current / enrichProgress.total) * 100)}%`,
-                }} />
-              </div>
-            </div>
-          )}
+          <p style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+            <strong>שימו לב:</strong> ערכו כל שדה לפי הצורך (נושא, תת-נושא, ניסוח, אפשרויות ותשובה נכונה, תיוגים והסבר) ואז אשרו ושמרו. שום שאלה לא נשמרת אוטומטית.
+          </p>
 
-          {/* Save progress — phase 2 */}
           {isImporting && importProgress && (
             <div style={s.progressBar}>
-              <div style={{
-                ...s.progressFill,
-                width: `${Math.round((importProgress.current / importProgress.total) * 100)}%`
-              }} />
+              <div style={{ ...s.progressFill, width: `${Math.round((importProgress.current / importProgress.total) * 100)}%` }} />
               <span style={s.progressText}>
                 שומר: {importProgress.current}/{importProgress.total} | ✅ {importProgress.success} ❌ {importProgress.failed}
               </span>
             </div>
           )}
 
-          <div style={s.questionList}>
-            {parsedQuestions.map((q, idx) => (
-              editingIdx === idx
-                ? <QuestionEditCard key={idx} draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={cancelEdit} />
-                : <QuestionPreviewCard key={idx} idx={idx} q={q} onEdit={() => startEdit(idx)} onRemove={() => removeQuestion(idx)} />
-            ))}
-          </div>
+          <QuestionReviewEditor
+            questions={reviewDrafts}
+            onChange={setReviewDrafts}
+            onSave={handleSaveReviewed}
+            saving={isImporting}
+            title="שאלות שזוהו — ערכו ואשרו"
+          />
         </div>
       )}
 
@@ -887,236 +777,6 @@ function AiProgressBar({ progress, isActive }) {
         {progress.done < progress.total
           ? `מעבד ${progress.total - progress.done} חלקים נוספים במקביל...`
           : 'מסיים...'}
-      </div>
-    </div>
-  );
-}
-
-function QuestionPreviewCard({ idx, q, onEdit, onRemove }) {
-  const [expanded, setExpanded] = React.useState(false);
-
-  let parsed = {};
-  try {
-    const raw = q.correct_answer || '{}';
-    parsed = typeof raw === 'object' ? raw : JSON.parse(raw);
-  } catch { /* empty */ }
-
-  // AI returns options as top-level q.options; regex parser stores them inside correct_answer
-  const rawOptions = parsed.options || q.options || null;
-
-  // Normalize options to {value, label} shape regardless of source
-  const normalizedOptions = rawOptions
-    ? rawOptions.map((o, i) => ({
-        value: String(o.value ?? i),
-        label: o.label ?? o.text ?? String(o),
-      }))
-    : null;
-
-  const correctVal  = parsed.value != null ? String(parsed.value) : null;
-  const correctVals = parsed.values
-    ? parsed.values.map(String)
-    : (correctVal != null ? [correctVal] : []);
-
-  // For true_false, build synthetic options
-  const displayOptions = normalizedOptions || (
-    q.question_type === 'true_false'
-      ? [{ value: 'true', label: 'נכון' }, { value: 'false', label: 'לא נכון' }]
-      : null
-  );
-
-  // Match by index OR by text (handles AI returning either form)
-  const isCorrect = (opt, optIdx) => {
-    if (correctVals.length === 0) return false;
-    // match by value string
-    if (correctVals.includes(opt.value) || correctVals.includes(String(optIdx))) return true;
-    // match by label text (when AI returns text answer instead of index)
-    return correctVals.some(cv =>
-      opt.label.includes(cv) || cv.includes(opt.label)
-    );
-  };
-
-  // Detect enrichment needed for this question (before saving)
-  const enrichType = detectEnrichmentType(q);
-
-  return (
-    <div style={{
-           ...s.qCard, flexDirection: 'column', gap: '10px', cursor: 'pointer',
-           ...(q._duplicateFlag || q._internalDuplicate
-             ? { borderColor: '#FFB300', borderWidth: '2px', background: '#FFFDE7' }
-             : {}),
-         }}
-         onClick={() => setExpanded(e => !e)}>
-
-      {/* Duplicate warning strip */}
-      {(q._duplicateFlag || q._internalDuplicate) && q._similarTo && (
-        <div style={{
-          background: '#FFF8E1', borderRadius: '8px', padding: '8px 12px',
-          display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12px',
-        }}>
-          <span style={{ fontSize: '16px', flexShrink: 0 }}>⚠️</span>
-          <div>
-            <strong style={{ color: '#E65100' }}>
-              {q._internalDuplicate ? 'כפולה בתוך הקובץ' : 'דומה לשאלה קיימת'} — {q._similarTo.similarity}% דמיון
-            </strong>
-            <div style={{ color: '#555', marginTop: '3px', lineHeight: 1.4 }}>
-              <em>"{(q._similarTo.question_text || '').slice(0, 110)}{q._similarTo.question_text?.length > 110 ? '...' : ''}"</em>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-        <div style={s.qCardLeft}>
-          <span style={s.qNum}>{idx + 1}</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={s.qText}>{q.question_text}</p>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
-              <Pill label={getTypeLabel(q.question_type)} color={getTypeColor(q.question_type)} />
-              {displayOptions && <Pill label={`${displayOptions.length} אפשרויות`} color="#546e7a" />}
-              {q._sourceFile && (
-                <span style={{ fontSize: '11px', color: '#888', background: '#f5f5f5', borderRadius: '10px', padding: '1px 8px', border: '1px solid #e0e0e0' }}>
-                  📄 {q._sourceFile.length > 24 ? q._sourceFile.slice(0, 22) + '…' : q._sourceFile}
-                </span>
-              )}
-              {(q._duplicateFlag || q._internalDuplicate) && (
-                <span style={{
-                  background: '#FFF3CD', color: '#856404', border: '1px solid #FFDA6A',
-                  borderRadius: '12px', padding: '2px 10px', fontSize: '12px', fontWeight: 600,
-                }}>⚠️ {q._internalDuplicate ? 'כפולה פנימית' : `דומה ${q._similarTo?.similarity}%`}</span>
-              )}
-              {enrichType === ENRICH_GENERATE && (
-                <span title="אין מסיחים — AI יצור 4 אפשרויות ויפצל לשאלה פתוחה + רב-ברירה" style={{
-                  background: '#FFF3E0', color: '#E65100', border: '1px solid #FFCC80',
-                  borderRadius: '12px', padding: '2px 10px', fontSize: '12px', fontWeight: 600,
-                }}>⚡ יופצל → פתוחה + רב-ברירה</span>
-              )}
-              {enrichType === ENRICH_IDENTIFY_ANSWER && (
-                <span title="אין תשובה נכונה מסומנת — AI יזהה אותה" style={{
-                  background: '#E3F2FD', color: '#1565C0', border: '1px solid #90CAF9',
-                  borderRadius: '12px', padding: '2px 10px', fontSize: '12px', fontWeight: 600,
-                }}>🎯 AI יזהה תשובה נכונה</span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-          <button onClick={onEdit}   style={s.iconBtn('edit')}>✏️</button>
-          <button onClick={onRemove} style={s.iconBtn('remove')}>🗑️</button>
-          <button style={s.iconBtn('expand')} onClick={() => setExpanded(e => !e)}>
-            {expanded ? '▲' : '▼'}
-          </button>
-        </div>
-      </div>
-
-      {/* Expanded: options + correct answer */}
-      {expanded && displayOptions && (
-        <div style={{ paddingRight: '40px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {displayOptions.map((opt, i) => {
-            const correct = isCorrect(opt, i);
-            return (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                background: correct ? '#e8f5e9' : '#fafafa',
-                border: `1.5px solid ${correct ? '#66bb6a' : '#e0e0e0'}`,
-                fontWeight: correct ? '700' : '400',
-                color: correct ? '#2e7d32' : '#424242',
-                fontSize: '14px',
-              }}>
-                <span style={{
-                  width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '12px', fontWeight: '700',
-                  background: correct ? '#43a047' : '#e0e0e0',
-                  color: correct ? 'white' : '#757575',
-                }}>
-                  {correct ? '✓' : String.fromCharCode(0x05D0 + i) /* א ב ג ד */}
-                </span>
-                {opt.label}
-                {correct && <span style={{ marginRight: 'auto', fontSize: '12px', color: '#43a047' }}>← תשובה נכונה</span>}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Open-ended correct answer */}
-      {expanded && q.question_type === 'open_ended' && parsed.value && (
-        <div style={{
-          paddingRight: '40px', padding: '10px 12px 10px 40px',
-          background: '#e8f5e9', borderRadius: '8px',
-          border: '1.5px solid #66bb6a', fontSize: '14px', color: '#2e7d32',
-        }}>
-          <strong>תשובה נכונה: </strong>{parsed.value}
-        </div>
-      )}
-
-      {expanded && q.hint && (
-        <div style={{ paddingRight: '40px', fontSize: '13px', color: '#f57c00' }}>
-          💡 <strong>רמז:</strong> {q.hint}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function QuestionEditCard({ draft, setDraft, onSave, onCancel }) {
-  return (
-    <div style={{ ...s.qCard, background: '#e3f2fd', flexDirection: 'column', gap: '12px' }}>
-      <label style={s.editLabel}>טקסט השאלה</label>
-      <textarea
-        value={draft.question_text || ''}
-        onChange={e => setDraft({ ...draft, question_text: e.target.value })}
-        style={{ ...s.editInput, height: '70px' }}
-      />
-
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: '160px' }}>
-          <label style={s.editLabel}>סוג שאלה</label>
-          <select value={draft.question_type || 'open_ended'}
-            onChange={e => setDraft({ ...draft, question_type: e.target.value })}
-            style={s.editInput}>
-            <option value="single_choice">בחירה יחידה</option>
-            <option value="multi_choice">בחירה מרובה</option>
-            <option value="true_false">נכון/לא נכון</option>
-            <option value="open_ended">פתוחה</option>
-          </select>
-        </div>
-        <div style={{ flex: 1, minWidth: '140px' }}>
-          <label style={s.editLabel}>רמת חשיבה</label>
-          <select
-            value={draft.thinking_level || 'Knowledge'}
-            onChange={(e) => setDraft({ ...draft, thinking_level: e.target.value })}
-            style={s.editInput}
-          >
-            {THINKING_LEVELS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div style={{ flex: 1, minWidth: '120px' }}>
-          <label style={s.editLabel}>רמת הכשרה</label>
-          <select
-            value={draft.training_level || 'A'}
-            onChange={(e) => setDraft({ ...draft, training_level: e.target.value })}
-            style={s.editInput}
-          >
-            {TRAINING_LEVELS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <button onClick={onSave}   style={{ ...btnBase, background: '#388e3c' }}>💾 שמור</button>
-        <button onClick={onCancel} style={{ ...btnBase, background: '#757575' }}>ביטול</button>
       </div>
     </div>
   );

@@ -199,3 +199,59 @@ pre, code {
   .hide-desktop { display: none !important; }
   .show-mobile-only { display: none !important; }
 }
+
+/* ═══ Tables → stacked cards on mobile ═══════════════════ */
+@media (max-width: 767px) {
+  .responsive-table-cards {
+    overflow-x: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .responsive-table-cards table {
+    min-width: 0 !important;
+    display: block;
+  }
+  .responsive-table-cards thead {
+    display: none;
+  }
+  .responsive-table-cards tbody {
+    display: block;
+  }
+  .responsive-table-cards tbody tr {
+    display: block;
+    margin-bottom: var(--space-3);
+    padding: var(--space-4);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+  }
+  .responsive-table-cards tbody tr:hover td {
+    background: transparent;
+  }
+  .responsive-table-cards tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: 8px 0 !important;
+    border: none !important;
+    text-align: right;
+  }
+  .responsive-table-cards tbody td::before {
+    content: attr(data-label);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+    min-width: 90px;
+  }
+  .responsive-table-cards tbody td:first-child::before {
+    content: none;
+  }
+  .responsive-table-cards tbody td:first-child {
+    font-weight: var(--font-weight-bold);
+    padding-bottom: var(--space-2) !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    margin-bottom: var(--space-1);
+  }
+}

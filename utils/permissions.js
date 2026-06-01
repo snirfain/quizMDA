@@ -16,7 +16,25 @@ export const permissions = {
   QUESTION_REACTIVATE: 'question:reactivate',
   QUESTION_APPROVE: 'question:approve',
   QUESTION_REVIEW: 'question:review',
-  
+  QUESTION_IMPORT: 'question:import',
+  QUESTION_ROLLING_CASE: 'question:rolling_case',
+
+  // AI tools permissions (new features)
+  AI_CHAPTER_GENERATE: 'ai:chapter_generate',
+  AI_FILE_INGEST: 'ai:file_ingest',
+
+  // Media bank permissions (new feature)
+  MEDIA_READ: 'media:read',
+  MEDIA_UPLOAD: 'media:upload',
+  MEDIA_MANAGE: 'media:manage',
+
+  // Transcript permissions (new feature)
+  TRANSCRIPT_UPLOAD: 'transcript:upload',
+  TRANSCRIPT_PROCESS: 'transcript:process',
+
+  // Statistics dashboards (new feature)
+  STATS_QUESTIONS_VIEW: 'stats:questions',
+
   // Content permissions
   CONTENT_READ: 'content:read',
   CONTENT_CREATE: 'content:create',
@@ -142,6 +160,13 @@ const rolePermissions = {
     permissions.QUESTION_UPDATE,
     permissions.QUESTION_EXPORT,
     permissions.QUESTION_REVIEW,
+    permissions.QUESTION_IMPORT,
+    permissions.QUESTION_ROLLING_CASE,
+    permissions.AI_CHAPTER_GENERATE,
+    permissions.AI_FILE_INGEST,
+    permissions.MEDIA_READ,
+    permissions.MEDIA_UPLOAD,
+    permissions.MEDIA_MANAGE,
     permissions.CONTENT_READ,
     permissions.CONTENT_CREATE,
     permissions.CONTENT_UPDATE,
@@ -185,6 +210,16 @@ const rolePermissions = {
     permissions.QUESTION_REACTIVATE,
     permissions.QUESTION_APPROVE,
     permissions.QUESTION_REVIEW,
+    permissions.QUESTION_IMPORT,
+    permissions.QUESTION_ROLLING_CASE,
+    permissions.AI_CHAPTER_GENERATE,
+    permissions.AI_FILE_INGEST,
+    permissions.MEDIA_READ,
+    permissions.MEDIA_UPLOAD,
+    permissions.MEDIA_MANAGE,
+    permissions.TRANSCRIPT_UPLOAD,
+    permissions.TRANSCRIPT_PROCESS,
+    permissions.STATS_QUESTIONS_VIEW,
     permissions.CONTENT_READ,
     permissions.CONTENT_CREATE,
     permissions.CONTENT_UPDATE,
@@ -360,10 +395,16 @@ export function canAccessRoute(userRole, route, userId = null) {
   const routePermissions = {
     '/instructor': permissions.ANALYTICS_VIEW,
     '/instructor/questions': permissions.QUESTION_CREATE,
+    '/instructor/import': permissions.QUESTION_IMPORT,
+    '/instructor/chapter-generator': permissions.AI_CHAPTER_GENERATE,
+    '/instructor/file-ingest': permissions.AI_FILE_INGEST,
+    '/instructor/media-bank': permissions.MEDIA_READ,
+    '/instructor/transcripts': permissions.TRANSCRIPT_UPLOAD,
     '/instructor/analytics': permissions.ANALYTICS_VIEW,
     '/manager': permissions.SYSTEM_SETTINGS,
     '/admin': permissions.SYSTEM_SETTINGS,
     '/admin/statistics': permissions.ANALYTICS_ADVANCED,
+    '/admin/question-stats': permissions.STATS_QUESTIONS_VIEW,
     '/admin/users': permissions.USER_READ,
     '/admin/permissions': permissions.USER_MANAGE_PERMISSIONS,
     '/admin/audit': permissions.AUDIT_LOG_VIEW
@@ -412,6 +453,16 @@ export function getPermissionDescription(permission) {
     [permissions.QUESTION_REACTIVATE]: 'הפעלת שאלות מחדש',
     [permissions.QUESTION_APPROVE]: 'אישור שאלות',
     [permissions.QUESTION_REVIEW]: 'סקירת שאלות',
+    [permissions.QUESTION_IMPORT]: 'ייבוא שאלות (טקסט/קובץ/CSV)',
+    [permissions.QUESTION_ROLLING_CASE]: 'בניית שאלות מתגלגלות',
+    [permissions.AI_CHAPTER_GENERATE]: 'יצירת שאלות מפרק (AI)',
+    [permissions.AI_FILE_INGEST]: 'קליטת קובץ שאלות (AI)',
+    [permissions.MEDIA_READ]: 'צפייה במאגר המדיה',
+    [permissions.MEDIA_UPLOAD]: 'העלאת קבצי מדיה',
+    [permissions.MEDIA_MANAGE]: 'ניהול מאגר המדיה (תגיות/מחיקה)',
+    [permissions.TRANSCRIPT_UPLOAD]: 'העלאת תמלילים',
+    [permissions.TRANSCRIPT_PROCESS]: 'עיבוד תמלילים ל-שאלות',
+    [permissions.STATS_QUESTIONS_VIEW]: 'צפייה בסטטיסטיקות שאלות ותיוגים',
     [permissions.CONTENT_READ]: 'צפייה בתוכן',
     [permissions.CONTENT_CREATE]: 'יצירת תוכן',
     [permissions.CONTENT_UPDATE]: 'עדכון תוכן',
