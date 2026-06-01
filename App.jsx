@@ -39,6 +39,7 @@ const BookmarksList = React.lazy(() => import('./components/BookmarksList'));
 const MockExam = React.lazy(() => import('./components/MockExam'));
 const QuestionManagement = React.lazy(() => import('./components/QuestionManagement'));
 const ChapterQuestionGenerator = React.lazy(() => import('./components/ChapterQuestionGenerator'));
+const AiFileIngest = React.lazy(() => import('./components/AiFileIngest'));
 const StudyPlanManager = React.lazy(() => import('./components/StudyPlanManager'));
 const InstructorAnalytics = React.lazy(() => import('./components/InstructorAnalytics'));
 const DataImportExport = React.lazy(() => import('./components/DataImportExport'));
@@ -177,6 +178,8 @@ export default function App() {
         return <QuestionManagement />;
       case '/instructor/chapter-generator':
         return <ChapterQuestionGenerator />;
+      case '/instructor/file-ingest':
+        return <AiFileIngest />;
       case '/instructor/study-plans':
         return <StudyPlanManager />;
       case '/instructor/analytics':

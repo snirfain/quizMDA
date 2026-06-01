@@ -66,6 +66,12 @@ export const routes = {
     public: false,
     roles: ['instructor', 'school_staff', 'manager', 'admin']
   },
+  instructorFileIngest: {
+    path: '/instructor/file-ingest',
+    component: 'AiFileIngest',
+    public: false,
+    roles: ['instructor', 'school_staff', 'manager', 'admin']
+  },
   instructorStudyPlans: {
     path: '/instructor/study-plans',
     component: 'StudyPlanManager',
@@ -197,6 +203,7 @@ export function getNavigationItems(userRole) {
     instructor: [
       { path: routes.instructor.path,           label: 'מחולל מבחנים',  icon: 'edit' },
       { path: routes.instructorChapterGenerator.path, label: 'שאלות מפרק (AI)', icon: 'sparkles' },
+      { path: routes.instructorFileIngest.path, label: 'קליטת קובץ (AI)', icon: 'import' },
       { path: routes.instructorQuestions.path,  label: 'ניהול שאלות',   icon: 'help' },
       { path: routes.mediaBankManager.path,    label: 'מאגר מדיה',     icon: 'media' },
       { path: routes.instructorStudyPlans.path, label: 'תוכניות לימוד', icon: 'clipboard' },
@@ -206,6 +213,7 @@ export function getNavigationItems(userRole) {
     school_staff: [
       { path: routes.instructor.path,             label: 'מחולל מבחנים',   icon: 'edit' },
       { path: routes.instructorChapterGenerator.path, label: 'שאלות מפרק (AI)', icon: 'sparkles' },
+      { path: routes.instructorFileIngest.path, label: 'קליטת קובץ (AI)', icon: 'import' },
       { path: routes.instructorQuestions.path,    label: 'ניהול שאלות',    icon: 'help' },
       { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',      icon: 'media' },
       { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',  icon: 'file' },
@@ -217,6 +225,7 @@ export function getNavigationItems(userRole) {
       { path: routes.manager.path,               label: 'לוח בקרה',            icon: 'dashboard' },
       { path: routes.instructor.path,            label: 'מחולל מבחנים',         icon: 'edit' },
       { path: routes.instructorChapterGenerator.path, label: 'שאלות מפרק (AI)', icon: 'sparkles' },
+      { path: routes.instructorFileIngest.path, label: 'קליטת קובץ (AI)', icon: 'import' },
       { path: routes.instructorQuestions.path,   label: 'ניהול שאלות',          icon: 'help' },
       { path: routes.mediaBankManager.path,     label: 'מאגר מדיה',            icon: 'media' },
       { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',       icon: 'file' },
@@ -228,6 +237,7 @@ export function getNavigationItems(userRole) {
       { path: routes.manager.path,               label: 'לוח בקרה',            icon: 'dashboard' },
       { path: routes.instructor.path,            label: 'מחולל מבחנים',         icon: 'edit' },
       { path: routes.instructorChapterGenerator.path, label: 'שאלות מפרק (AI)', icon: 'sparkles' },
+      { path: routes.instructorFileIngest.path, label: 'קליטת קובץ (AI)', icon: 'import' },
       { path: routes.instructorQuestions.path,   label: 'ניהול שאלות',          icon: 'help' },
       { path: routes.mediaBankManager.path,     label: 'מאגר מדיה',            icon: 'media' },
       { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',       icon: 'file' },
@@ -270,6 +280,7 @@ export function getBreadcrumbs(path, userRole) {
         'instructor': 'מדריך',
         'questions': 'שאלות',
         'chapter-generator': 'שאלות מפרק (AI)',
+        'file-ingest': 'קליטת קובץ (AI)',
         'analytics': 'אנליטיקה',
         'manager': 'מנהל',
         'admin': 'מנהל',
