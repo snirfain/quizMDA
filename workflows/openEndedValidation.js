@@ -8,6 +8,7 @@ import { entities } from '../config/appConfig';
 import { appConfig } from '../config/appConfig';
 import { callLlmWithFallback } from './llmClient';
 import { retrieveProtocolContextForQuestion } from './protocolContext';
+import { checkAndSuspendQuestion } from './suspensionLogic.js';
 
 /**
  * Send answer to OpenAI API for validation
@@ -164,9 +165,13 @@ export async function saveOpenEndedAnswer(userId, questionId, userAnswerText, se
       last_attempt_date: now
     });
 
-    // Trigger suspension check
-    const { checkAndSuspendQuestion } = await import('./suspensionLogic.js');
-    await checkAndSuspendQuestion(questionId);
+    // Trigger suspension check. Non-fatal: the answer was already recorded, so a
+    // stats-recalculation failure must not surface as an answer-submission error.
+    try {
+      await checkAndSuspendQuestion(questionId);
+    } catch (suspendErr) {
+      console.warn('checkAndSuspendQuestion failed (non-fatal):', suspendErr);
+    }
 
     return {
       logEntry,

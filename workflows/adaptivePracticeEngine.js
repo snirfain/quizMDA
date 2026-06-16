@@ -88,47 +88,62 @@ export async function getAdaptiveQuestions(userId, hierarchyFilters = {}, tagFil
     user_id: userId,
   });
 
-  const answeredQuestionIds = new Set(userActivity.map((log) => log.question_id));
+  // A question is considered "answered" if there is any log for it, and
+  // "mastered" (answered correctly) if at least one log has is_correct === true.
+  // Mastered questions must NOT be served again until the whole in-scope pool
+  // has been mastered — only then does the pool recycle.
+  const answeredQuestionIds = new Set();
+  const correctQuestionIds = new Set();
 
-  const incorrectQuestionIds = new Set(
-    userActivity.filter((log) => log.is_correct === false).map((log) => log.question_id)
-  );
+  // Most recent successful attempt per question — used for spaced-repetition
+  // review of already-mastered questions.
+  const lastCorrectDates = new Map();
 
-  const lastAttemptDates = new Map();
   for (const activity of userActivity) {
-    if (activity.is_correct) {
-      const questionId = activity.question_id;
-      const attemptDate = activity.last_attempt_date ? new Date(activity.last_attempt_date) : new Date(activity.timestamp);
+    const questionId = activity.question_id;
+    if (questionId == null) continue;
 
-      if (!lastAttemptDates.has(questionId) || attemptDate > lastAttemptDates.get(questionId)) {
-        lastAttemptDates.set(questionId, attemptDate);
+    answeredQuestionIds.add(questionId);
+
+    if (activity.is_correct === true) {
+      correctQuestionIds.add(questionId);
+      const attemptDate = activity.last_attempt_date
+        ? new Date(activity.last_attempt_date)
+        : new Date(activity.timestamp);
+      if (!lastCorrectDates.has(questionId) || attemptDate > lastCorrectDates.get(questionId)) {
+        lastCorrectDates.set(questionId, attemptDate);
       }
     }
   }
 
-  const priority1_mistakes = [];
-  const priority2_new = [];
-  const priority2_5_review_due = [];
-  const priority3_review = [];
+  // Selection priority (per product requirement):
+  //   1. unseen           — never answered
+  //   2. reinforcement    — answered but never correct (needs another attempt)
+  //   3. masteredReviewDue— answered correctly but due for spaced review (>7d)
+  //   4. mastered         — answered correctly recently (only as a last resort)
+  const unseen = [];
+  const reinforcement = [];
+  const masteredReviewDue = [];
+  const mastered = [];
 
   for (const question of activeQuestions) {
     const questionId = question.id;
 
-    if (incorrectQuestionIds.has(questionId)) {
-      priority1_mistakes.push(question);
-    } else if (!answeredQuestionIds.has(questionId)) {
-      priority2_new.push(question);
+    if (!answeredQuestionIds.has(questionId)) {
+      unseen.push(question);
+    } else if (!correctQuestionIds.has(questionId)) {
+      reinforcement.push(question);
     } else {
-      const lastAttemptDate = lastAttemptDates.get(questionId);
-      if (lastAttemptDate && isReviewDue(lastAttemptDate)) {
-        priority2_5_review_due.push(question);
+      const lastDate = lastCorrectDates.get(questionId);
+      if (lastDate && isReviewDue(lastDate)) {
+        masteredReviewDue.push(question);
       } else {
-        priority3_review.push(question);
+        mastered.push(question);
       }
     }
   }
 
-  let adaptiveQuestions = [...priority1_mistakes, ...priority2_new, ...priority2_5_review_due, ...priority3_review];
+  let adaptiveQuestions = [...unseen, ...reinforcement, ...masteredReviewDue, ...mastered];
 
   if (excludeQuestionId) {
     adaptiveQuestions = adaptiveQuestions.filter((q) => q.id !== excludeQuestionId);
@@ -136,11 +151,13 @@ export async function getAdaptiveQuestions(userId, hierarchyFilters = {}, tagFil
 
   return {
     questions: adaptiveQuestions,
+    // Questions still owed before the pool is "exhausted" and may recycle.
+    unmasteredCount: unseen.length + reinforcement.length,
     stats: {
-      mistakes: priority1_mistakes.length,
-      new: priority2_new.length,
-      reviewDue: priority2_5_review_due.length,
-      review: priority3_review.length,
+      mistakes: reinforcement.length,
+      new: unseen.length,
+      reviewDue: masteredReviewDue.length,
+      review: mastered.length,
       total: adaptiveQuestions.length,
     },
   };
@@ -167,15 +184,44 @@ const DEMO_QUESTION = {
   explanation: 'מספר הלחיצות המומלץ הוא 30 לפני 2 נשימות',
 };
 
-export async function getNextPracticeQuestion(userId, hierarchyFilters = {}, tagFilters = [], excludeQuestionId = null) {
+/**
+ * Pick the next practice question for a user.
+ *
+ * @param {string} userId
+ * @param {Object} hierarchyFilters
+ * @param {Array}  tagFilters
+ * @param {Array<string>|string|null} excludeIds - question ids already served
+ *        this session (the engine avoids them until the in-scope pool is
+ *        exhausted, at which point it recycles without immediately repeating
+ *        the most recently served question).
+ */
+export async function getNextPracticeQuestion(userId, hierarchyFilters = {}, tagFilters = [], excludeIds = []) {
   try {
-    const result = await getAdaptiveQuestions(userId, hierarchyFilters, tagFilters, excludeQuestionId);
+    const exclude = Array.isArray(excludeIds)
+      ? excludeIds.filter((id) => id != null)
+      : (excludeIds != null ? [excludeIds] : []);
 
-    if (result.questions && result.questions.length > 0) {
-      return result.questions[0];
+    const result = await getAdaptiveQuestions(userId, hierarchyFilters, tagFilters);
+    const ordered = result.questions || [];
+    if (ordered.length === 0) {
+      return DEMO_QUESTION;
     }
 
-    return DEMO_QUESTION;
+    const excludeSet = new Set(exclude);
+
+    // Prefer in-scope questions not yet served this session. Because `ordered`
+    // is sorted unseen → reinforcement → mastered, a correctly-answered
+    // question is only ever returned once everything unseen/incorrect has been
+    // served — i.e. the quota is exhausted.
+    const preferred = ordered.find((q) => !excludeSet.has(q.id));
+    if (preferred) {
+      return preferred;
+    }
+
+    // The whole in-scope pool was already served this session → recycle, but
+    // avoid immediately repeating the most recently served question.
+    const lastServed = exclude[exclude.length - 1];
+    return ordered.find((q) => q.id !== lastServed) || ordered[0];
   } catch (error) {
     console.error('Error getting next question:', error);
     return DEMO_QUESTION;

@@ -4,9 +4,10 @@
  * Hebrew: מסך תרגול למתאמן
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getNextPracticeQuestion, getPracticeSession } from '../workflows/adaptivePracticeEngine';
 import { saveOpenEndedAnswer } from '../workflows/openEndedValidation';
+import { checkAndSuspendQuestion } from '../workflows/suspensionLogic';
 import { entities } from '../config/appConfig';
 import { announce } from '../utils/accessibility';
 import { savePracticeSession, loadQuestions, addToSyncQueue } from '../utils/offlineStorage';
@@ -44,6 +45,10 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
   const [bookmarked, setBookmarked] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
+  // Ids served during this session, so we never repeat a question until the
+  // whole in-scope pool has been served. Reset whenever the filters change.
+  const askedIdsRef = useRef([]);
+
   useEffect(() => {
     setZenMode(true);
     return () => setZenMode(false);
@@ -56,36 +61,45 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Filters changed → start a fresh rotation through the new pool.
+    askedIdsRef.current = [];
     loadNextQuestion();
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [tagFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagFilters, hierarchyFilters.category_name, hierarchyFilters.topic_name]);
 
-  const loadNextQuestion = async (excludeId = null) => {
-    const excludeQuestionId = excludeId ?? currentQuestion?.id;
+  const loadNextQuestion = async () => {
     setIsLoading(true);
     try {
       let question = null;
 
       if (isOnline) {
-        // Try to load from server (exclude the question we just answered)
-        question = await getNextPracticeQuestion(userId, hierarchyFilters, tagFilters, excludeQuestionId);
+        // Exclude everything already served this session so correctly-answered
+        // (and just-seen) questions don't reappear until the pool is exhausted.
+        question = await getNextPracticeQuestion(userId, hierarchyFilters, tagFilters, askedIdsRef.current);
       } else {
-        // Load from offline cache
+        // Load from offline cache, preferring questions not yet served.
         const cachedQuestions = await loadQuestions();
         if (cachedQuestions && cachedQuestions.length > 0) {
-          // Get a random question from cache
-          const randomIndex = Math.floor(Math.random() * cachedQuestions.length);
-          question = cachedQuestions[randomIndex];
+          const asked = new Set(askedIdsRef.current);
+          let pool = cachedQuestions.filter((q) => !asked.has(q.id));
+          if (pool.length === 0) {
+            // Pool exhausted — recycle, but avoid repeating the current question.
+            pool = cachedQuestions.filter((q) => q.id !== currentQuestion?.id);
+            if (pool.length === 0) pool = cachedQuestions;
+          }
+          question = pool[Math.floor(Math.random() * pool.length)];
         } else {
           throw new Error('אין שאלות זמינות במצב לא מקוון');
         }
       }
 
       if (question) {
+        askedIdsRef.current = [...askedIdsRef.current, question.id];
         setCurrentQuestion(question);
         setUserAnswer('');
         setSelectedOptions([]);
@@ -185,10 +199,13 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
           setOfflineAnswers(prev => [...prev, activityData]);
         }
 
-        // Trigger suspension check (question-level)
-        const { checkAndSuspendQuestion } = await import('../workflows/suspensionLogic');
-        await checkAndSuspendQuestion(currentQuestion.id);
-
+        // Trigger suspension check (question-level). Non-fatal: a failure here
+        // (e.g. stats write rejected for a trainee) must never block the answer.
+        try {
+          await checkAndSuspendQuestion(currentQuestion.id);
+        } catch (suspendErr) {
+          console.warn('checkAndSuspendQuestion failed (non-fatal):', suspendErr);
+        }
       }
 
       setShowResult(true);
@@ -237,16 +254,14 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         setIsLoading(false);
       }
     }
-    const justAnsweredId = currentQuestion?.id;
     setShowResult(false);
-    setTimeout(() => loadNextQuestion(justAnsweredId), 500);
+    setTimeout(() => loadNextQuestion(), 500);
   };
 
   const handleNextQuestion = () => {
-    const justAnsweredId = currentQuestion?.id;
     setShowResult(false);
     setSheetOpen(false);
-    loadNextQuestion(justAnsweredId);
+    loadNextQuestion();
   };
 
   const handleReportClosed = () => {
@@ -320,9 +335,6 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
               </span>
             );
           })()}
-          <span style={styles.questionType} aria-label={`סוג שאלה: ${getQuestionTypeLabel(currentQuestion.question_type)}`}>
-            {getQuestionTypeLabel(currentQuestion.question_type)}
-          </span>
         </div>
 
         <QuestionResolvedMedia
@@ -649,16 +661,6 @@ function renderAnswerInput(question, userAnswer, setUserAnswer, selectedOptions,
   }
 }
 
-function getQuestionTypeLabel(type) {
-  const labels = {
-    single_choice: 'בחירה יחידה',
-    multi_choice: 'בחירה מרובה',
-    true_false: 'נכון/לא נכון',
-    open_ended: 'שאלה פתוחה'
-  };
-  return labels[type] || type;
-}
-
 const styles = {
   container: {
     direction: 'rtl',
@@ -696,9 +698,6 @@ const styles = {
     gap: '8px'
   },
   difficulty: {},
-  questionType: {
-    fontWeight: 'bold'
-  },
   mediaContainer: {
     marginBottom: '15px',
     textAlign: 'center'

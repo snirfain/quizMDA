@@ -288,16 +288,41 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
   };
 
   const checkAnswer = async (question, userAnswer) => {
-    if (!userAnswer) return false;
+    if (userAnswer == null || userAnswer === '') return false;
 
-    if (question.question_type === 'single_choice' || question.question_type === 'true_false') {
-      return userAnswer === question.correct_answer;
+    // correct_answer is a JSON object string ({ value | values, options }).
+    let correct = {};
+    if (question.correct_answer && typeof question.correct_answer === 'object') {
+      correct = question.correct_answer;
+    } else if (typeof question.correct_answer === 'string') {
+      try { correct = JSON.parse(question.correct_answer); } catch { correct = {}; }
+    }
+
+    // Options the user picked from (rendered by index). Fall back to the
+    // options embedded in correct_answer when the question has none of its own.
+    let options = safeParse(question.options);
+    if ((!options || options.length === 0) && Array.isArray(correct.options)) {
+      options = correct.options;
+    }
+    const valueForIndex = (i) => {
+      const opt = options[Number(i)];
+      return String(opt ? (opt.value ?? i) : i);
+    };
+
+    if (question.question_type === 'single_choice') {
+      const correctValue = correct.value != null ? String(correct.value) : String(question.correct_answer);
+      return valueForIndex(userAnswer) === correctValue;
+    }
+
+    if (question.question_type === 'true_false') {
+      const correctValue = correct.value != null ? String(correct.value) : String(question.correct_answer);
+      return String(userAnswer) === correctValue;
     }
 
     if (question.question_type === 'multi_choice') {
-      const correctAnswers = safeParse(question.correct_answer);
-      const userAnswers = Array.isArray(userAnswer) ? userAnswer : [userAnswer];
-      return JSON.stringify(correctAnswers.sort()) === JSON.stringify(userAnswers.sort());
+      const correctValues = (Array.isArray(correct.values) ? correct.values : []).map(String).sort();
+      const pickedValues = (Array.isArray(userAnswer) ? userAnswer : [userAnswer]).map(valueForIndex).sort();
+      return correctValues.length > 0 && JSON.stringify(correctValues) === JSON.stringify(pickedValues);
     }
 
     // For open-ended, we'd need bot validation, but for mock exam we'll skip
