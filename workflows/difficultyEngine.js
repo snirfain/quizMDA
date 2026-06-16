@@ -6,6 +6,8 @@
  */
 
 import { entities } from '../config/appConfig';
+import { getCurrentUser } from '../utils/auth';
+import { isRoleAtLeast } from '../utils/permissions';
 
 export const MIN_ATTEMPTS_FOR_RATING = 50;
 
@@ -85,7 +87,19 @@ export async function recalculateDifficulty(questionId) {
     );
   }
 
-  await entities.Question_Bank.update(questionId, updatePayload);
+  // Writing aggregate stats / status back to the shared question document is an
+  // instructor-level operation. A trainee answering a practice question must NOT
+  // be blocked by this side-effect — the server correctly rejects their PUT with
+  // 403. So only attempt the write for users who are allowed, best-effort, and
+  // never let a failure here break the trainee's answer submission.
+  try {
+    const actor = await getCurrentUser();
+    if (isRoleAtLeast(actor?.role, 'instructor')) {
+      await entities.Question_Bank.update(questionId, updatePayload);
+    }
+  } catch (err) {
+    console.warn('[questionStats] דילוג על עדכון סטטיסטיקות השאלה:', err?.message || err);
+  }
 
   return {
     questionId,

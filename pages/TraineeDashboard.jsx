@@ -210,14 +210,11 @@ export default function TraineeDashboard({ userId }) {
     setPracticeView('free');
   };
 
-  // Friendly hub cards shown when entering "תרגול" (clean, professional — not flashy).
+  // Practice hub — only the two ways to actually practice questions.
+  // Other areas (אתגר יומי / אק"ג / טבלת מובילים / התקדמות) have their own tabs.
   const menuCards = [
-    { key: 'create', icon: 'edit', title: 'בניית מבחן', desc: 'הרכיבו מבחן לפי קטגוריות, רמות קושי וכמות שאלות', onClick: () => setPracticeView('create') },
-    { key: 'free', icon: 'book', title: 'תרגול חופשי', desc: 'תרגול רציף ומותאם אישית לפי הרמה שלכם', onClick: () => setPracticeView('free') },
-    { key: 'challenge', icon: 'help', title: 'אתגר יומי', desc: 'שאלת אתגר חדשה בכל יום — צברו נקודות', onClick: () => setActiveTab('challenge') },
-    { key: 'ecg', icon: 'media', title: 'ניתוח אק"ג', desc: 'העלו רצועת אק"ג, פענחו וקבלו משוב ממדריך', onClick: () => setActiveTab('ecg') },
-    { key: 'progress', icon: 'dashboard', title: 'ההתקדמות שלי', desc: 'מעקב ביצועים, רצף וכיסוי המאגר', onClick: () => setActiveTab('progress') },
-    { key: 'leaderboard', icon: 'chart', title: 'טבלת מובילים', desc: 'דירוג ארצי לפי נקודות', onClick: () => setActiveTab('leaderboard') },
+    { key: 'create', icon: 'edit', title: 'בניית מבחן', desc: 'הרכיבו מבחן ממוקד לפי קטגוריות, רמות קושי וכמות שאלות', onClick: () => setPracticeView('create') },
+    { key: 'free', icon: 'book', title: 'תרגול חופשי', desc: 'תרגול רציף ומותאם אישית לפי הרמה שלכם, עם אפשרות סינון נושאים', onClick: () => setPracticeView('free') },
   ];
 
   const showHero = activeTab === 'practice' && practiceView === 'menu';
@@ -334,7 +331,8 @@ export default function TraineeDashboard({ userId }) {
 
       {activeTab === 'practice' && practiceView === 'menu' && (
         <div role="tabpanel" aria-labelledby="practice-tab" id="practice-panel">
-          <div style={styles.menuGrid} role="region" aria-label="בחירת פעולה">
+          <h2 style={styles.menuHeading}>איך תרצו לתרגל?</h2>
+          <div style={styles.menuGrid} role="region" aria-label="בחירת אופן תרגול">
             {menuCards.map((card) => (
               <button
                 key={card.key}
@@ -573,11 +571,16 @@ const styles = {
     backgroundColor: 'var(--color-bg)',
     minHeight: '100vh',
   },
+  menuHeading: {
+    margin: 'var(--space-5) 0 var(--space-3)',
+    fontSize: 'var(--font-size-lg)',
+    fontWeight: 700,
+    color: 'var(--color-text-2)',
+  },
   menuGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))',
     gap: 'var(--space-4)',
-    marginTop: 'var(--space-5)',
   },
   menuCard: {
     display: 'flex',
