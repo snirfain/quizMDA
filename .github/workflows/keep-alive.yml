@@ -3,16 +3,24 @@ name: Keep Render Awake
 # Pings the Render free-tier service so it doesn't spin down after inactivity.
 on:
   schedule:
-    # Every 14 minutes (Render free instances sleep after ~15 min idle).
-    - cron: '*/14 * * * *'
+    # Every 10 minutes. GitHub-hosted scheduled runs drift (often delayed
+    # 10-30 min under load), so we aim well under Render's ~15 min sleep window.
+    - cron: '*/10 * * * *'
   workflow_dispatch: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping server
+      - name: Ping server (ride through cold start)
         run: |
+          # --retry-all-errors + a generous timeout so that if the instance is
+          # asleep, the ping retries through the 30-60s cold boot and actually
+          # wakes it, instead of giving up and leaving users to hit the 503.
           curl --silent --show-error --location \
-            --max-time 30 \
-            https://mdaquiz.onrender.com
+            --max-time 120 \
+            --retry 6 \
+            --retry-delay 15 \
+            --retry-all-errors \
+            --fail \
+            https://mdaquiz.onrender.com/api/health
