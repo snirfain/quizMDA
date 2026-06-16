@@ -16,7 +16,9 @@ import LoadingSpinner from './components/LoadingSpinner';
 import FloatingAccessibilityButton from './components/FloatingAccessibilityButton';
 import FloatingContactButton from './components/FloatingContactButton';
 import OfflineIndicator from './components/OfflineIndicator';
-import { registerServiceWorker } from './utils/serviceWorker';
+import SyncIndicator from './components/SyncIndicator';
+import PwaInstallPrompt from './components/PwaInstallPrompt';
+import ConsentGate from './components/ConsentGate';
 import { syncQuestionsFromServer } from './mockEntities';
 
 // Lazy load pages
@@ -49,6 +51,8 @@ const MediaBankManager = React.lazy(() => import('./components/MediaBankManager'
 const BookContentLibrary = React.lazy(() => import('./components/BookContentLibrary'));
 const TranscriptUpload = React.lazy(() => import('./components/TranscriptUpload'));
 const CourseSetup = React.lazy(() => import('./components/CourseSetup'));
+const Leaderboard = React.lazy(() => import('./components/Leaderboard'));
+const AdminPushManager = React.lazy(() => import('./components/AdminPushManager'));
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState('/');
@@ -58,17 +62,20 @@ export default function App() {
   useEffect(() => {
     loadUser();
     updatePath();
-    
-    // Fetch server questions → write to localStorage so all components see them.
-    // Store promise globally so practice engine can await it before reading questions.
-    window.__quizMDA_syncPromise = syncQuestionsFromServer();
-    
-    // Register service worker for offline support
-    registerServiceWorker();
-    
+
+    // NOTE: question sync no longer runs on bootstrap. Running it before the
+    // user is authenticated caused 401s on fresh machines (leaving only the
+    // mock seeds). Sync is now triggered post-login / for a valid session —
+    // see triggerQuestionSync() (called from loadUser and the userLogin event).
+    // The service worker is registered in main.jsx (robust, app-wide).
+
     // Listen for route changes
     window.addEventListener('popstate', updatePath);
-    
+
+    // Trigger the heavy question sync only AFTER a successful login.
+    const handleLogin = () => triggerQuestionSync('login');
+    window.addEventListener('userLogin', handleLogin);
+
     // Listen for logout event
     const handleLogout = () => {
       setUser(null);
@@ -91,10 +98,29 @@ export default function App() {
     
     return () => {
       window.removeEventListener('popstate', updatePath);
+      window.removeEventListener('userLogin', handleLogin);
       window.removeEventListener('userLogout', handleLogout);
       window.removeEventListener('userUpdated', handleUserUpdate);
     };
   }, []);
+
+  /**
+   * Kick off the server→IndexedDB question sync, but only when we actually have
+   * an authenticated session (valid token), or in local dev where auth is off.
+   * Guards against the 401 that occurred when syncing before login.
+   */
+  const triggerQuestionSync = (reason = '') => {
+    if (typeof window === 'undefined') return;
+    const host = window.location.hostname;
+    const isLocal = host === 'localhost' || host === '127.0.0.1';
+    const hasValidSession = isLocal || !isTokenExpiringSoon(0);
+    if (!hasValidSession) {
+      console.warn('[App] דילוג על סנכרון שאלות — אין סשן תקף עדיין', reason ? `(${reason})` : '');
+      return;
+    }
+    // Expose the promise so the practice engine can await a fresh sync.
+    window.__quizMDA_syncPromise = syncQuestionsFromServer();
+  };
 
   const loadUser = async () => {
     try {
@@ -114,6 +140,8 @@ export default function App() {
         }
       }
       setUser(currentUser);
+      // Returning user with a valid session → sync the question bank now.
+      if (currentUser) triggerQuestionSync('reload');
     } catch (error) {
       console.error('Error loading user:', error);
     } finally {
@@ -193,8 +221,12 @@ export default function App() {
         return <BookContentLibrary />;
       case '/instructor/transcripts':
         return <TranscriptUpload />;
+      case '/leaderboard':
+        return <Leaderboard currentUserId={userId} />;
       case '/manager':
         return <ManagerDashboardPage />;
+      case '/manager/notifications':
+        return <AdminPushManager />;
       case '/admin/data-import-export':
         return <DataImportExport />;
       case '/admin/question-stats':
@@ -254,9 +286,12 @@ export default function App() {
           {renderPage()}
         </MainLayout>
         <ToastContainer />
+        {user && <SyncIndicator />}
         {user && <FloatingAccessibilityButton />}
         {user && <FloatingContactButton />}
         {user && <OfflineIndicator />}
+        <PwaInstallPrompt />
+        {user && <ConsentGate user={user} />}
       </React.Suspense>
     </ErrorBoundary>
   );

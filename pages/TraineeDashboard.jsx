@@ -7,6 +7,9 @@
 import React, { useState, useEffect } from 'react';
 import TraineePracticeSession from '../components/TraineePracticeSession';
 import UserProgressDashboard from '../components/UserProgressDashboard';
+import EcgUploadPanel from '../components/EcgUploadPanel';
+import DailyChallenge from '../components/DailyChallenge';
+import Leaderboard from '../components/Leaderboard';
 import TagFilter from '../components/TagFilter';
 import StreakBadge from '../components/StreakBadge';
 import ProgressRing from '../components/ProgressRing';
@@ -270,6 +273,36 @@ export default function TraineeDashboard({ userId }) {
             >
               התקדמות
             </button>
+            <button
+              className={`tab-btn ${activeTab === 'challenge' ? 'active' : ''}`}
+              onClick={() => setActiveTab('challenge')}
+              role="tab"
+              aria-selected={activeTab === 'challenge'}
+              aria-controls="challenge-panel"
+              id="challenge-tab"
+            >
+              אתגר יומי
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'ecg' ? 'active' : ''}`}
+              onClick={() => setActiveTab('ecg')}
+              role="tab"
+              aria-selected={activeTab === 'ecg'}
+              aria-controls="ecg-panel"
+              id="ecg-tab"
+            >
+              אקג
+            </button>
+            <button
+              className={`tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
+              onClick={() => setActiveTab('leaderboard')}
+              role="tab"
+              aria-selected={activeTab === 'leaderboard'}
+              aria-controls="leaderboard-panel"
+              id="leaderboard-tab"
+            >
+              טבלת מובילים
+            </button>
           </div>
           {activeTab === 'practice' && practiceMode === 'free' && (
             <button
@@ -461,6 +494,24 @@ export default function TraineeDashboard({ userId }) {
       {activeTab === 'progress' && (
         <div role="tabpanel" aria-labelledby="progress-tab" id="progress-panel">
           <UserProgressDashboard userId={userId} />
+        </div>
+      )}
+
+      {activeTab === 'challenge' && (
+        <div role="tabpanel" aria-labelledby="challenge-tab" id="challenge-panel" style={{ paddingTop: 'var(--space-6)' }}>
+          <DailyChallenge onPointsChanged={() => userId && loadProgress()} />
+        </div>
+      )}
+
+      {activeTab === 'ecg' && (
+        <div role="tabpanel" aria-labelledby="ecg-tab" id="ecg-panel" style={{ paddingTop: 'var(--space-6)' }}>
+          <EcgUploadPanel />
+        </div>
+      )}
+
+      {activeTab === 'leaderboard' && (
+        <div role="tabpanel" aria-labelledby="leaderboard-tab" id="leaderboard-panel" style={{ paddingTop: 'var(--space-6)' }}>
+          <Leaderboard currentUserId={userId} />
         </div>
       )}
     </div>

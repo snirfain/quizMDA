@@ -10,6 +10,7 @@ import {
   computeQuestionHasMedia,
   normalizeQuestionMediaPayload,
 } from './shared/questionBankMetadata.js';
+import { getAuthToken } from './utils/authToken.js';
 
 const STORAGE_KEY = 'quizMDA_mockData';
 
@@ -238,10 +239,201 @@ function matchQuery(doc, query) {
   return true;
 }
 
+// ────────────────────────────────────────────────────────────────────
+// IndexedDB layer for the questions cache
+// בנק השאלות (אלפי שאלות) נשמר ב-IndexedDB ולא ב-localStorage, כדי לעקוף
+// את מגבלת ה-5MB ולמנוע שגיאות QuotaExceededError שקוטעות חצי מהשאלות.
+// ────────────────────────────────────────────────────────────────────
+const QUESTIONS_DB_NAME = 'quizMDA_QuestionsDB';
+const QUESTIONS_DB_VERSION = 1;
+const QUESTIONS_STORE = 'questions';
+
+/** true עד שמתגלה שאין IndexedDB זמין — אז נופלים בבטחה לזיכרון בלבד. */
+let idbAvailable = typeof window !== 'undefined' && 'indexedDB' in window;
+let _questionsDbPromise = null;
+
+/**
+ * פותח (ויוצר במידת הצורך) את בסיס הנתונים המקומי לשאלות.
+ * מגדיר object store בשם `questions` עם מפתח ראשי `id`.
+ * @returns {Promise<IDBDatabase>}
+ */
+function initQuestionsDB() {
+  if (!idbAvailable) return Promise.reject(new Error('IndexedDB אינו זמין בדפדפן זה'));
+  if (_questionsDbPromise) return _questionsDbPromise;
+
+  _questionsDbPromise = new Promise((resolve, reject) => {
+    let request;
+    try {
+      request = indexedDB.open(QUESTIONS_DB_NAME, QUESTIONS_DB_VERSION);
+    } catch (err) {
+      idbAvailable = false;
+      return reject(err);
+    }
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(QUESTIONS_STORE)) {
+        // מפתח ראשי `id`; נשתמש ב-_id מהשרת כ-fallback בעת ההמרה.
+        db.createObjectStore(QUESTIONS_STORE, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => { try { db.close(); } catch (_) {} _questionsDbPromise = null; };
+      resolve(db);
+    };
+    request.onerror = () => {
+      idbAvailable = false;
+      reject(request.error || new Error('פתיחת IndexedDB נכשלה'));
+    };
+    request.onblocked = () => {
+      console.warn('[IndexedDB] פתיחת בסיס הנתונים חסומה על ידי טאב אחר');
+    };
+  });
+
+  // אם הפתיחה נכשלה — מאפסים את ה-promise כדי לאפשר ניסיון חוזר בעתיד.
+  _questionsDbPromise.catch(() => { _questionsDbPromise = null; });
+  return _questionsDbPromise;
+}
+
+/** שולף את כל השאלות מ-IndexedDB. מחזיר [] בכל שגיאה (fallback בטוח). */
+async function idbGetAllQuestions() {
+  try {
+    const db = await initQuestionsDB();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(QUESTIONS_STORE, 'readonly');
+      const store = tx.objectStore(QUESTIONS_STORE);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn('[IndexedDB] שליפת שאלות נכשלה — fallback לזיכרון:', err?.message || err);
+    return [];
+  }
+}
+
+/**
+ * שומר מערך שאלות בבת אחת (bulk) בתוך טרנזקציה אחת.
+ * @param {Array} questions
+ * @param {{ clear?: boolean }} [opts] - clear: לרוקן את החנות לפני הכתיבה
+ * @returns {Promise<boolean>} האם הכתיבה הצליחה
+ */
+async function idbSaveQuestionsBulk(questions, opts = {}) {
+  const list = Array.isArray(questions) ? questions : [];
+  try {
+    const db = await initQuestionsDB();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(QUESTIONS_STORE, 'readwrite');
+      const store = tx.objectStore(QUESTIONS_STORE);
+      tx.oncomplete = () => resolve(true);
+      tx.onabort = () => reject(tx.error || new Error('טרנזקציית כתיבה בוטלה'));
+      tx.onerror = () => reject(tx.error);
+      if (opts.clear) store.clear();
+      for (const q of list) {
+        if (q && q.id != null) store.put(q);
+      }
+    });
+  } catch (err) {
+    console.warn('[IndexedDB] שמירת שאלות (bulk) נכשלה — נשמר בזיכרון בלבד:', err?.message || err);
+    return false;
+  }
+}
+
+/** כותב/מעדכן שאלה בודדת ב-IndexedDB. */
+async function idbPutQuestion(question) {
+  if (!question || question.id == null) return false;
+  try {
+    const db = await initQuestionsDB();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(QUESTIONS_STORE, 'readwrite');
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+      tx.objectStore(QUESTIONS_STORE).put(question);
+    });
+  } catch (err) {
+    console.warn('[IndexedDB] שמירת שאלה נכשלה:', err?.message || err);
+    return false;
+  }
+}
+
+/** מוחק שאלה בודדת מ-IndexedDB. */
+async function idbDeleteQuestion(id) {
+  if (id == null) return false;
+  try {
+    const db = await initQuestionsDB();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(QUESTIONS_STORE, 'readwrite');
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+      tx.objectStore(QUESTIONS_STORE).delete(id);
+    });
+  } catch (err) {
+    console.warn('[IndexedDB] מחיקת שאלה נכשלה:', err?.message || err);
+    return false;
+  }
+}
+
+/**
+ * טוען את בנק השאלות פעם אחת (memoized): מ-IndexedDB, או מהגרציה חד-פעמית
+ * מ-localStorage הישן, או fallback לזיכרון. כל קריאות ה-find ממתינות לזה.
+ */
+let _questionsLoadedPromise = null;
+function ensureQuestionsLoaded() {
+  if (_questionsLoadedPromise) return _questionsLoadedPromise;
+  _questionsLoadedPromise = (async () => {
+    if (!idbAvailable) {
+      console.warn('[mockEntities] IndexedDB אינו זמין — בנק השאלות יישמר בזיכרון בלבד.');
+      return mockData.questions;
+    }
+    try {
+      const stored = await idbGetAllQuestions();
+      if (stored.length > 0) {
+        mockData.questions = stored;
+        console.log(`[mockEntities] נטענו ${stored.length} שאלות מ-IndexedDB`);
+        return mockData.questions;
+      }
+      // IndexedDB ריק — אם יש שאלות ישנות ב-localStorage, נבצע הגירה חד-פעמית.
+      if (loadFromStorage._hadStoredQuestions && mockData.questions.length > 0) {
+        const ok = await idbSaveQuestionsBulk(mockData.questions, { clear: true });
+        if (ok) {
+          console.log(`[mockEntities] הוגרו ${mockData.questions.length} שאלות מ-localStorage ל-IndexedDB`);
+          // משחררים את ה-localStorage מהשאלות הכבדות (מונע QuotaExceededError).
+          saveToStorage();
+        }
+      }
+      return mockData.questions;
+    } catch (err) {
+      console.warn('[mockEntities] טעינת שאלות מ-IndexedDB נכשלה — fallback לזיכרון:', err?.message || err);
+      return mockData.questions;
+    }
+  })();
+  return _questionsLoadedPromise;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Sync status events — מאפשרים ל-UI להציג חיווי סנכרון עדין
+// ────────────────────────────────────────────────────────────────────
+export const SYNC_EVENT = 'quizMDA:questions-sync';
+
+function emitSyncStatus(detail) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.__quizMDA_syncStatus = detail;
+    window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail }));
+  } catch (_) {
+    /* never let a UI event break sync */
+  }
+}
+
 // Persistence helpers
 function saveToStorage() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(mockData));
+    // השאלות נשמרות ב-IndexedDB בלבד — לא כוללים אותן ב-localStorage כדי
+    // להישאר הרבה מתחת למגבלת ~5MB. שאר הישויות (קטנות) נשמרות כרגיל.
+    const rest = { ...mockData, questions: [] };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
   } catch (e) {
     console.warn('MockEntities: could not save to localStorage', e);
   }
@@ -252,6 +444,8 @@ function loadFromStorage() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      // האם קיימות שאלות ישנות ב-localStorage שצריך להגר ל-IndexedDB?
+      loadFromStorage._hadStoredQuestions = Array.isArray(parsed.questions) && parsed.questions.length > 0;
       const hierarchies = (parsed.hierarchies?.length >= 15)
         ? parsed.hierarchies
         : DEFAULT_DATA.hierarchies;
@@ -336,9 +530,16 @@ function loadFromStorage() {
   return { ...DEFAULT_DATA, mediaBank: [...DEFAULT_DATA.mediaBank] };
 }
 
-// Runtime data — loaded from localStorage, falls back to DEFAULT_DATA
+// Runtime data — non-question entities load from localStorage; questions load
+// from IndexedDB (async) via ensureQuestionsLoaded() below.
 const mockData = loadFromStorage();
 if (loadFromStorage._migratedMediaBank) saveToStorage();
+
+// Begin loading the questions bank from IndexedDB immediately (non-blocking).
+// Components read via the async find()/findOne() which await this first.
+if (typeof window !== 'undefined') {
+  window.__quizMDA_questionsReady = ensureQuestionsLoaded();
+}
 
 async function readApiError(res, fallbackMessage) {
   try {
@@ -390,52 +591,93 @@ function serverToLocal(sq) {
   };
 }
 
+function isLocalhostEnv() {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname;
+  return h === 'localhost' || h === '127.0.0.1';
+}
+
 /**
- * Boot: fetch ALL questions from server API and REPLACE the local cache.
- * Server = single source of truth. localStorage is only a read cache.
+ * Fetch ALL questions from the server (paginated) and REPLACE the local cache
+ * in IndexedDB. Server = single source of truth; IndexedDB is the local cache.
+ *
+ * חשוב: הסנכרון רץ אך ורק לאחר התחברות (קיים auth token) — כדי למנוע 401
+ * במחשבים חדשים. הלולאה מושכת את כל הדפים עד שבנק השאלות מתרוקן, ואז שומרת
+ * הכול במכה אחת ל-IndexedDB. במהלך הסנכרון נורים אירועי התקדמות ל-UI.
+ *
+ * @param {{ force?: boolean }} [opts] force=true עוקף את בדיקת ההתחברות (לדיבוג)
  */
-export async function syncQuestionsFromServer() {
+export async function syncQuestionsFromServer(opts = {}) {
   if (typeof window === 'undefined') return { fetched: 0 };
+
+  // ── Auth gate: לא מסנכרנים לפני התחברות מאומתת ──────────────────────
+  const hasToken = !!getAuthToken();
+  if (!opts.force && !hasToken && !isLocalhostEnv()) {
+    console.warn('[syncQuestionsFromServer] דילוג: אין טוקן הזדהות עדיין (לפני התחברות).');
+    return { fetched: 0, local: mockData.questions.length, skipped: true, reason: 'no-auth' };
+  }
+
+  // מבטיחים שה-cache המקומי נטען לפני שנדרוס אותו.
+  await ensureQuestionsLoaded();
+
+  const PAGE_SIZE = 1000;
+  let skip = 0;
+  let apiQuestions = [];
+  let page;
+  let total = null;
+  let serverDbConnected = true;
+  let gotSuccessfulPage = false;
+
+  emitSyncStatus({ phase: 'start', loaded: 0, total: null });
+
   try {
-    const PAGE_SIZE = 1000;
-    let skip = 0;
-    let apiQuestions = [];
-    let page;
-    /** First successful JSON page must be from a live DB, or we keep local cache (dev/offline). */
-    let serverDbConnected = true;
-    let gotSuccessfulPage = false;
     do {
-      const res = await fetch(`/api/questions?skip=${skip}&limit=${PAGE_SIZE}&_t=${Date.now()}`, { cache: 'no-store' });
+      const res = await fetch(
+        `/api/questions?skip=${skip}&limit=${PAGE_SIZE}&_t=${Date.now()}`,
+        { cache: 'no-store' },
+      );
+      if (res.status === 401 || res.status === 403) {
+        console.warn('[syncQuestionsFromServer] 401/403 — נדרשת התחברות מחדש; שומרים cache מקומי.');
+        emitSyncStatus({ phase: 'error', loaded: apiQuestions.length, total, reason: 'unauthorized' });
+        return { fetched: 0, local: mockData.questions.length, skipped: true, reason: 'unauthorized' };
+      }
       if (!res.ok) break;
       if (skip === 0) {
-        const h = res.headers.get('X-QuizMDA-Db-Connected');
-        serverDbConnected = h !== '0';
+        serverDbConnected = res.headers.get('X-QuizMDA-Db-Connected') !== '0';
+        const totalHeader = parseInt(res.headers.get('X-QuizMDA-Total-Count') || '', 10);
+        if (Number.isFinite(totalHeader) && totalHeader >= 0) total = totalHeader;
       }
       page = await res.json();
       if (!Array.isArray(page)) break;
       gotSuccessfulPage = true;
       apiQuestions = apiQuestions.concat(page);
       skip += PAGE_SIZE;
+      emitSyncStatus({ phase: 'progress', loaded: apiQuestions.length, total: total ?? apiQuestions.length });
     } while (page.length === PAGE_SIZE);
 
     if (!gotSuccessfulPage) {
-      console.warn('[syncQuestionsFromServer] No valid API page; keeping local cache');
+      console.warn('[syncQuestionsFromServer] לא התקבל דף תקין; שומרים cache מקומי.');
+      emitSyncStatus({ phase: 'done', loaded: mockData.questions.length, total: mockData.questions.length });
       return { fetched: 0, local: mockData.questions.length, skipped: true };
     }
-
     if (!serverDbConnected) {
-      console.warn('[syncQuestionsFromServer] MongoDB not connected on server; keeping local cache');
+      console.warn('[syncQuestionsFromServer] מסד הנתונים בשרת אינו מחובר; שומרים cache מקומי.');
+      emitSyncStatus({ phase: 'done', loaded: mockData.questions.length, total: mockData.questions.length });
       return { fetched: 0, local: mockData.questions.length, skipped: true };
     }
 
+    // המרה ושמירה בבת אחת ל-IndexedDB (כולל ניקוי הקיים).
     mockData.questions = apiQuestions.map(serverToLocal);
-    saveToStorage();
-    console.log(
-      `[syncQuestionsFromServer] Replaced local cache with ${mockData.questions.length} server question(s)`,
-    );
+    const saved = await idbSaveQuestionsBulk(mockData.questions, { clear: true });
+    if (!saved) {
+      console.warn('[syncQuestionsFromServer] שמירה ל-IndexedDB נכשלה; הנתונים זמינים בזיכרון בלבד.');
+    }
+    console.log(`[syncQuestionsFromServer] הוחלף ה-cache ב-${mockData.questions.length} שאלות מהשרת`);
+    emitSyncStatus({ phase: 'done', loaded: mockData.questions.length, total: total ?? mockData.questions.length });
     return { fetched: mockData.questions.length };
   } catch (e) {
-    console.error('[syncQuestionsFromServer] error:', e);
+    console.error('[syncQuestionsFromServer] שגיאה:', e);
+    emitSyncStatus({ phase: 'error', loaded: apiQuestions.length, total, reason: e?.message });
     return { fetched: 0, local: mockData.questions.length, error: e.message };
   }
 }
@@ -444,6 +686,7 @@ export async function syncQuestionsFromServer() {
 export const mockEntities = {
   Question_Bank: {
     find: async (query = {}, options = {}) => {
+      await ensureQuestionsLoaded();
       let results = mockData.questions.filter(q => matchQuery(q, query));
       if (options.sort) {
         const [field, dir] = Object.entries(options.sort)[0];
@@ -453,12 +696,14 @@ export const mockEntities = {
       return results;
     },
     findOne: async (query) => {
+      await ensureQuestionsLoaded();
       if (query.id) {
         return mockData.questions.find(q => q.id === query.id) || null;
       }
       return null;
     },
     create: async (data) => {
+      await ensureQuestionsLoaded();
       try {
         const res = await fetch('/api/questions', {
           method: 'POST',
@@ -472,13 +717,14 @@ export const mockEntities = {
         const created = await res.json();
         const q = serverToLocal(Array.isArray(created) ? created[0] : created);
         mockData.questions.push(q);
-        saveToStorage();
+        await idbPutQuestion(q);
         return q;
       } catch (err) {
         throw new Error(err?.message || 'שגיאת תקשורת בשמירת השאלה');
       }
     },
     update: async (id, data) => {
+      await ensureQuestionsLoaded();
       try {
         const res = await fetch(`/api/questions/${id}`, {
           method: 'PUT',
@@ -493,13 +739,14 @@ export const mockEntities = {
         const idx = mockData.questions.findIndex(q => q.id === id);
         if (idx !== -1) mockData.questions[idx] = updated;
         else mockData.questions.push(updated);
-        saveToStorage();
+        await idbPutQuestion(updated);
         return updated;
       } catch (err) {
         throw new Error(err?.message || 'שגיאת תקשורת בעדכון השאלה');
       }
     },
     delete: async (id) => {
+      await ensureQuestionsLoaded();
       try {
         const res = await fetch(`/api/questions/${id}`, { method: 'DELETE' });
         if (!res.ok) {
@@ -512,12 +759,13 @@ export const mockEntities = {
       const index = mockData.questions.findIndex(q => q.id === id);
       if (index !== -1) {
         mockData.questions.splice(index, 1);
-        saveToStorage();
+        await idbDeleteQuestion(id);
         return { success: true };
       }
       return { success: false };
     },
     distinct: async (field) => {
+      await ensureQuestionsLoaded();
       const values = mockData.questions
         .map(q => q[field])
         .filter((value, index, self) => value != null && self.indexOf(value) === index);

@@ -210,6 +210,14 @@ export async function getQuestions(req, res) {
     }
     const skip = Math.max(0, parseInt(req.query.skip, 10) || 0);
     const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit, 10) || 100000));
+    // Total count lets the client show an accurate sync progress denominator
+    // (e.g. "X / 8944"). estimatedDocumentCount is O(1) in MongoDB.
+    try {
+      const total = await Question.estimatedDocumentCount();
+      res.set('X-QuizMDA-Total-Count', String(total));
+    } catch (_) {
+      /* non-fatal: progress UI falls back to the running loaded count */
+    }
     const list = await Question.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
     const withId = list.map((doc) => {
       const { _id, ...rest } = doc;

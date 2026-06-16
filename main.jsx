@@ -13,9 +13,13 @@ import './styles/responsive.css';
 import { initializeAccessibilitySettings } from './utils/accessibility';
 import { initTheme } from './utils/theme';
 import { installApiInterceptor } from './utils/apiClient';
+import { registerServiceWorker } from './utils/serviceWorker';
 
 // Attach auth token + audit tag to all /api requests before anything fetches.
 installApiInterceptor();
+
+// Register the PWA service worker (robust, no-op in dev / unsupported browsers).
+registerServiceWorker();
 
 // Theme before paint to avoid flash
 initTheme();

@@ -33,7 +33,13 @@ const userSchema = new mongoose.Schema(
     points: { type: Number, default: 0, min: 0 },
     current_streak: { type: Number, default: 0, min: 0 },
     longest_streak: { type: Number, default: 0, min: 0 },
-    custom_permissions: { type: [String], default: [] }
+    custom_permissions: { type: [String], default: [] },
+    /** GDPR / TOS consent (Feature 5) */
+    tos_accepted: { type: Boolean, default: false },
+    cookies_accepted: { type: Boolean, default: false },
+    consent_at: { type: Date, default: null },
+    /** Whether the user opted in to browser push notifications */
+    notifications_opt_in: { type: Boolean, default: false }
   },
   { timestamps: true }
 );

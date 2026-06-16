@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import TestGenerator from '../components/TestGenerator';
 import InstructorAnalytics from '../components/InstructorAnalytics';
 import QuestionManagement from '../components/QuestionManagement';
+import EcgReviewQueue from '../components/EcgReviewQueue';
 
 export default function InstructorDashboard({ instructorId }) {
   const [activeTab, setActiveTab] = useState('test-generator');
@@ -47,6 +48,16 @@ export default function InstructorDashboard({ instructorId }) {
           >
             אנליטיקה
           </button>
+          <button
+            className={`tab-btn ${activeTab === 'ecg' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ecg')}
+            role="tab"
+            aria-selected={activeTab === 'ecg'}
+            aria-controls="ecg-panel"
+            id="ecg-tab"
+          >
+            תור אישורי אקג
+          </button>
         </nav>
       </div>
 
@@ -64,6 +75,11 @@ export default function InstructorDashboard({ instructorId }) {
         {activeTab === 'analytics' && (
           <div role="tabpanel" aria-labelledby="analytics-tab" id="analytics-panel">
             <InstructorAnalytics instructorId={instructorId} />
+          </div>
+        )}
+        {activeTab === 'ecg' && (
+          <div role="tabpanel" aria-labelledby="ecg-tab" id="ecg-panel" style={{ padding: 'var(--space-6)' }}>
+            <EcgReviewQueue />
           </div>
         )}
       </main>

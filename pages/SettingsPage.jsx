@@ -17,6 +17,7 @@ import {
   applyAccessibilitySettings 
 } from '../utils/accessibility';
 import ThemeToggle from '../components/ThemeToggle';
+import { isPushSupported, subscribeToPush, unsubscribeFromPush } from '../utils/push';
 
 export default function SettingsPage() {
   const [user, setUser] = useState(null);
@@ -407,8 +408,33 @@ function ProfileSettings({ user }) {
 }
 
 function NotificationSettings({ user }) {
-  const [dailyReminder, setDailyReminder] = useState(true);
-  const [achievementNotifications, setAchievementNotifications] = useState(true);
+  const [pushOn, setPushOn] = useState(user?.notifications_opt_in === true);
+  const [busy, setBusy] = useState(false);
+  const supported = isPushSupported();
+
+  const togglePush = async (checked) => {
+    setBusy(true);
+    try {
+      if (checked) {
+        const { ok, reason } = await subscribeToPush();
+        if (ok) {
+          setPushOn(true);
+          showToast('התראות הופעלו בהצלחה', 'success');
+        } else {
+          setPushOn(false);
+          showToast(reason || 'הפעלת ההתראות נכשלה', 'error');
+        }
+      } else {
+        await unsubscribeFromPush();
+        setPushOn(false);
+        showToast('ההתראות בוטלו', 'info');
+      }
+    } catch (e) {
+      showToast('שגיאה בעדכון ההתראות', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div>
@@ -417,26 +443,24 @@ function NotificationSettings({ user }) {
         <label style={styles.checkboxLabel}>
           <input
             type="checkbox"
-            checked={dailyReminder}
-            onChange={(e) => setDailyReminder(e.target.checked)}
+            checked={pushOn}
+            disabled={busy || !supported}
+            onChange={(e) => togglePush(e.target.checked)}
             style={styles.checkbox}
-            aria-label="תזכורת יומית"
+            aria-label="קבלת התראות פוש"
           />
-          <span>תזכורת יומית לתרגול</span>
+          <span>
+            קבלת התראות פוש מהמערכת (אתגרים, תזכורות ועדכונים)
+            {!supported && (
+              <span style={{ display: 'block', fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                הדפדפן הנוכחי אינו תומך בהתראות פוש.
+              </span>
+            )}
+          </span>
         </label>
-        <label style={styles.checkboxLabel}>
-          <input
-            type="checkbox"
-            checked={achievementNotifications}
-            onChange={(e) => setAchievementNotifications(e.target.checked)}
-            style={styles.checkbox}
-            aria-label="התראות הישגים"
-          />
-          <span>התראות על הישגים חדשים</span>
-        </label>
-        <button type="button" className="btn btn-primary">
-          שמור שינויים
-        </button>
+        <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', margin: 0 }}>
+          ההתראות נשלחות רק לאחר אישור אקטיבי שלך, וניתן לבטל בכל עת.
+        </p>
       </div>
     </div>
   );

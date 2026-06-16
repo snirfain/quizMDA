@@ -9,7 +9,7 @@
     "dev:full": "PORT=3001 node server.js & sleep 1 && vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "vite",
+    "start": "node server.js",
     "serve": "node server.js",
     "db:reset": "node scripts/resetDatabase.mjs",
     "test": "node --test workflows/*.test.mjs"
@@ -26,6 +26,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "resend": "^6.9.4",
+    "web-push": "^3.6.7",
     "word-extractor": "^1.0.4",
     "xlsx": "^0.18.5"
   },

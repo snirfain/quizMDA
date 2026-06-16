@@ -1,6 +1,6 @@
 // Service Worker for MDA Quiz App
-const CACHE_NAME = 'mda-quiz-v6';
-const STATIC_CACHE_NAME = 'mda-static-v6';
+const CACHE_NAME = 'mda-quiz-v7';
+const STATIC_CACHE_NAME = 'mda-static-v7';
 
 const STATIC_ASSETS = ['/', '/index.html'];
 
@@ -22,6 +22,43 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+// ── Web Push ────────────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  let data = { title: 'quizMDA', body: '', url: '/' };
+  try {
+    if (event.data) data = { ...data, ...event.data.json() };
+  } catch (_) {
+    if (event.data) data.body = event.data.text();
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'quizMDA', {
+      body: data.body || '',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
+      dir: 'rtl',
+      lang: 'he',
+      data: { url: data.url || '/' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ('focus' in client) {
+          client.navigate(target).catch(() => {});
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(target);
+      return undefined;
+    })
+  );
 });
 
 self.addEventListener('fetch', (event) => {

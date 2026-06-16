@@ -3,6 +3,7 @@
  * Run after build: npm run build && node server.js
  */
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
@@ -30,6 +31,33 @@ import { listQuestionVersions, mergeMediaTags } from './server/questionApi.js';
 import { submitExam } from './server/examApi.js';
 import { requireAuth, requireRole, isAuthEnforced, createSession } from './server/authMiddleware.js';
 import { recoverStuckJobs } from './server/transcriptApi.js';
+import {
+  createEcgSubmission,
+  listEcgSubmissions,
+  listMyEcgSubmissions,
+  listEcgTags,
+  reviewEcgSubmission,
+} from './server/ecgApi.js';
+import { getLeaderboard } from './server/leaderboardApi.js';
+import { recordConsent } from './server/consentApi.js';
+import {
+  getTodayChallenge,
+  getChallengeArchive,
+  answerChallenge,
+  listChallengesAdmin,
+  upsertChallengeAdmin,
+  deleteChallengeAdmin,
+} from './server/challengeApi.js';
+import {
+  getVapidPublicKey,
+  subscribePush,
+  unsubscribePush,
+  listScheduledPush,
+  createScheduledPush,
+  deleteScheduledPush,
+  startPushCron,
+  runDuePushes,
+} from './server/pushApi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -40,19 +68,38 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
+// ── Global crash guards ─────────────────────────────────────────────
+// Keep the process alive on stray errors so a single unhandled promise or
+// exception never silently kills the server (critical on Render).
+// מנגנון הגנה גלובלי: מונע מהשרת למות בגלל שגיאה לא מטופלת.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception caught:', error);
+});
+
 async function start() {
   if (MONGODB_URI) {
     try {
-      await mongoose.connect(MONGODB_URI);
-      console.log('MongoDB connected');
+      await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 15000 });
+      console.log('✅ MongoDB connected / מסד הנתונים מחובר');
       // Any job stuck in pending/processing from a previous crash is marked failed.
       await recoverStuckJobs();
+      // Deliver any scheduled pushes that came due while the server was down.
+      await runDuePushes().catch((e) => console.error('[push] initial run failed:', e?.message || e));
     } catch (err) {
-      console.error('MongoDB connection error:', err);
-      console.warn('Server starting without database; /api/questions will return empty.');
+      // Never crash on DB failure — log loudly (he+en) so it is visible in Render logs
+      // and keep serving the SPA + read-only endpoints.
+      console.error('❌ MongoDB connection FAILED / החיבור למסד הנתונים נכשל');
+      console.error('   message:', err?.message || err);
+      console.error('   reason :', err?.reason || '(none)');
+      console.warn('⚠️ Server is starting WITHOUT a database; data endpoints will be empty until DB recovers.');
+      console.warn('⚠️ השרת עולה ללא מסד נתונים; נתיבי הנתונים יחזירו ריק עד שהחיבור יתוקן.');
     }
   } else {
-    console.warn('MONGODB_URI not set; running without database');
+    console.error('❌ MONGODB_URI is not set / משתנה הסביבה MONGODB_URI חסר');
+    console.warn('⚠️ Running without database. Set MONGODB_URI in Render → Environment.');
   }
 
   console.log(`[auth] enforcement: ${isAuthEnforced() ? 'ON' : 'OFF (best-effort identity)'}`);
@@ -73,6 +120,27 @@ async function start() {
   app.post('/api/reports', requireAuth, createReport);
   app.post('/api/upload-media', requireAuth, uploadMiddleware, uploadMediaHandler);
   app.post('/api/exam/submit', requireAuth, submitExam);
+
+  // National leaderboard (personal competition — any signed-in user)
+  app.get('/api/leaderboard', requireAuth, getLeaderboard);
+
+  // GDPR / TOS consent
+  app.post('/api/users/consent', requireAuth, recordConsent);
+
+  // ECG submission pipeline (trainee side)
+  app.post('/api/ecg-submissions', requireAuth, createEcgSubmission);
+  app.get('/api/ecg-submissions/mine', requireAuth, listMyEcgSubmissions);
+  app.get('/api/ecg-submissions/tags', requireAuth, listEcgTags);
+
+  // Daily challenges (trainee side)
+  app.get('/api/challenges/today', requireAuth, getTodayChallenge);
+  app.get('/api/challenges/archive', requireAuth, getChallengeArchive);
+  app.post('/api/challenges/:date/answer', requireAuth, answerChallenge);
+
+  // Web push — opt-in subscriptions
+  app.get('/api/notifications/vapid-public-key', requireAuth, getVapidPublicKey);
+  app.post('/api/notifications/subscribe', requireAuth, subscribePush);
+  app.post('/api/notifications/unsubscribe', requireAuth, unsubscribePush);
 
   // ── Instructor and above ───────────────────────────────────────────
   app.post('/api/extract-doc', requireRole('instructor'), (req, res) => extractDocHandler(req, res));
@@ -96,6 +164,10 @@ async function start() {
   app.post('/api/book-content/search', requireRole('instructor'), searchBookContent);
   app.post('/api/book-content/classify', requireRole('instructor'), classifyAgainstBook);
 
+  // ECG review queue (instructor and above)
+  app.get('/api/ecg-submissions', requireRole('instructor'), listEcgSubmissions);
+  app.put('/api/ecg-submissions/:id/review', requireRole('instructor'), reviewEcgSubmission);
+
   // ── School staff and above ─────────────────────────────────────────
   app.delete('/api/questions/:id', requireRole('school_staff'), deleteQuestion);
   app.get('/api/transcripts', requireRole('school_staff'), listTranscripts);
@@ -117,9 +189,47 @@ async function start() {
   app.put('/api/users/:userId/role', requireRole('manager'), changeUserRole);
   app.put('/api/users/:userId/courses', requireRole('manager'), setInstructorCourses);
 
-  // ── Static SPA + catch-all (public) ────────────────────────────────
-  app.use(express.static(path.join(__dirname, 'dist')));
-  app.use((_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
+  // Scheduled push management (manager and above)
+  app.get('/api/notifications/scheduled', requireRole('manager'), listScheduledPush);
+  app.post('/api/notifications/scheduled', requireRole('manager'), createScheduledPush);
+  app.delete('/api/notifications/scheduled/:id', requireRole('manager'), deleteScheduledPush);
+
+  // Challenge authoring (manager and above)
+  app.get('/api/challenges/admin', requireRole('manager'), listChallengesAdmin);
+  app.post('/api/challenges/admin', requireRole('manager'), upsertChallengeAdmin);
+  app.delete('/api/challenges/admin/:id', requireRole('manager'), deleteChallengeAdmin);
+
+  // ── Static assets + SPA catch-all ──────────────────────────────────
+  const distDir = path.join(__dirname, 'dist');
+  const indexHtml = path.join(distDir, 'index.html');
+  app.use(express.static(distDir));
+
+  // SPA fallback so deep links (e.g. /instructor/book-content) and hard
+  // refreshes always return index.html and let the client router take over.
+  //
+  // IMPORTANT: under Express 5 (path-to-regexp v8) a literal `app.get('*', ...)`
+  // THROWS at boot ("Missing parameter name") and crashes the server. A
+  // method-guarded middleware is the safe, version-proof equivalent.
+  app.use((req, res, next) => {
+    // Only serve the SPA shell for navigations.
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    // Unknown API routes must return JSON 404 — never the HTML shell.
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: `API route not found: ${req.path}` });
+    }
+    if (!fs.existsSync(indexHtml)) {
+      console.error('❌ dist/index.html not found — did "npm run build" run? / קבצי ה-build חסרים.');
+      return res
+        .status(500)
+        .send('Build artifacts missing. Run "npm run build". / חסרים קבצי build — הרץ build.');
+    }
+    return res.sendFile(indexHtml, (err) => {
+      if (err && !res.headersSent) {
+        console.error('[server] sendFile error / שגיאה בהגשת הדף:', err?.message || err);
+        res.status(500).json({ error: 'שגיאה בהגשת הדף / failed to serve page' });
+      }
+    });
+  });
 
   // ── Global error handler (Express 5 forwards rejected promises here) ─
   // eslint-disable-next-line no-unused-vars
@@ -129,8 +239,12 @@ async function start() {
     res.status(err.status || 500).json({ error: err.message || 'שגיאת שרת פנימית' });
   });
 
-  app.listen(PORT, () => {
-    console.log(`Server at http://localhost:${PORT} (includes .doc extraction and media upload)`);
+  // ── Start listening (guarded) ──────────────────────────────────────
+  const server = app.listen(PORT, () => {
+    console.log(`✅ Server listening on http://localhost:${PORT} / השרת מאזין`);
+
+    // Start the scheduled-push cron loop.
+    startPushCron();
 
     // Keep-alive: ping ourselves every 14 minutes to prevent Render free-tier cold starts
     if (process.env.RENDER) {
@@ -141,6 +255,16 @@ async function start() {
       console.log('Keep-alive enabled (every 14 min)');
     }
   });
+
+  // app.listen failures (e.g. port in use) emit 'error' rather than throwing.
+  server.on('error', (err) => {
+    console.error('💥 HTTP server failed to start / האזנת השרת נכשלה:', err?.message || err);
+  });
 }
 
-start();
+// Wrap boot so any synchronous/async failure is logged loudly (he+en) instead
+// of dying silently in Render's logs.
+start().catch((err) => {
+  console.error('💥 Fatal error during boot / שגיאה קריטית בעליית השרת:', err?.message || err);
+  console.error(err?.stack || '');
+});

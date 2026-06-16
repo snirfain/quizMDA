@@ -109,9 +109,21 @@ export const routes = {
     public: false,
     roles: ['school_staff', 'manager', 'admin']
   },
+  leaderboard: {
+    path: '/leaderboard',
+    component: 'Leaderboard',
+    public: false,
+    roles: ['trainee', 'instructor', 'school_staff', 'manager', 'admin']
+  },
   manager: {
     path: '/manager',
     component: 'ManagerDashboard',
+    public: false,
+    roles: ['manager', 'admin']
+  },
+  adminNotifications: {
+    path: '/manager/notifications',
+    component: 'AdminPushManager',
     public: false,
     roles: ['manager', 'admin']
   },
@@ -220,6 +232,7 @@ export function getNavigationItems(userRole) {
       { path: routes.studyPlans.path,  label: 'תוכניות לימוד', icon: 'clipboard' },
       { path: routes.bookmarks.path,   label: 'שאלות שסימנתי', icon: 'help' },
       { path: routes.progress.path,    label: 'ההתקדמות שלי',  icon: 'chart' },
+      { path: routes.leaderboard.path, label: 'טבלת מובילים',  icon: 'chart' },
       { path: routes.settings.path,    label: 'הגדרות',        icon: 'settings' },
     ],
     instructor: [
@@ -252,6 +265,7 @@ export function getNavigationItems(userRole) {
       { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',          icon: 'media' },
       { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',      icon: 'file' },
       { path: routes.dataImportExport.path,      label: 'ייבוא/ייצוא נתונים', icon: 'import' },
+      { path: routes.adminNotifications.path,    label: 'התראות ואתגרים',     icon: 'bell' },
       { path: routes.instructorAnalytics.path,   label: 'ניתוח ביצועים',      icon: 'chart' },
       { path: routes.settings.path,              label: 'הגדרות',             icon: 'settings' },
     ],
@@ -264,6 +278,7 @@ export function getNavigationItems(userRole) {
       { path: routes.mediaBankManager.path,      label: 'מאגר מדיה',          icon: 'media' },
       { path: routes.instructorTranscripts.path, label: 'העלאת תמלילים',      icon: 'file' },
       { path: routes.dataImportExport.path,      label: 'ייבוא/ייצוא נתונים', icon: 'import' },
+      { path: routes.adminNotifications.path,    label: 'התראות ואתגרים',     icon: 'bell' },
       { path: routes.adminQuestionStats.path,    label: 'סטטיסטיקות שאלות',   icon: 'chart' },
       { path: routes.instructorAnalytics.path,   label: 'ניתוח ביצועים',      icon: 'chart' },
       { path: routes.settings.path,              label: 'הגדרות מערכת',       icon: 'settings' },

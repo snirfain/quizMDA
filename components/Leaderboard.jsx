@@ -1,184 +1,156 @@
 /**
- * Leaderboard Component
- * Displays top users by points
- * Hebrew: טבלת לידרים
+ * Leaderboard — national, per-user ranking by personal points.
+ * Top 3 receive gold/silver/bronze medals. Responsive + RTL + dark/light.
+ * Hebrew: טבלת מובילים ארצית — תחרות אישית.
  */
+import React, { useEffect, useState } from 'react';
+import { SkeletonCard } from './Skeleton';
 
-import React, { useState, useEffect } from 'react';
-import { getLeaderboard } from '../workflows/gamification';
+const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
+const MEDAL_COLORS = {
+  1: { bg: 'linear-gradient(135deg, #FFF4CC 0%, #FFE08A 100%)', border: '#E6B800', text: '#7A5C00' },
+  2: { bg: 'linear-gradient(135deg, #F2F4F7 0%, #D9DEE6 100%)', border: '#AEB6C2', text: '#4A4A4A' },
+  3: { bg: 'linear-gradient(135deg, #FBE6D4 0%, #EBC09A 100%)', border: '#C98A52', text: '#7A4A1E' },
+};
 
-export default function Leaderboard({ userId }) {
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [timeframe, setTimeframe] = useState('all');
-  const [isLoading, setIsLoading] = useState(true);
+export default function Leaderboard({ currentUserId = null }) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    loadLeaderboard();
-  }, [timeframe]);
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/leaderboard', { cache: 'no-store' });
+        if (!res.ok) throw new Error('שגיאת שרת');
+        const data = await res.json();
+        if (alive) setRows(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (alive) {
+          setError('טעינת טבלת המובילים נכשלה');
+          setRows([]);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  const loadLeaderboard = async () => {
-    setIsLoading(true);
-    try {
-      const data = await getLeaderboard(timeframe, 50);
-      setLeaderboard(data);
-    } catch (error) {
-      console.error('Error loading leaderboard:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const getUserRank = () => {
-    const userIndex = leaderboard.findIndex(u => u.userId === userId);
-    return userIndex >= 0 ? userIndex + 1 : null;
-  };
-
-  if (isLoading) {
-    return <div style={styles.loading}>טוען טבלת לידרים...</div>;
+  if (rows === null) {
+    return (
+      <div style={styles.wrap}>
+        <SkeletonCard height={320} />
+      </div>
+    );
   }
 
-  const userRank = getUserRank();
-
   return (
-    <div style={styles.container}>
+    <div style={styles.wrap} dir="rtl">
       <div style={styles.header}>
-        <h2 style={styles.title}>טבלת לידרים</h2>
-        <select
-          style={styles.timeframeSelect}
-          value={timeframe}
-          onChange={(e) => setTimeframe(e.target.value)}
-        >
-          <option value="all">כל הזמנים</option>
-          <option value="month">חודש אחרון</option>
-          <option value="week">שבוע אחרון</option>
-        </select>
+        <h2 style={styles.title}>טבלת מובילים ארצית</h2>
+        <p style={styles.subtitle}>תחרות אישית — כל המשתמשים במערכת, מדורגים לפי נקודות</p>
       </div>
 
-      {userRank && (
-        <div style={styles.userRank}>
-          <span>המיקום שלך: #{userRank}</span>
-        </div>
+      {error && <div style={styles.error}>{error}</div>}
+
+      {rows.length === 0 ? (
+        <div style={styles.empty}>אין עדיין נתונים להצגה. צברו נקודות כדי להופיע בטבלה!</div>
+      ) : (
+        <>
+          {/* Podium for the top 3 */}
+          <div style={styles.podium}>
+            {rows.slice(0, 3).map((r) => {
+              const c = MEDAL_COLORS[r.rank];
+              const isMe = currentUserId && r.user_id === currentUserId;
+              return (
+                <div
+                  key={r.user_id || r.rank}
+                  style={{
+                    ...styles.podiumCard,
+                    background: c.bg,
+                    border: `2px solid ${c.border}`,
+                    ...(r.rank === 1 ? styles.podiumFirst : {}),
+                    ...(isMe ? styles.meOutline : {}),
+                  }}
+                >
+                  <div style={styles.medal} aria-hidden="true">{MEDALS[r.rank]}</div>
+                  <div style={{ ...styles.podiumName, color: c.text }}>
+                    {r.full_name}{isMe ? ' (אתה)' : ''}
+                  </div>
+                  <div style={{ ...styles.podiumPoints, color: c.text }}>{r.points} נק׳</div>
+                  <div style={styles.podiumStreak}>🔥 {r.current_streak} ימים</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* The rest of the list */}
+          <ol style={styles.list}>
+            {rows.slice(3).map((r) => {
+              const isMe = currentUserId && r.user_id === currentUserId;
+              return (
+                <li
+                  key={r.user_id || r.rank}
+                  style={{ ...styles.row, ...(isMe ? styles.rowMe : {}) }}
+                >
+                  <span style={styles.rank}>{r.rank}</span>
+                  <span style={styles.name}>
+                    {r.full_name}{isMe ? ' (אתה)' : ''}
+                  </span>
+                  <span style={styles.streak}>🔥 {r.current_streak}</span>
+                  <span style={styles.points}>{r.points} נק׳</span>
+                </li>
+              );
+            })}
+          </ol>
+        </>
       )}
-
-      <div style={styles.table}>
-        <div style={styles.tableHeader}>
-          <div style={styles.rankCol}>מיקום</div>
-          <div style={styles.nameCol}>שם</div>
-          <div style={styles.pointsCol}>
-            {timeframe === 'all' ? 'נקודות' : 'נקודות השבוע/חודש'}
-          </div>
-          <div style={styles.streakCol}>רצף</div>
-        </div>
-        {leaderboard.map((user, index) => (
-          <div
-            key={user.userId}
-            style={{
-              ...styles.tableRow,
-              ...(user.userId === userId ? styles.userRow : {})
-            }}
-          >
-            <div style={styles.rankCol}>
-              {index === 0 && '🥇'}
-              {index === 1 && '🥈'}
-              {index === 2 && '🥉'}
-              {!['🥇', '🥈', '🥉'].includes(index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '') && `#${index + 1}`}
-            </div>
-            <div style={styles.nameCol}>{user.name}</div>
-            <div style={styles.pointsCol}>
-              {timeframe === 'all' ? user.totalPoints : user.recentPoints}
-            </div>
-            <div style={styles.streakCol}>{user.streak} ימים</div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
 
 const styles = {
-  container: {
-    direction: 'rtl',
-    textAlign: 'right',
-    fontFamily: 'Arial, Helvetica, sans-serif',
-    padding: '20px',
-    backgroundColor: 'white',
-    borderRadius: '8px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  wrap: { direction: 'rtl', maxWidth: 760, margin: '0 auto' },
+  header: { textAlign: 'center', marginBottom: 'var(--space-5)' },
+  title: { margin: 0, fontSize: 'var(--font-size-2xl)', fontWeight: 800, color: 'var(--color-text)' },
+  subtitle: { margin: 'var(--space-2) 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--font-size-base)' },
+  error: {
+    background: 'var(--color-danger-bg)', color: 'var(--color-danger)',
+    padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)', textAlign: 'center',
   },
-  loading: {
-    textAlign: 'center',
-    padding: '20px',
-    fontSize: '16px'
+  empty: {
+    textAlign: 'center', padding: 'var(--space-10) var(--space-4)',
+    color: 'var(--color-text-muted)', fontSize: 'var(--font-size-lg)',
   },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '20px'
+  podium: {
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+    gap: 'var(--space-3)', marginBottom: 'var(--space-5)', alignItems: 'stretch',
   },
-  title: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#333',
-    margin: 0
+  podiumCard: {
+    borderRadius: 'var(--radius-lg)', padding: 'var(--space-5) var(--space-3)',
+    textAlign: 'center', boxShadow: 'var(--shadow-md)',
+    display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center',
   },
-  timeframeSelect: {
-    padding: '8px 12px',
-    border: '1px solid #ddd',
-    borderRadius: '4px',
-    fontSize: '14px',
-    direction: 'rtl'
+  podiumFirst: { transform: 'scale(1.03)' },
+  meOutline: { outline: '3px solid var(--color-primary)', outlineOffset: 2 },
+  medal: { fontSize: 40, lineHeight: 1 },
+  podiumName: { fontWeight: 800, fontSize: 'var(--font-size-lg)' },
+  podiumPoints: { fontWeight: 700, fontSize: 'var(--font-size-base)' },
+  podiumStreak: { color: 'var(--color-text-2)', fontSize: 'var(--font-size-sm)' },
+  list: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 },
+  row: {
+    display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+    padding: '10px var(--space-4)', background: 'var(--color-bg-card)',
+    border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
   },
-  userRank: {
-    padding: '10px',
-    backgroundColor: '#e3f2fd',
-    borderRadius: '4px',
-    marginBottom: '15px',
-    textAlign: 'center',
-    fontWeight: 'bold',
-    color: '#1976d2'
+  rowMe: { borderColor: 'var(--color-primary)', background: 'var(--color-primary-bg)' },
+  rank: {
+    width: 30, height: 30, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'var(--color-bg-hover)', borderRadius: 'var(--radius-full)',
+    fontWeight: 700, color: 'var(--color-text-2)', fontSize: 'var(--font-size-sm)',
   },
-  table: {
-    display: 'flex',
-    flexDirection: 'column'
-  },
-  tableHeader: {
-    display: 'grid',
-    gridTemplateColumns: '60px 1fr 120px 80px',
-    gap: '10px',
-    padding: '12px',
-    backgroundColor: '#f5f5f5',
-    borderRadius: '4px',
-    fontWeight: 'bold',
-    fontSize: '14px',
-    marginBottom: '8px'
-  },
-  tableRow: {
-    display: 'grid',
-    gridTemplateColumns: '60px 1fr 120px 80px',
-    gap: '10px',
-    padding: '12px',
-    borderBottom: '1px solid #eee',
-    fontSize: '14px'
-  },
-  userRow: {
-    backgroundColor: '#e3f2fd',
-    fontWeight: 'bold'
-  },
-  rankCol: {
-    textAlign: 'center',
-    fontSize: '16px'
-  },
-  nameCol: {
-    fontWeight: '500'
-  },
-  pointsCol: {
-    textAlign: 'center',
-    fontWeight: 'bold',
-    color: '#CC0000'
-  },
-  streakCol: {
-    textAlign: 'center',
-    color: '#666'
-  }
+  name: { flex: 1, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  streak: { color: 'var(--color-text-2)', fontSize: 'var(--font-size-sm)' },
+  points: { fontWeight: 800, color: 'var(--color-primary)', minWidth: 64, textAlign: 'left' },
 };
