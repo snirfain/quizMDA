@@ -13,6 +13,6 @@ jobs:
     steps:
       - name: Ping server
         run: |
-          curl --silent --show-error --fail --location \
+          curl --silent --show-error --location \
             --max-time 30 \
-            https://YOUR-APP-NAME.onrender.com
+            https://mdaquiz.onrender.com
