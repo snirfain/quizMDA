@@ -13,6 +13,7 @@ import Leaderboard from '../components/Leaderboard';
 import TagFilter from '../components/TagFilter';
 import StreakBadge from '../components/StreakBadge';
 import ProgressRing from '../components/ProgressRing';
+import Icon from '../components/Icon';
 import { SkeletonCard } from '../components/Skeleton';
 import { getFilterOptions, generateTraineeExam } from '../workflows/testGenerator';
 import { getUserProgress } from '../workflows/userProgress';
@@ -29,7 +30,8 @@ export default function TraineeDashboard({ userId }) {
   const [activeTab, setActiveTab] = useState('practice');
   const [selectedTags, setSelectedTags] = useState([]);
   const [availableTags, setAvailableTags] = useState([]);
-  const [practiceMode, setPracticeMode] = useState('create'); // 'create' | 'free'
+  // Practice landing flow: 'menu' (friendly hub) → 'create' (exam builder) | 'free'
+  const [practiceView, setPracticeView] = useState('menu');
 
   const [createSpec, setCreateSpec] = useState({
     selectedCategories: [],
@@ -64,8 +66,8 @@ export default function TraineeDashboard({ userId }) {
   const handleQuickAdaptive = () => {
     setHierarchyFilters({});
     setSelectedTags([]);
-    setPracticeMode('free');
     setActiveTab('practice');
+    setPracticeView('free');
     showToast('מתחילים תרגול אדפטיבי', 'info');
   };
 
@@ -205,12 +207,24 @@ export default function TraineeDashboard({ userId }) {
   const switchToFreePractice = () => {
     setHierarchyFilters(createSpec.topic_name ? { topic_name: createSpec.topic_name } : {});
     setSelectedTags(createSpec.tagFilters);
-    setPracticeMode('free');
+    setPracticeView('free');
   };
+
+  // Friendly hub cards shown when entering "תרגול" (clean, professional — not flashy).
+  const menuCards = [
+    { key: 'create', icon: 'edit', title: 'בניית מבחן', desc: 'הרכיבו מבחן לפי קטגוריות, רמות קושי וכמות שאלות', onClick: () => setPracticeView('create') },
+    { key: 'free', icon: 'book', title: 'תרגול חופשי', desc: 'תרגול רציף ומותאם אישית לפי הרמה שלכם', onClick: () => setPracticeView('free') },
+    { key: 'challenge', icon: 'help', title: 'אתגר יומי', desc: 'שאלת אתגר חדשה בכל יום — צברו נקודות', onClick: () => setActiveTab('challenge') },
+    { key: 'ecg', icon: 'media', title: 'ניתוח אק"ג', desc: 'העלו רצועת אק"ג, פענחו וקבלו משוב ממדריך', onClick: () => setActiveTab('ecg') },
+    { key: 'progress', icon: 'dashboard', title: 'ההתקדמות שלי', desc: 'מעקב ביצועים, רצף וכיסוי המאגר', onClick: () => setActiveTab('progress') },
+    { key: 'leaderboard', icon: 'chart', title: 'טבלת מובילים', desc: 'דירוג ארצי לפי נקודות', onClick: () => setActiveTab('leaderboard') },
+  ];
+
+  const showHero = activeTab === 'practice' && practiceView === 'menu';
 
   return (
     <div style={styles.container} aria-label="לוח בקרה מתאמן">
-      {progressLoading ? (
+      {showHero && (progressLoading ? (
         <div style={{ marginBottom: 'var(--space-5)' }}>
           <SkeletonCard height={140} />
         </div>
@@ -247,7 +261,7 @@ export default function TraineeDashboard({ userId }) {
             המשך תרגול אדפטיבי
           </button>
         </div>
-      )}
+      ))}
 
       <div className="card card-elevated" style={styles.pageTop}>
         <h1 style={styles.pageTitle}>תרגול</h1>
@@ -255,7 +269,7 @@ export default function TraineeDashboard({ userId }) {
           <div className="tabs" role="tablist" aria-label="טאבים">
             <button
               className={`tab-btn ${activeTab === 'practice' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('practice'); setPracticeMode('create'); }}
+              onClick={() => { setActiveTab('practice'); setPracticeView('menu'); }}
               role="tab"
               aria-selected={activeTab === 'practice'}
               aria-controls="practice-panel"
@@ -304,7 +318,7 @@ export default function TraineeDashboard({ userId }) {
               טבלת מובילים
             </button>
           </div>
-          {activeTab === 'practice' && practiceMode === 'free' && (
+          {activeTab === 'practice' && practiceView === 'free' && (
             <button
               type="button"
               className="btn btn-ghost"
@@ -318,9 +332,43 @@ export default function TraineeDashboard({ userId }) {
         </div>
       </div>
 
-      {activeTab === 'practice' && (
+      {activeTab === 'practice' && practiceView === 'menu' && (
         <div role="tabpanel" aria-labelledby="practice-tab" id="practice-panel">
-          {practiceMode === 'create' ? (
+          <div style={styles.menuGrid} role="region" aria-label="בחירת פעולה">
+            {menuCards.map((card) => (
+              <button
+                key={card.key}
+                type="button"
+                className="card"
+                style={styles.menuCard}
+                onClick={card.onClick}
+              >
+                <span style={styles.menuIcon} aria-hidden="true">
+                  <Icon name={card.icon} size={24} />
+                </span>
+                <span style={styles.menuText}>
+                  <span style={styles.menuTitle}>{card.title}</span>
+                  <span style={styles.menuDesc}>{card.desc}</span>
+                </span>
+                <span style={styles.menuArrow} aria-hidden="true">‹</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'practice' && practiceView !== 'menu' && (
+        <div role="tabpanel" aria-labelledby="practice-tab" id="practice-panel">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={styles.backBtn}
+            onClick={() => setPracticeView('menu')}
+            aria-label="חזרה לתפריט התרגול"
+          >
+            ↩︎ חזרה לתפריט
+          </button>
+          {practiceView === 'create' ? (
             <div className="card card-elevated animate-fade-in" style={styles.createPanel} role="region" aria-labelledby="create-exam-heading">
               <h2 id="create-exam-heading" style={styles.createTitle}>צור מבחן</h2>
               <p style={styles.createSubtitle}>בחר קטגוריות וכמות שאלות לכל אחת, ואפשר גם להתאים לפי רמת קושי.</p>
@@ -524,6 +572,61 @@ const styles = {
     textAlign: 'right',
     backgroundColor: 'var(--color-bg)',
     minHeight: '100vh',
+  },
+  menuGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))',
+    gap: 'var(--space-4)',
+    marginTop: 'var(--space-5)',
+  },
+  menuCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--space-4)',
+    padding: 'var(--space-5)',
+    textAlign: 'right',
+    cursor: 'pointer',
+    border: '1px solid var(--color-border)',
+    background: 'var(--color-bg-card)',
+    fontFamily: 'inherit',
+    width: '100%',
+  },
+  menuIcon: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 48,
+    height: 48,
+    flexShrink: 0,
+    borderRadius: 'var(--radius-lg)',
+    background: 'var(--color-primary-bg)',
+    color: 'var(--color-primary)',
+  },
+  menuText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    flex: 1,
+    minWidth: 0,
+  },
+  menuTitle: {
+    fontSize: 'var(--font-size-lg)',
+    fontWeight: 700,
+    color: 'var(--color-text)',
+  },
+  menuDesc: {
+    fontSize: 'var(--font-size-sm)',
+    color: 'var(--color-text-muted)',
+    lineHeight: 1.5,
+  },
+  menuArrow: {
+    fontSize: 'var(--font-size-xl)',
+    color: 'var(--color-text-muted)',
+    flexShrink: 0,
+  },
+  backBtn: {
+    marginBottom: 'var(--space-4)',
+    paddingInline: 'var(--space-3)',
   },
   heroStrip: {
     margin: '0 0 var(--space-5)',

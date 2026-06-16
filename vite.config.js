@@ -45,6 +45,10 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    // Match production: let Google Sign-In popups postMessage back to the opener.
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

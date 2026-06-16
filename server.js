@@ -66,6 +66,14 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Allow Google Identity Services (Sign In With Google) popups to postMessage
+// back to the opener. Without this, Chrome logs "Cross-Origin-Opener-Policy
+// policy would block the window.postMessage call" and can break the login popup.
+app.use((_req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  next();
+});
+
 const MONGODB_URI = process.env.MONGODB_URI;
 
 // ── Global crash guards ─────────────────────────────────────────────

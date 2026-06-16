@@ -19,8 +19,8 @@ const FEATURES = [
 const STATS = [
   { value: '100%', label: 'בעברית' },
   { value: '5', label: 'רמות הרשאה' },
-  { value: '+12', label: 'נושאי לימוד' },
-  { value: '+500', label: 'שאלות במאגר' },
+  { value: '+25', label: 'נושאי לימוד' },
+  { value: '+9000', label: 'שאלות במאגר' },
 ];
 
 function redirect(user) {

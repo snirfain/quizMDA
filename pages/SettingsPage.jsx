@@ -16,7 +16,6 @@ import {
   setAccessibilitySettings,
   applyAccessibilitySettings 
 } from '../utils/accessibility';
-import ThemeToggle from '../components/ThemeToggle';
 import { isPushSupported, subscribeToPush, unsubscribeFromPush } from '../utils/push';
 
 export default function SettingsPage() {
@@ -520,9 +519,6 @@ function AccessibilitySettings({ user }) {
   return (
     <div>
       <h2 style={styles.sectionTitle}>הגדרות נגישות</h2>
-      <div style={{ marginBottom: 'var(--space-6)' }}>
-        <ThemeToggle />
-      </div>
       <div style={styles.form}>
         <label style={styles.checkboxLabel}>
           <input

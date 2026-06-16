@@ -10,7 +10,6 @@ import { navigateTo } from '../utils/router';
 import { getCurrentUser, logout } from '../utils/auth';
 import { getUserNotifications } from '../workflows/notifications';
 import NotificationsPanel from './NotificationsPanel';
-import ThemeToggle from './ThemeToggle';
 import Icon from './Icon';
 
 export default function NavigationBar({ onMenuToggle, onCollapsedChange }) {
@@ -206,7 +205,6 @@ export default function NavigationBar({ onMenuToggle, onCollapsedChange }) {
 
         {/* Right side actions */}
         <div style={styles.actions}>
-          <ThemeToggle compact />
           {/* Notifications */}
           <button
             style={styles.iconButton}
