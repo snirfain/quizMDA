@@ -19,7 +19,7 @@ import OfflineIndicator from './components/OfflineIndicator';
 import SyncIndicator from './components/SyncIndicator';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import ConsentGate from './components/ConsentGate';
-import { syncQuestionsFromServer } from './mockEntities';
+import { ensureQuestionsSynced } from './mockEntities';
 
 // Lazy load pages
 const HomePage = React.lazy(() => import('./pages/HomePage'));
@@ -105,21 +105,20 @@ export default function App() {
   }, []);
 
   /**
-   * Kick off the server→IndexedDB question sync, but only when we actually have
-   * an authenticated session (valid token), or in local dev where auth is off.
-   * Guards against the 401 that occurred when syncing before login.
+   * Kick off the server→IndexedDB question sync.
+   *
+   * Delegates to ensureQuestionsSynced(), which (1) waits for the auth token to
+   * be persisted after login — fixing the post-login race that left a fresh
+   * machine unauthenticated — and (2) retries with backoff on transient failures
+   * (cold server / DB warm-up / network) until the full bank actually arrives,
+   * so a brand-new user on a clean machine never gets stuck on the 2 seed
+   * questions. Returning users and localhost dev keep their existing behavior.
+   * The promise is exposed so the practice engine can await a fresh sync.
    */
   const triggerQuestionSync = (reason = '') => {
     if (typeof window === 'undefined') return;
-    const host = window.location.hostname;
-    const isLocal = host === 'localhost' || host === '127.0.0.1';
-    const hasValidSession = isLocal || !isTokenExpiringSoon(0);
-    if (!hasValidSession) {
-      console.warn('[App] דילוג על סנכרון שאלות — אין סשן תקף עדיין', reason ? `(${reason})` : '');
-      return;
-    }
-    // Expose the promise so the practice engine can await a fresh sync.
-    window.__quizMDA_syncPromise = syncQuestionsFromServer();
+    if (reason) console.debug('[App] מפעיל סנכרון בנק שאלות', `(${reason})`);
+    window.__quizMDA_syncPromise = ensureQuestionsSynced();
   };
 
   const loadUser = async () => {

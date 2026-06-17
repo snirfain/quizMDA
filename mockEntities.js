@@ -11,6 +11,13 @@ import {
   normalizeQuestionMediaPayload,
 } from './shared/questionBankMetadata.js';
 import { getAuthToken } from './utils/authToken.js';
+import {
+  SYNC_MAX_ATTEMPTS,
+  SYNC_TOKEN_WAIT_MS,
+  SYNC_TOKEN_POLL_MS,
+  shouldRetrySync,
+  backoffDelay,
+} from './shared/syncRetry.js';
 
 const STORAGE_KEY = 'quizMDA_mockData';
 
@@ -658,12 +665,14 @@ export async function syncQuestionsFromServer(opts = {}) {
     if (!gotSuccessfulPage) {
       console.warn('[syncQuestionsFromServer] לא התקבל דף תקין; שומרים cache מקומי.');
       emitSyncStatus({ phase: 'done', loaded: mockData.questions.length, total: mockData.questions.length });
-      return { fetched: 0, local: mockData.questions.length, skipped: true };
+      // transient: דף ראשון ריק/שגוי (לרוב שרת/רשת מתעוררים) — שווה ניסיון חוזר.
+      return { fetched: 0, local: mockData.questions.length, skipped: true, transient: true };
     }
     if (!serverDbConnected) {
       console.warn('[syncQuestionsFromServer] מסד הנתונים בשרת אינו מחובר; שומרים cache מקומי.');
       emitSyncStatus({ phase: 'done', loaded: mockData.questions.length, total: mockData.questions.length });
-      return { fetched: 0, local: mockData.questions.length, skipped: true };
+      // transient: מסד הנתונים בשרת עדיין מתחבר (cold start) — שווה ניסיון חוזר.
+      return { fetched: 0, local: mockData.questions.length, skipped: true, transient: true };
     }
 
     // המרה ושמירה בבת אחת ל-IndexedDB (כולל ניקוי הקיים).
@@ -678,8 +687,70 @@ export async function syncQuestionsFromServer(opts = {}) {
   } catch (e) {
     console.error('[syncQuestionsFromServer] שגיאה:', e);
     emitSyncStatus({ phase: 'error', loaded: apiQuestions.length, total, reason: e?.message });
-    return { fetched: 0, local: mockData.questions.length, error: e.message };
+    // transient: שגיאת רשת/שרת — שווה ניסיון חוזר במחשב חדש שאין בו cache.
+    return { fetched: 0, local: mockData.questions.length, error: e.message, transient: true };
   }
+}
+
+/** האם קיים cache אמיתי של שאלות מקומית (שאלות seed לעולם אינן נכתבות ל-IndexedDB). */
+async function hasCachedQuestions() {
+  try {
+    const stored = await idbGetAllQuestions();
+    return Array.isArray(stored) && stored.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** ממתין שטוקן ההזדהות ייכתב ל-localStorage (מטפל במרוץ שאחרי התחברות). */
+async function waitForAuthToken(maxWaitMs = SYNC_TOKEN_WAIT_MS, pollMs = SYNC_TOKEN_POLL_MS) {
+  if (getAuthToken()) return true;
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    if (getAuthToken()) return true;
+  }
+  return !!getAuthToken();
+}
+
+/**
+ * סנכרון עמיד (resilient) של בנק השאלות מהשרת.
+ *
+ * זהו ה-entry point שבו יש להשתמש אחרי התחברות / טעינת משתמש: הוא ממתין
+ * תחילה לטוקן ההזדהות (כדי לא לשלוח בקשה לא מאומתת מיד אחרי לוגין), ואז מבצע
+ * את הסנכרון עם ניסיונות חוזרים והשהיה גדלה — אך ורק כל עוד אין עדיין cache
+ * מקומי אמיתי והשרת החזיר תשובה חולפת (cold start / מסד מתחבר / שגיאת רשת).
+ *
+ * כך משתמש חדש במחשב נקי מקבל בוודאות את כל מאגר השאלות מהשרת, במקום להיתקע
+ * על שתי שאלות ה-seed בעקבות כשל חולף יחיד. משתמשים חוזרים (שכבר יש להם cache)
+ * ומחשבי dev לוקאליים שומרים על ההתנהגות הקיימת.
+ *
+ * @param {{ force?: boolean, maxAttempts?: number }} [opts]
+ * @returns {Promise<object>} תוצאת הסנכרון האחרונה
+ */
+export async function ensureQuestionsSynced(opts = {}) {
+  if (typeof window === 'undefined') return { fetched: 0 };
+
+  // ממתינים לטוקן לפני הניסיון הראשון (לא בלוקאלי, שבו אין אכיפת auth).
+  if (!opts.force && !isLocalhostEnv()) {
+    await waitForAuthToken();
+  }
+
+  const maxAttempts = Math.max(1, opts.maxAttempts ?? SYNC_MAX_ATTEMPTS);
+  let result = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    result = await syncQuestionsFromServer(opts);
+    const cached = await hasCachedQuestions();
+    if (!shouldRetrySync(result, cached)) return result;
+    if (attempt < maxAttempts) {
+      const delay = backoffDelay(attempt);
+      console.warn(
+        `[ensureQuestionsSynced] סנכרון לא הושלם (ניסיון ${attempt}/${maxAttempts}); ניסיון חוזר בעוד ${delay}ms`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  return result || { fetched: 0 };
 }
 
 // Mock entity implementations
