@@ -21,6 +21,7 @@ import { createNote } from '../workflows/userNotes';
 import { showToast } from './Toast';
 import { filterTraineePracticeQuestions } from '../shared/adaptiveSelection';
 import { markQuestionReported, getReportedQuestionIds } from '../utils/reportedQuestions';
+import { QUESTION_TIME_LIMIT_SECONDS, formatQuestionTimer } from '../shared/answerScoring';
 
 const safeParse = (v, fallback = {}) => {
   if (v != null && typeof v === 'object') return v;
@@ -55,6 +56,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
   const [offlineAnswers, setOfflineAnswers] = useState([]);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
+  const [elapsedSec, setElapsedSec] = useState(0);
 
   // Ids served during this session, so we never repeat a question until the
   // whole in-scope pool has been served. Reset whenever the filters change.
@@ -82,6 +84,17 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tagFilters, hierarchyFilters.category_name, hierarchyFilters.topic_name]);
+
+  useEffect(() => {
+    if (!currentQuestion || showResult || !questionStartTime) {
+      setElapsedSec(0);
+      return undefined;
+    }
+    const tick = () => setElapsedSec(Math.floor((Date.now() - questionStartTime) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [currentQuestion?.id, questionStartTime, showResult]);
 
   const loadNextQuestion = async () => {
     setIsLoading(true);
@@ -339,20 +352,38 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
             const rate = currentQuestion.success_rate;
             const label =
               attempts >= MIN_ATTEMPTS_FOR_RATING && rate != null ? `הצלחה: ${rate}%` : `ניסיונות: ${attempts}`;
+            const overLimit = elapsedSec > QUESTION_TIME_LIMIT_SECONDS;
             return (
-              <span
-                style={{
-                  ...styles.difficulty,
-                  color: '#424242',
-                  background: '#f5f5f5',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '10px',
-                  padding: '3px 10px',
-                }}
-                aria-label={`סטטיסטיקת שאלה: ${label}`}
-              >
-                {label}
-              </span>
+              <>
+                <span
+                  style={{
+                    ...styles.difficulty,
+                    color: '#424242',
+                    background: '#f5f5f5',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '10px',
+                    padding: '3px 10px',
+                  }}
+                  aria-label={`סטטיסטיקת שאלה: ${label}`}
+                >
+                  {label}
+                </span>
+                {!showResult && (
+                  <span
+                    style={{
+                      ...styles.difficulty,
+                      color: overLimit ? '#c62828' : '#1565c0',
+                      background: overLimit ? '#ffebee' : '#e3f2fd',
+                      border: `1px solid ${overLimit ? '#ef9a9a' : '#90caf9'}`,
+                      borderRadius: '10px',
+                      padding: '3px 10px',
+                    }}
+                    aria-label={`זמן על השאלה: ${formatQuestionTimer(elapsedSec)} מתוך ${formatQuestionTimer(QUESTION_TIME_LIMIT_SECONDS)}`}
+                  >
+                    ⏱ {formatQuestionTimer(elapsedSec)} / {formatQuestionTimer(QUESTION_TIME_LIMIT_SECONDS)}
+                  </span>
+                )}
+              </>
             );
           })()}
         </div>

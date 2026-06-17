@@ -5,11 +5,19 @@
  */
 
 import { entities } from '../config/appConfig';
+import {
+  PRACTICE_CORRECT_POINTS,
+  PRACTICE_WRONG_POINTS,
+  REPORT_VALIDATED_BONUS,
+  computePracticeAnswerPoints,
+} from '../shared/answerScoring.js';
 
-/** Points for a correct answer in adaptive practice. */
-export const PRACTICE_CORRECT_POINTS = 1;
-/** Points deducted for a wrong answer in adaptive practice. */
-export const PRACTICE_WRONG_POINTS = -0.2;
+export {
+  PRACTICE_CORRECT_POINTS,
+  PRACTICE_WRONG_POINTS,
+  REPORT_VALIDATED_BONUS,
+  computePracticeAnswerPoints,
+};
 
 const MAX_ABS_DELTA = 50;
 

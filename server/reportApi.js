@@ -4,8 +4,10 @@
 import mongoose from 'mongoose';
 import QuestionReport from '../models/QuestionReport.js';
 import Question from '../models/Question.js';
+import User from '../models/User.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
 import { normalizeQuestionMediaPayload } from '../shared/questionBankMetadata.js';
+import { REPORT_VALIDATED_BONUS } from '../shared/answerScoring.js';
 
 /** POST /api/reports — create a new report */
 export async function createReport(req, res) {
@@ -83,6 +85,8 @@ export async function reviewReport(req, res) {
     const report = await QuestionReport.findById(id);
     if (!report) return res.status(404).json({ error: 'Report not found' });
 
+    let questionWasUpdated = false;
+
     // Apply changes to the actual question if approved or partial
     if ((status === 'approved' || status === 'partial') && report.question_id) {
       const changes = apply_changes || report.suggested;
@@ -121,6 +125,7 @@ export async function reviewReport(req, res) {
           safeFields.has_media = m.has_media;
         }
         await Question.findByIdAndUpdate(report.question_id, { $set: safeFields });
+        questionWasUpdated = true;
       }
       if ((changes?.branch_id || changes?.suspend_case_due_to_branch) && report.question_id) {
         const branchId = String(changes?.branch_id || '');
@@ -130,7 +135,29 @@ export async function reviewReport(req, res) {
             suspended_due_to_branch: branchId || 'reported_branch',
           },
         });
+        questionWasUpdated = true;
       }
+    }
+
+    // Reporter bonus: mistake validated and question updated (+5, once per report).
+    if (
+      (status === 'approved' || status === 'partial') &&
+      questionWasUpdated &&
+      report.reporter_id &&
+      !report.reporter_points_awarded
+    ) {
+      await User.findOneAndUpdate(
+        { user_id: report.reporter_id },
+        [{
+          $set: {
+            points: {
+              $max: [0, { $round: [{ $add: ['$points', REPORT_VALIDATED_BONUS] }, 1] }],
+            },
+          },
+        }],
+        { new: true },
+      );
+      report.reporter_points_awarded = true;
     }
 
     report.status = status;

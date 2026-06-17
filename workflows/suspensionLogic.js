@@ -75,12 +75,10 @@ export async function onActivityLogCreated(logData) {
       const timeSpent = logData.time_spent || 0;
       const isCorrect = logData.is_correct || false;
 
-      if (isCorrect) {
-        const { persistPointsAward, PRACTICE_CORRECT_POINTS } = await import('./gamification.js');
-        await persistPointsAward(user_id, PRACTICE_CORRECT_POINTS);
-      } else {
-        const { persistPointsAward, PRACTICE_WRONG_POINTS } = await import('./gamification.js');
-        await persistPointsAward(user_id, PRACTICE_WRONG_POINTS);
+      const { persistPointsAward, computePracticeAnswerPoints } = await import('./gamification.js');
+      const delta = computePracticeAnswerPoints(isCorrect, timeSpent);
+      if (delta !== 0) {
+        await persistPointsAward(user_id, delta);
       }
 
       await checkAchievements(user_id, {

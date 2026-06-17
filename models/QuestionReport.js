@@ -26,6 +26,8 @@ const questionReportSchema = new mongoose.Schema(
     reviewer_name: { type: String, default: null },
     review_note: { type: String, default: '' },
     reviewed_at: { type: Date, default: null },
+    /** True after the reporter received the validated-report bonus (+5). */
+    reporter_points_awarded: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
