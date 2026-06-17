@@ -118,7 +118,34 @@ export default function App() {
   const triggerQuestionSync = (reason = '') => {
     if (typeof window === 'undefined') return;
     if (reason) console.debug('[App] מפעיל סנכרון בנק שאלות', `(${reason})`);
-    window.__quizMDA_syncPromise = ensureQuestionsSynced();
+    const syncPromise = ensureQuestionsSynced();
+    window.__quizMDA_syncPromise = syncPromise;
+    syncPromise.then(maybeReloadAfterFirstSync).catch(() => {});
+  };
+
+  /**
+   * One-time refresh after the FIRST successful sync that populated the local
+   * cache (no real questions before → full bank just arrived). Reloads exactly
+   * once so the freshly-synced questions display without a manual reload.
+   *
+   * Loop-safe by construction:
+   *   1. Only acts when result.firstPopulation is true, which mockEntities sets
+   *      ONLY on the no-cache → real-questions transition (returning users with
+   *      an existing cache, and transient/failed syncs, are never flagged).
+   *   2. A sessionStorage guard ensures at most one reload per browser session,
+   *      so even an unexpected repeat transition can never cause a refresh loop.
+   */
+  const maybeReloadAfterFirstSync = (result) => {
+    if (typeof window === 'undefined' || !result || !result.firstPopulation) return;
+    try {
+      const FLAG = 'quizMDA_firstSyncReloaded';
+      if (sessionStorage.getItem(FLAG)) return;
+      sessionStorage.setItem(FLAG, '1');
+      // Let the SyncIndicator "done" badge show briefly before reloading.
+      setTimeout(() => window.location.reload(), 900);
+    } catch (_) {
+      /* sessionStorage unavailable → skip auto-refresh rather than risk a loop */
+    }
   };
 
   const loadUser = async () => {

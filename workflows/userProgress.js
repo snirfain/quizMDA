@@ -14,19 +14,19 @@ export async function getUserProgress(userId) {
     const user = await entities.Users.findOne({ user_id: userId });
     
     if (!user) {
-      // Return mock progress for demo
+      // No matching user record — show a real (empty) progress state, not fabricated numbers
       return {
         overall: {
-          totalAttempts: 50,
-          successRate: 75,
-          questionsAnswered: 30,
-          totalQuestions: 100,
-          completionRate: 30
+          totalAttempts: 0,
+          successRate: 0,
+          questionsAnswered: 0,
+          totalQuestions: 0,
+          completionRate: 0
         },
         categories: [],
         streak: {
-          current: user?.current_streak || 0,
-          longest: user?.longest_streak || 0
+          current: 0,
+          longest: 0
         }
       };
     }
@@ -94,19 +94,19 @@ export async function getUserProgress(userId) {
     };
   } catch (error) {
     console.error('Error getting user progress:', error);
-    // Return mock progress on error
+    // On error, surface an empty state rather than fabricated demo numbers
     return {
       overall: {
-        totalAttempts: 50,
-        successRate: 75,
-        questionsAnswered: 30,
-        totalQuestions: 100,
-        completionRate: 30
+        totalAttempts: 0,
+        successRate: 0,
+        questionsAnswered: 0,
+        totalQuestions: 0,
+        completionRate: 0
       },
       categories: [],
       streak: {
-        current: 5,
-        longest: 10
+        current: 0,
+        longest: 0
       }
     };
   }

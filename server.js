@@ -11,7 +11,7 @@ import { extractDocHandler } from './server/docExtract.js';
 import { uploadMiddleware, uploadMediaHandler } from './server/upload.js';
 import { getQuestions, postQuestions, syncQuestions, dedupeQuestions, recatalogAllQuestions, updateQuestion, deleteQuestion, classifyThinkingLevel } from './server/questionApi.js';
 import { listTranscripts, getTranscript, updateTranscript, deleteTranscript, uploadTranscript, uploadTranscriptMiddleware, matchAllQuestions, generateQuestionsFromTranscript, getGenerateQuestionsStatus, startFixSpelling, getFixSpellingStatus } from './server/transcriptApi.js';
-import { getUsers, postUser, setupUser, updateCourseNumbers, changeUserRole, setInstructorCourses, getUsersByCourse } from './server/userApi.js';
+import { getUsers, postUser, setupUser, updateCourseNumbers, changeUserRole, setInstructorCourses, getUsersByCourse, awardUserPoints } from './server/userApi.js';
 import { createReport, listReports, countPendingReports, reviewReport } from './server/reportApi.js';
 import { submitContactForm } from './server/contactApi.js';
 import {
@@ -124,6 +124,7 @@ async function start() {
   app.get('/api/users', requireAuth, getUsers);
   app.post('/api/users', requireAuth, postUser);
   app.post('/api/users/setup', requireAuth, setupUser);
+  app.post('/api/users/me/points', requireAuth, awardUserPoints);
   app.put('/api/users/:userId/course-numbers', requireAuth, updateCourseNumbers);
   app.post('/api/reports', requireAuth, createReport);
   app.post('/api/upload-media', requireAuth, uploadMiddleware, uploadMediaHandler);

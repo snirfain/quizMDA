@@ -127,8 +127,8 @@ export async function getSystemStatistics(dateRange = null) {
     };
   } catch (error) {
     console.error('Error getting system statistics:', error);
-    // Return mock data for development
-    return getMockStatistics();
+    // On error, return an empty real-shaped structure rather than fabricated numbers
+    return getEmptyStatistics();
   }
 }
 
@@ -534,43 +534,43 @@ function calculateLearningEffectiveness(activities) {
   return (correctAnswers / activities.length) * 100;
 }
 
-function getMockStatistics() {
+function getEmptyStatistics() {
   return {
     userStats: {
-      total: 150,
-      byRole: { trainee: 120, instructor: 25, admin: 5 },
-      active: 95,
-      newUsers: 12
+      total: 0,
+      byRole: { trainee: 0, instructor: 0, admin: 0 },
+      active: 0,
+      newUsers: 0
     },
     questionStats: {
-      total: 500,
-      byStatus: { active: 450, under_review: 30, draft: 20 },
-      byType: { single_choice: 200, multi_choice: 150, true_false: 100, open_ended: 50 },
-      byTrainingLevel: { A: 100, B: 100, C: 100, D: 100, E: 100 },
-      avgSuccessRate: 72.5,
-      avgAttempts: 45
+      total: 0,
+      byStatus: { active: 0, under_review: 0, draft: 0 },
+      byType: { single_choice: 0, multi_choice: 0, true_false: 0, open_ended: 0 },
+      byTrainingLevel: { A: 0, B: 0, C: 0, D: 0, E: 0 },
+      avgSuccessRate: 0,
+      avgAttempts: 0
     },
     activityStats: {
-      total: 5000,
-      byType: { correct: 3500, incorrect: 1500, open_ended: 200 },
+      total: 0,
+      byType: { correct: 0, incorrect: 0, open_ended: 0 },
       dailyActivity: [],
       hourlyActivity: [],
       byCategory: {},
-      avgResponseTime: 12.5
+      avgResponseTime: null
     },
     contentStats: {
-      totalCategories: 10,
-      totalTopics: 50,
-      totalLessons: 200,
+      totalCategories: 0,
+      totalTopics: 0,
+      totalLessons: 0,
       categoryDistribution: {},
       topicDistribution: {}
     },
     performanceMetrics: {
-      systemUptime: 99.9,
-      avgQuestionResponseTime: 12.5,
-      userEngagement: 63.3,
-      questionQuality: 72.5,
-      learningEffectiveness: 70.0
+      systemUptime: null,
+      avgQuestionResponseTime: null,
+      userEngagement: 0,
+      questionQuality: 0,
+      learningEffectiveness: 0
     },
     dateRange: {
       startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),

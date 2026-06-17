@@ -3,7 +3,7 @@
  * Top 3 receive gold/silver/bronze medals. Responsive + RTL + dark/light.
  * Hebrew: טבלת מובילים ארצית — תחרות אישית.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { SkeletonCard } from './Skeleton';
 
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
@@ -17,25 +17,42 @@ export default function Leaderboard({ currentUserId = null }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await fetch('/api/leaderboard', { cache: 'no-store' });
-        if (!res.ok) throw new Error('שגיאת שרת');
-        const data = await res.json();
-        if (alive) setRows(Array.isArray(data) ? data : []);
-      } catch (e) {
-        if (alive) {
-          setError('טעינת טבלת המובילים נכשלה');
-          setRows([]);
-        }
+  // Always fetch live data from the DB (no client cache), so freshly-earned
+  // points are reflected. Auth headers are attached automatically by the
+  // global fetch interceptor (utils/apiClient.js).
+  const load = useCallback(async (signal) => {
+    try {
+      const res = await fetch('/api/leaderboard', { cache: 'no-store', signal });
+      if (!res.ok) throw new Error('שגיאת שרת');
+      const data = await res.json();
+      if (!signal?.aborted) {
+        setRows(Array.isArray(data) ? data : []);
+        setError(null);
       }
-    })();
-    return () => {
-      alive = false;
-    };
+    } catch (e) {
+      if (e?.name === 'AbortError' || signal?.aborted) return;
+      setError('טעינת טבלת המובילים נכשלה');
+      setRows((prev) => prev ?? []);
+    }
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    load(controller.signal);
+
+    // Refetch when the tab/page becomes visible again, so points earned
+    // elsewhere (e.g. the daily challenge) show up without a manual reload.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      controller.abort();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [load]);
 
   if (rows === null) {
     return (

@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import TraineePracticeSession from '../components/TraineePracticeSession';
+import TraineePracticeSession, { ANSWER_RECORDED_EVENT } from '../components/TraineePracticeSession';
 import UserProgressDashboard from '../components/UserProgressDashboard';
 import EcgUploadPanel from '../components/EcgUploadPanel';
 import DailyChallenge from '../components/DailyChallenge';
@@ -49,6 +49,26 @@ export default function TraineeDashboard({ userId }) {
     loadFilterOptions();
     loadAvailableTags();
     if (userId) loadProgress();
+  }, [userId]);
+
+  // Keep the progress meters in sync with the user's actual answers: recompute
+  // after every answer recorded in the practice session, and when the tab
+  // becomes visible again (e.g. returning to the dashboard). This component
+  // stays mounted while the trainee practices, so without this the rings would
+  // otherwise only reflect progress as of mount.
+  React.useEffect(() => {
+    if (!userId) return;
+    const refresh = () => loadProgress();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') loadProgress();
+    };
+    window.addEventListener(ANSWER_RECORDED_EVENT, refresh);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener(ANSWER_RECORDED_EVENT, refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const loadProgress = async () => {

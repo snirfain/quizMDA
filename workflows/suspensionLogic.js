@@ -76,12 +76,8 @@ export async function onActivityLogCreated(logData) {
       const isCorrect = logData.is_correct || false;
 
       if (isCorrect) {
-        const user = await entities.Users.findOne({ user_id });
-        if (user) {
-          await entities.Users.update(user_id, {
-            points: (user.points || 0) + 10,
-          });
-        }
+        const { persistPointsAward, PRACTICE_CORRECT_POINTS } = await import('./gamification.js');
+        await persistPointsAward(user_id, PRACTICE_CORRECT_POINTS);
       }
 
       await checkAchievements(user_id, {

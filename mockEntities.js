@@ -736,12 +736,19 @@ export async function ensureQuestionsSynced(opts = {}) {
     await waitForAuthToken();
   }
 
+  // Snapshot whether a REAL question cache already existed before this sync.
+  // Used by the UI to detect the one-time "no real cache → real questions just
+  // arrived" transition (so it can refresh once to surface the new bank).
+  const hadCacheBefore = await hasCachedQuestions();
+
   const maxAttempts = Math.max(1, opts.maxAttempts ?? SYNC_MAX_ATTEMPTS);
   let result = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     result = await syncQuestionsFromServer(opts);
     const cached = await hasCachedQuestions();
-    if (!shouldRetrySync(result, cached)) return result;
+    if (!shouldRetrySync(result, cached)) {
+      return tagFirstPopulation(result, hadCacheBefore);
+    }
     if (attempt < maxAttempts) {
       const delay = backoffDelay(attempt);
       console.warn(
@@ -750,7 +757,21 @@ export async function ensureQuestionsSynced(opts = {}) {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-  return result || { fetched: 0 };
+  return tagFirstPopulation(result || { fetched: 0 }, hadCacheBefore);
+}
+
+/**
+ * Mark a sync result as the FIRST population of the local cache, i.e. the client
+ * previously had no real cached questions and this sync just fetched the real
+ * bank. The UI uses this (once, guarded) to refresh so freshly-synced questions
+ * display without a manual reload. Returning users (cache already present) and
+ * transient/failed syncs (fetched === 0) are never flagged.
+ */
+function tagFirstPopulation(result, hadCacheBefore) {
+  if (result && typeof result.fetched === 'number' && result.fetched > 0 && !hadCacheBefore) {
+    return { ...result, firstPopulation: true };
+  }
+  return result;
 }
 
 // Mock entity implementations
@@ -919,7 +940,20 @@ export const mockEntities = {
       return newUser;
     },
     update: async (userId, data) => {
-      const index = mockData.users.findIndex(u => u.user_id === userId);
+      let index = mockData.users.findIndex(u => u.user_id === userId);
+      if (index === -1) {
+        try {
+          const res = await fetch('/api/users', { cache: 'no-store' });
+          if (res.ok) {
+            const list = await res.json();
+            const remote = Array.isArray(list) ? list.find((u) => u.user_id === userId) : null;
+            if (remote) {
+              mockData.users.push({ ...remote });
+              index = mockData.users.length - 1;
+            }
+          }
+        } catch (_) { /* offline */ }
+      }
       if (index !== -1) {
         mockData.users[index] = {
           ...mockData.users[index],
@@ -957,6 +991,13 @@ export const mockEntities = {
         timestamp: data.timestamp || new Date()
       };
       mockData.activityLogs.push(newLog);
+      saveToStorage();
+      try {
+        const { onActivityLogCreated } = await import('./workflows/suspensionLogic.js');
+        await onActivityLogCreated(newLog);
+      } catch (err) {
+        console.warn('[Activity_Log] hook נכשל:', err?.message || err);
+      }
       return newLog;
     }
   },

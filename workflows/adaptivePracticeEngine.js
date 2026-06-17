@@ -5,6 +5,9 @@
  */
 
 import { entities } from '../config/appConfig';
+import { shuffle, pickNextQuestion } from '../shared/adaptiveSelection.js';
+
+export { shuffle, pickNextQuestion };
 
 async function getLastAttemptDate(userId, questionId) {
   const lastAttempt = await entities.Activity_Log.find(
@@ -143,7 +146,16 @@ export async function getAdaptiveQuestions(userId, hierarchyFilters = {}, tagFil
     }
   }
 
-  let adaptiveQuestions = [...unseen, ...reinforcement, ...masteredReviewDue, ...mastered];
+  // Shuffle WITHIN each priority bucket so the order varies on every entry,
+  // while the bucket ordering itself (and therefore the no-repeat-until-quota
+  // rule) is preserved: correctly-answered questions still only appear after the
+  // unseen/reinforcement pool is exhausted.
+  let adaptiveQuestions = [
+    ...shuffle(unseen),
+    ...shuffle(reinforcement),
+    ...shuffle(masteredReviewDue),
+    ...shuffle(mastered),
+  ];
 
   if (excludeQuestionId) {
     adaptiveQuestions = adaptiveQuestions.filter((q) => q.id !== excludeQuestionId);
@@ -207,21 +219,7 @@ export async function getNextPracticeQuestion(userId, hierarchyFilters = {}, tag
       return DEMO_QUESTION;
     }
 
-    const excludeSet = new Set(exclude);
-
-    // Prefer in-scope questions not yet served this session. Because `ordered`
-    // is sorted unseen → reinforcement → mastered, a correctly-answered
-    // question is only ever returned once everything unseen/incorrect has been
-    // served — i.e. the quota is exhausted.
-    const preferred = ordered.find((q) => !excludeSet.has(q.id));
-    if (preferred) {
-      return preferred;
-    }
-
-    // The whole in-scope pool was already served this session → recycle, but
-    // avoid immediately repeating the most recently served question.
-    const lastServed = exclude[exclude.length - 1];
-    return ordered.find((q) => q.id !== lastServed) || ordered[0];
+    return pickNextQuestion(ordered, exclude) || DEMO_QUESTION;
   } catch (error) {
     console.error('Error getting next question:', error);
     return DEMO_QUESTION;

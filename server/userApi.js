@@ -9,7 +9,11 @@
  */
 import mongoose from 'mongoose';
 import User from '../models/User.js';
+import { getActor } from './authMiddleware.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
+
+/** Points granted for a single correct practice answer (must match client). */
+const MAX_POINTS_DELTA = 50;
 
 const VALID_ROLES = new Set(['admin', 'manager', 'school_staff', 'instructor', 'trainee']);
 const VALID_AUTH = new Set(['local', 'google']);
@@ -182,6 +186,41 @@ export async function setInstructorCourses(req, res) {
     res.json(rest);
   } catch (err) {
     console.error('PUT /api/users/:userId/courses error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * POST /api/users/me/points
+ * Atomically increment the signed-in user's points (leaderboard source of truth).
+ * Body: { delta: number }
+ */
+export async function awardUserPoints(req, res) {
+  try {
+    await ensureDbConnection();
+    if (!isDbConnected()) return res.status(503).json({ error: 'Database not connected' });
+
+    const actor = getActor(req);
+    if (!actor.user_id) return res.status(401).json({ error: 'לא מזוהה' });
+
+    const delta = Number(req.body?.delta);
+    if (!Number.isFinite(delta) || delta <= 0 || delta > MAX_POINTS_DELTA) {
+      return res.status(400).json({ error: `delta חייב להיות בין 1 ל-${MAX_POINTS_DELTA}` });
+    }
+
+    const doc = await User.findOneAndUpdate(
+      { user_id: actor.user_id },
+      { $inc: { points: delta } },
+      { new: true },
+    ).lean();
+
+    if (!doc) return res.status(404).json({ error: 'User not found' });
+
+    const { _id, ...rest } = doc;
+    res.set('Cache-Control', 'no-store');
+    res.json({ user_id: rest.user_id, points: rest.points || 0 });
+  } catch (err) {
+    console.error('POST /api/users/me/points error:', err);
     res.status(500).json({ error: err.message });
   }
 }

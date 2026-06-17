@@ -13,7 +13,6 @@ import { announce } from '../utils/accessibility';
 import { savePracticeSession, loadQuestions, addToSyncQueue } from '../utils/offlineStorage';
 import { MIN_ATTEMPTS_FOR_RATING } from '../workflows/difficultyEngine';
 import { SkeletonCard } from './Skeleton';
-import FeedbackSheet from './FeedbackSheet';
 import QuestionReportModal from './QuestionReportModal';
 import QuestionResolvedMedia from './QuestionResolvedMedia';
 import { sanitizeHtml } from '../utils/sanitize';
@@ -25,6 +24,17 @@ const safeParse = (v, fallback = {}) => {
   if (v != null && typeof v === 'object') return v;
   if (typeof v === 'string') try { return JSON.parse(v); } catch { return fallback; }
   return fallback;
+};
+
+/** Event fired after an answer is persisted, so progress widgets can refresh. */
+export const ANSWER_RECORDED_EVENT = 'quizMDA:answer-recorded';
+const emitAnswerRecorded = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent(ANSWER_RECORDED_EVENT));
+  } catch (_) {
+    /* never let a UI event break the answer flow */
+  }
 };
 
 export default function TraineePracticeSession({ userId, hierarchyFilters = {}, tagFilters = [] }) {
@@ -43,7 +53,6 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
   const [offlineAnswers, setOfflineAnswers] = useState([]);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Ids served during this session, so we never repeat a question until the
   // whole in-scope pool has been served. Reset whenever the filters change.
@@ -206,10 +215,14 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         } catch (suspendErr) {
           console.warn('checkAndSuspendQuestion failed (non-fatal):', suspendErr);
         }
+
+        // Let the dashboard (progress meters) know an answer was recorded so it
+        // can recompute without a full reload.
+        emitAnswerRecorded();
+        announce(correct ? 'תשובה נכונה' : 'תשובה שגויה');
       }
 
       setShowResult(true);
-      if (currentQuestion.question_type !== 'open_ended') setSheetOpen(true);
     } catch (error) {
       console.error('Error submitting answer:', error);
       alert('שגיאה בשליחת התשובה. נסה שוב.');
@@ -247,6 +260,7 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         if (result.botFeedback && !botFeedback) {
           setBotFeedback(result.botFeedback);
         }
+        emitAnswerRecorded();
       } catch (error) {
         console.error('Error in self-assessment:', error);
         alert('שגיאה בשמירת התשובה. נסה שוב.');
@@ -260,7 +274,6 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
 
   const handleNextQuestion = () => {
     setShowResult(false);
-    setSheetOpen(false);
     loadNextQuestion();
   };
 
@@ -419,30 +432,66 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
           </div>
         )}
 
-        {/* Answer Review (read-only after submit) */}
+        {/* Inline feedback (replaces the bottom popup): answer review with the
+            correct answer highlighted, correctness banner, explanation and the
+            continue action all rendered directly on the question card. */}
         {showResult && currentQuestion.question_type !== 'open_ended' && (
           <div style={styles.answerSection}>
             {renderAnswerReview(currentQuestion, userAnswer, selectedOptions)}
-          </div>
-        )}
 
-        {/* Action bar shown when the feedback sheet was dismissed */}
-        {showResult && !sheetOpen && currentQuestion.question_type !== 'open_ended' && (
-          <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)', flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-ghost" onClick={() => setSheetOpen(true)}>
-              הצג משוב
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ flex: 1 }}
-              onClick={() => {
-                handleNextQuestion();
-                announce('טוען שאלה הבאה');
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                ...styles.inlineResultBanner,
+                backgroundColor: isCorrect ? '#e8f5e9' : '#ffebee',
+                border: `1px solid ${isCorrect ? '#4CAF50' : '#f44336'}`,
+                color: isCorrect ? '#2e7d32' : '#c62828',
               }}
             >
-              שאלה הבאה
-            </button>
+              <span aria-hidden="true">{isCorrect ? '✓' : '✗'}</span>
+              <span>{isCorrect ? 'תשובה נכונה' : 'תשובה שגויה'}</span>
+            </div>
+
+            {currentQuestion.explanation && (
+              <div style={styles.inlineExplanation} role="region" aria-label="הסבר רפואי">
+                <h3 style={styles.inlineExplanationTitle}>הסבר רפואי</h3>
+                <div
+                  style={styles.explanationText}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentQuestion.explanation) }}
+                />
+              </div>
+            )}
+
+            {!isCorrect && currentQuestion.hint && (
+              <div style={styles.hintBox}>
+                <strong>רמז: </strong>{currentQuestion.hint}
+              </div>
+            )}
+
+            <div style={styles.inlineActions}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={handleBookmark}
+                aria-label={bookmarked ? 'מסומן' : 'סמן שאלה'}
+              >
+                {bookmarked ? 'מסומן' : 'סמן שאלה'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={() => {
+                  setBookmarked(false);
+                  handleNextQuestion();
+                  announce('טוען שאלה הבאה');
+                }}
+                aria-label="שאלה הבאה"
+              >
+                שאלה הבאה
+              </button>
+            </div>
           </div>
         )}
 
@@ -476,21 +525,6 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
             )}
           </div>
         )}
-
-        <FeedbackSheet
-          open={sheetOpen && showResult && currentQuestion.question_type !== 'open_ended'}
-          isCorrect={isCorrect}
-          explanation={currentQuestion.explanation}
-          hint={!isCorrect ? currentQuestion.hint : null}
-          onClose={() => setSheetOpen(false)}
-          onNext={() => {
-            setBookmarked(false);
-            handleNextQuestion();
-            announce('טוען שאלה הבאה');
-          }}
-          onBookmark={handleBookmark}
-          bookmarked={bookmarked}
-        />
       </div>
 
       {/* Session Stats */}
@@ -851,6 +885,36 @@ const styles = {
     fontSize: '18px',
     fontWeight: 'bold',
     marginBottom: '15px'
+  },
+  inlineResultBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '12px 14px',
+    borderRadius: '8px',
+    fontSize: '16px',
+    fontWeight: 700,
+    marginTop: '4px',
+    marginBottom: '12px',
+  },
+  inlineExplanation: {
+    padding: '14px',
+    backgroundColor: '#e3f2fd',
+    border: '1px solid #90caf9',
+    borderRadius: '8px',
+    marginBottom: '12px',
+  },
+  inlineExplanationTitle: {
+    margin: '0 0 8px 0',
+    fontSize: '15px',
+    fontWeight: 700,
+    color: '#1976d2',
+  },
+  inlineActions: {
+    display: 'flex',
+    gap: '12px',
+    marginTop: '4px',
+    flexWrap: 'wrap',
   },
   botFeedback: {
     backgroundColor: '#f9f9f9',

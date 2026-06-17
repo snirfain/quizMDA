@@ -6,6 +6,55 @@
 
 import { entities } from '../config/appConfig';
 
+/** Points for a correct answer in adaptive practice / open-ended flows. */
+export const PRACTICE_CORRECT_POINTS = 10;
+
+/**
+ * Persist a points award to the server (atomic $inc) and sync local profile.
+ * Best-effort: a network failure must not break the answer flow.
+ */
+export async function persistPointsAward(userId, delta) {
+  const amount = Math.max(0, Math.min(50, Number(delta) || 0));
+  if (amount <= 0 || !userId) return null;
+
+  let serverPoints = null;
+  try {
+    const res = await fetch('/api/users/me/points', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delta: amount }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      serverPoints = typeof data.points === 'number' ? data.points : null;
+    }
+  } catch (err) {
+    console.warn('[gamification] שמירת נקודות לשרת נכשלה:', err?.message || err);
+  }
+
+  try {
+    const user = await entities.Users.findOne({ user_id: userId });
+    const nextPoints = serverPoints ?? ((user?.points || 0) + amount);
+    if (user && entities.Users?.update) {
+      await entities.Users.update(userId, { points: nextPoints });
+    }
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('currentUser');
+      if (raw) {
+        const current = JSON.parse(raw);
+        if (current.user_id === userId) {
+          current.points = nextPoints;
+          localStorage.setItem('currentUser', JSON.stringify(current));
+        }
+      }
+    }
+    return nextPoints;
+  } catch (err) {
+    console.warn('[gamification] סנכרון נקודות מקומי נכשל:', err?.message || err);
+    return serverPoints;
+  }
+}
+
 /**
  * Check and award achievements for a user
  */
