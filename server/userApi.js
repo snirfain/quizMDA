@@ -13,7 +13,7 @@ import { getActor } from './authMiddleware.js';
 import { isDbConnected, ensureDbConnection } from './db.js';
 
 /** Points granted for a single correct practice answer (must match client). */
-const MAX_POINTS_DELTA = 50;
+const MAX_ABS_POINTS_DELTA = 50;
 
 const VALID_ROLES = new Set(['admin', 'manager', 'school_staff', 'instructor', 'trainee']);
 const VALID_AUTH = new Set(['local', 'google']);
@@ -32,7 +32,7 @@ function normalizeUserForDb(u) {
     additional_courses: Array.isArray(u.additional_courses) ? u.additional_courses.map(c => String(c).trim()).filter(Boolean) : [],
     instructor_courses: Array.isArray(u.instructor_courses) ? u.instructor_courses.map(c => String(c).trim()).filter(Boolean) : [],
     setup_complete: Boolean(u.setup_complete),
-    points: Math.max(0, parseInt(u.points, 10) || 0),
+    points: Math.max(0, Math.round((parseFloat(u.points) || 0) * 10) / 10),
     current_streak: Math.max(0, parseInt(u.current_streak, 10) || 0),
     longest_streak: Math.max(0, parseInt(u.longest_streak, 10) || 0),
     custom_permissions: Array.isArray(u.custom_permissions) ? u.custom_permissions : [],
@@ -204,13 +204,13 @@ export async function awardUserPoints(req, res) {
     if (!actor.user_id) return res.status(401).json({ error: 'לא מזוהה' });
 
     const delta = Number(req.body?.delta);
-    if (!Number.isFinite(delta) || delta <= 0 || delta > MAX_POINTS_DELTA) {
-      return res.status(400).json({ error: `delta חייב להיות בין 1 ל-${MAX_POINTS_DELTA}` });
+    if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > MAX_ABS_POINTS_DELTA) {
+      return res.status(400).json({ error: `delta חייב להיות בין -${MAX_ABS_POINTS_DELTA} ל-${MAX_ABS_POINTS_DELTA} (לא אפס)` });
     }
 
     const doc = await User.findOneAndUpdate(
       { user_id: actor.user_id },
-      { $inc: { points: delta } },
+      [{ $set: { points: { $max: [0, { $round: [{ $add: ['$points', delta] }, 1] }] } } }],
       { new: true },
     ).lean();
 

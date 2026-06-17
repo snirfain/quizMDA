@@ -6,6 +6,8 @@
 
 import { entities } from '../config/appConfig';
 import { QUESTION_TYPES_UI } from '../shared/questionBankMetadata.js';
+import { filterTraineePracticeQuestions } from '../shared/adaptiveSelection.js';
+import { getReportedQuestionIds } from '../utils/reportedQuestions.js';
 import { pickRandomMedia } from './mediaEngine.js';
 
 export function getQuestionEffectiveUnits(question) {
@@ -38,6 +40,7 @@ export async function generateRandomTest(filters) {
   const { category = '', sub_category = '', training_levels = [], question_types = [], count = 20 } = filters;
 
   let pool = await entities.Question_Bank.find({ status: 'active' });
+  pool = filterTraineePracticeQuestions(pool);
 
   const catNeedle = typeof category === 'string' ? category.trim() : '';
   if (catNeedle) {
@@ -115,6 +118,7 @@ export async function generateTraineeExam(spec) {
   const hasCategorySpec = categories.length > 0;
 
   let pool = await entities.Question_Bank.find({ status: 'active' });
+  pool = filterTraineePracticeQuestions(pool);
 
   if (training_levels.length > 0) {
     pool = pool.filter((q) => training_levels.includes(q.training_level));
@@ -127,6 +131,11 @@ export async function generateTraineeExam(spec) {
 
   if (tagFilters.length > 0) {
     pool = pool.filter((q) => tagFilters.some((t) => (q.category || '').includes(t)));
+  }
+
+  const reportedIds = getReportedQuestionIds();
+  if (reportedIds.size > 0) {
+    pool = pool.filter((q) => !reportedIds.has(String(q.id)));
   }
 
   if (hasCategorySpec) {

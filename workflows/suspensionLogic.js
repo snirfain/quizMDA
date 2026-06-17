@@ -78,6 +78,9 @@ export async function onActivityLogCreated(logData) {
       if (isCorrect) {
         const { persistPointsAward, PRACTICE_CORRECT_POINTS } = await import('./gamification.js');
         await persistPointsAward(user_id, PRACTICE_CORRECT_POINTS);
+      } else {
+        const { persistPointsAward, PRACTICE_WRONG_POINTS } = await import('./gamification.js');
+        await persistPointsAward(user_id, PRACTICE_WRONG_POINTS);
       }
 
       await checkAchievements(user_id, {

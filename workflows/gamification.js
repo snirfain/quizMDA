@@ -6,16 +6,21 @@
 
 import { entities } from '../config/appConfig';
 
-/** Points for a correct answer in adaptive practice / open-ended flows. */
-export const PRACTICE_CORRECT_POINTS = 10;
+/** Points for a correct answer in adaptive practice. */
+export const PRACTICE_CORRECT_POINTS = 1;
+/** Points deducted for a wrong answer in adaptive practice. */
+export const PRACTICE_WRONG_POINTS = -0.2;
+
+const MAX_ABS_DELTA = 50;
 
 /**
- * Persist a points award to the server (atomic $inc) and sync local profile.
+ * Persist a points change to the server (atomic $inc) and sync local profile.
  * Best-effort: a network failure must not break the answer flow.
  */
 export async function persistPointsAward(userId, delta) {
-  const amount = Math.max(0, Math.min(50, Number(delta) || 0));
-  if (amount <= 0 || !userId) return null;
+  const amount = Number(delta);
+  if (!Number.isFinite(amount) || amount === 0 || !userId) return null;
+  if (Math.abs(amount) > MAX_ABS_DELTA) return null;
 
   let serverPoints = null;
   try {
@@ -34,7 +39,7 @@ export async function persistPointsAward(userId, delta) {
 
   try {
     const user = await entities.Users.findOne({ user_id: userId });
-    const nextPoints = serverPoints ?? ((user?.points || 0) + amount);
+    const nextPoints = serverPoints ?? Math.max(0, Math.round(((user?.points || 0) + amount) * 10) / 10);
     if (user && entities.Users?.update) {
       await entities.Users.update(userId, { points: nextPoints });
     }

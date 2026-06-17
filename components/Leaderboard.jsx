@@ -7,6 +7,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { SkeletonCard } from './Skeleton';
 
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
+function formatPoints(points) {
+  const n = Number(points) || 0;
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
 const MEDAL_COLORS = {
   1: { bg: 'linear-gradient(135deg, #FFF4CC 0%, #FFE08A 100%)', border: '#E6B800', text: '#7A5C00' },
   2: { bg: 'linear-gradient(135deg, #F2F4F7 0%, #D9DEE6 100%)', border: '#AEB6C2', text: '#4A4A4A' },
@@ -95,7 +100,7 @@ export default function Leaderboard({ currentUserId = null }) {
                   <div style={{ ...styles.podiumName, color: c.text }}>
                     {r.full_name}{isMe ? ' (אתה)' : ''}
                   </div>
-                  <div style={{ ...styles.podiumPoints, color: c.text }}>{r.points} נק׳</div>
+                  <div style={{ ...styles.podiumPoints, color: c.text }}>{formatPoints(r.points)} נק׳</div>
                   <div style={styles.podiumStreak}>🔥 {r.current_streak} ימים</div>
                 </div>
               );
@@ -116,7 +121,7 @@ export default function Leaderboard({ currentUserId = null }) {
                     {r.full_name}{isMe ? ' (אתה)' : ''}
                   </span>
                   <span style={styles.streak}>🔥 {r.current_streak}</span>
-                  <span style={styles.points}>{r.points} נק׳</span>
+                  <span style={styles.points}>{formatPoints(r.points)} נק׳</span>
                 </li>
               );
             })}

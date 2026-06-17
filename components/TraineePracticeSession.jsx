@@ -19,6 +19,8 @@ import { sanitizeHtml } from '../utils/sanitize';
 import { setZenMode } from '../utils/zenMode';
 import { createNote } from '../workflows/userNotes';
 import { showToast } from './Toast';
+import { filterTraineePracticeQuestions } from '../shared/adaptiveSelection';
+import { markQuestionReported, getReportedQuestionIds } from '../utils/reportedQuestions';
 
 const safeParse = (v, fallback = {}) => {
   if (v != null && typeof v === 'object') return v;
@@ -92,10 +94,11 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
         question = await getNextPracticeQuestion(userId, hierarchyFilters, tagFilters, askedIdsRef.current);
       } else {
         // Load from offline cache, preferring questions not yet served.
-        const cachedQuestions = await loadQuestions();
+        const cachedQuestions = filterTraineePracticeQuestions(await loadQuestions());
         if (cachedQuestions && cachedQuestions.length > 0) {
           const asked = new Set(askedIdsRef.current);
-          let pool = cachedQuestions.filter((q) => !asked.has(q.id));
+          const reported = getReportedQuestionIds();
+          let pool = cachedQuestions.filter((q) => !asked.has(q.id) && !reported.has(String(q.id)));
           if (pool.length === 0) {
             // Pool exhausted — recycle, but avoid repeating the current question.
             pool = cachedQuestions.filter((q) => q.id !== currentQuestion?.id);
@@ -277,8 +280,12 @@ export default function TraineePracticeSession({ userId, hierarchyFilters = {}, 
     loadNextQuestion();
   };
 
-  const handleReportClosed = () => {
+  const handleReportClosed = (result) => {
     setReportModalOpen(false);
+    if (result?.reported && currentQuestion?.id) {
+      markQuestionReported(currentQuestion.id);
+      loadNextQuestion();
+    }
   };
 
   const handleBookmark = async () => {

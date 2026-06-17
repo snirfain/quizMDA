@@ -53,3 +53,15 @@ export function pickNextQuestion(ordered, exclude = []) {
   const lastServed = exclude[exclude.length - 1];
   return ordered.find((q) => q.id !== lastServed) || ordered[0];
 }
+
+/** Question types excluded from trainee practice / exams. */
+export const TRAINEE_EXCLUDED_TYPES = new Set(['open_ended']);
+
+export function isTraineePracticeQuestion(question) {
+  return Boolean(question && !TRAINEE_EXCLUDED_TYPES.has(question.question_type));
+}
+
+export function filterTraineePracticeQuestions(questions) {
+  if (!Array.isArray(questions)) return [];
+  return questions.filter(isTraineePracticeQuestion);
+}

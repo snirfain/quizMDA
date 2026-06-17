@@ -5,9 +5,10 @@
  */
 
 import { entities } from '../config/appConfig';
-import { shuffle, pickNextQuestion } from '../shared/adaptiveSelection.js';
+import { shuffle, pickNextQuestion, filterTraineePracticeQuestions } from '../shared/adaptiveSelection.js';
+import { getReportedQuestionIds } from '../utils/reportedQuestions.js';
 
-export { shuffle, pickNextQuestion };
+export { shuffle, pickNextQuestion, filterTraineePracticeQuestions };
 
 async function getLastAttemptDate(userId, questionId) {
   const lastAttempt = await entities.Activity_Log.find(
@@ -85,6 +86,13 @@ export async function getAdaptiveQuestions(userId, hierarchyFilters = {}, tagFil
 
   if (tagFilters && tagFilters.length > 0) {
     activeQuestions = activeQuestions.filter((q) => tagFilters.some((tag) => (q.category || '').includes(tag)));
+  }
+
+  activeQuestions = filterTraineePracticeQuestions(activeQuestions);
+
+  const reportedIds = getReportedQuestionIds();
+  if (reportedIds.size > 0) {
+    activeQuestions = activeQuestions.filter((q) => !reportedIds.has(String(q.id)));
   }
 
   const userActivity = await entities.Activity_Log.find({

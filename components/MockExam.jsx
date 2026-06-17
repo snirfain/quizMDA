@@ -19,6 +19,8 @@ import QuestionReportModal from './QuestionReportModal';
 import QuestionResolvedMedia from './QuestionResolvedMedia';
 import GoogleSignIn from './GoogleSignIn';
 import { computeRollingCaseTotalScore } from '../workflows/rollingCaseEngine';
+import { filterTraineePracticeQuestions } from '../shared/adaptiveSelection';
+import { markQuestionReported } from '../utils/reportedQuestions';
 import {
   secureSubmit,
   isTokenExpiringSoon,
@@ -154,8 +156,9 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
     setIsLoading(true);
     try {
       if (routeState?.preGeneratedQuestions?.length > 0) {
-        setQuestions(routeState.preGeneratedQuestions);
-        const units = routeState.preGeneratedQuestions.reduce((sum, q) => {
+        const filtered = filterTraineePracticeQuestions(routeState.preGeneratedQuestions);
+        setQuestions(filtered);
+        const units = filtered.reduce((sum, q) => {
           if (q.question_type === 'rolling_case' && q.rolling_case?.branches?.length) return sum + q.rolling_case.branches.length;
           return sum + 1;
         }, 0);
@@ -408,6 +411,35 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
     announce('הזמן נגמר - הבחינה מוגשת');
     await performExamSubmit(examResults);
   };
+
+  const handleReportClose = useCallback((result) => {
+    if (!reportQuestion) return;
+    const reportedId = reportQuestion.id;
+    setReportQuestion(null);
+    if (!result?.reported || !reportedId) return;
+
+    markQuestionReported(reportedId);
+    setAnswers((prev) => {
+      const next = { ...prev };
+      delete next[reportedId];
+      return next;
+    });
+    setQuestions((prev) => {
+      const removeIdx = prev.findIndex((q) => q.id === reportedId);
+      if (removeIdx < 0) return prev;
+      const next = prev.filter((q) => q.id !== reportedId);
+      if (next.length === 0) {
+        showToast('לא נותרו שאלות במבחן לאחר הדיווח', 'error');
+        return prev;
+      }
+      setCurrentIndex((cur) => {
+        if (cur > removeIdx) return cur - 1;
+        if (cur === removeIdx) return Math.min(cur, next.length - 1);
+        return cur;
+      });
+      return next;
+    });
+  }, [reportQuestion]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -784,7 +816,7 @@ export default function MockExam({ questionCount: propCount = 20, timeLimit: pro
         </div>
 
         {reportQuestion && (
-          <QuestionReportModal question={reportQuestion} onClose={() => setReportQuestion(null)} />
+          <QuestionReportModal question={reportQuestion} onClose={handleReportClose} />
         )}
       </div>
   );

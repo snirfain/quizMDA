@@ -107,7 +107,7 @@ export default function QuestionReportModal({ question, onClose }) {
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'שגיאה בשליחה');
       showToast('הדיווח נשלח בהצלחה — תודה!', 'success');
-      onClose();
+      onClose?.({ reported: true });
     } catch (err) {
       console.error('Report submit error:', err);
       showToast('שגיאה בשליחת הדיווח', 'error');
@@ -119,7 +119,7 @@ export default function QuestionReportModal({ question, onClose }) {
   const isChoice = question.question_type === 'single_choice' || question.question_type === 'multi_choice';
 
   return (
-    <div style={overlay} onClick={onClose}>
+    <div style={overlay} onClick={() => onClose?.({ reported: false })}>
       <div style={modal} onClick={e => e.stopPropagation()}>
         <div style={header}>
           <span style={{ fontWeight: 700, fontSize: '18px' }}>דיווח על בעיה בשאלה</span>
@@ -128,7 +128,7 @@ export default function QuestionReportModal({ question, onClose }) {
               מזהה · {String(question.id ?? question._id).slice(-10)}
             </span>
           )}
-          <button style={closeBtn} onClick={onClose} aria-label="סגור">✕</button>
+          <button style={closeBtn} onClick={() => onClose?.({ reported: false })} aria-label="סגור">✕</button>
         </div>
 
         <div style={body}>
@@ -233,7 +233,7 @@ export default function QuestionReportModal({ question, onClose }) {
         </div>
 
         <div style={footer}>
-          <button style={cancelBtn} onClick={onClose}>ביטול</button>
+          <button style={cancelBtn} onClick={() => onClose?.({ reported: false })}>ביטול</button>
           <button style={submitBtn} onClick={handleSubmit} disabled={saving}>
             {saving ? 'שולח...' : 'שלח דיווח'}
           </button>
